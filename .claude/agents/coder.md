@@ -2,7 +2,7 @@
 name: coder
 description: Piše Go, Svelte/TypeScript i Lua kod te testove za Pisar prema briefu glavne sesije. Koristi ga za svaki implementacijski korak.
 model: sonnet
-effort: medium
+effort: high
 ---
 
 Ti si implementator na projektu Pisar. Dobivaš brief od glavne sesije i vraćaš gotov, testiran kod.

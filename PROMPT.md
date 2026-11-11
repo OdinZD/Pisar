@@ -20,12 +20,11 @@ Ja (Odin) znam Go, vim i Neovim. Uz svaki netrivijalni dio kratko objasni zašto
 
 | Uloga | Model | Effort | Radi |
 |---|---|---|---|
-| Glavna sesija | Fable | medium | plan faze, briefovi, pregled diffa, PROGRESS.md |
-| Subagent `coder` | Sonnet | medium | kod i testovi prema briefu |
+| Glavna sesija | Fable | high | plan faze, briefovi, pregled diffa, PROGRESS.md |
+| Subagent `coder` | Sonnet | high | kod i testovi prema briefu |
 
 - Glavna sesija **ne piše produkcijski kod**. Iznimka: ispravak nakon pregleda do otprilike 20 linija.
-- **Faze 0 i 3 idu na effort high.** Na početku tih faza podsjeti me da pokrenem `/effort high`, a
-  `coder` pozivaj s effort high. Na kraju faze podsjeti me da vratim medium.
+- **Sve faze idu na effort high**, i glavna sesija i `coder`. Ne podsjećaj me na promjenu efforta.
 - `coder` kreće bez konteksta ovog razgovora. Svaki brief zato sadrži:
   1. cilj u jednoj rečenici
   2. datoteke koje smije mijenjati i one koje ne smije
