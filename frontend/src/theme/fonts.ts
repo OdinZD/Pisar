@@ -1,5 +1,6 @@
 import interRegular from '../assets/fonts/Inter-Regular.woff2'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.woff2'
+import jetBrainsMonoBold from '../assets/fonts/JetBrainsMono-Bold.woff2'
 import jetBrainsMonoRegular from '../assets/fonts/JetBrainsMono-Regular.woff2'
 import { fontFamilyNames, fontWeights, type FontRole, type FontWeightToken } from './tokens'
 
@@ -19,6 +20,7 @@ export function fontFaceSpecs(): FontFaceSpec[] {
     spec('ui', 'regular', interRegular),
     spec('ui', 'semibold', interSemiBold),
     spec('mono', 'regular', jetBrainsMonoRegular),
+    spec('mono', 'bold', jetBrainsMonoBold),
   ]
 }
 

@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 5 (terminal u frontendu)
+- Sljedeći korak: faza 2, korak 6 (otvaranje iz stabla i praćenje)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 4 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 5 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -474,7 +474,17 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         grešku.
       - `Copy` s pravim vizualnim odabirom nije testiran na ovoj razini (dirao bi sistemski
         clipboard); pokriva ga `internal/nvim` s lažnim clipboardom
-- [ ] 5. Terminal u frontendu: `Terminal.svelte`, serijsko slanje, kalibracija visine retka
+- [x] 5. Terminal u frontendu: `components/Terminal.svelte` (xterm.js 6.0.0 + fit 0.11.0, DOM renderer,
+      tema i font iz tokena, serijsko slanje tipki, kalibracija visine retka), `EditorPane.svelte`
+      (prazno stanje / terminal / poruka o grešci), `lib/editorState.ts` (čisti stroj stanja) i
+      `lib/editorController.svelte.ts`; JetBrains Mono Bold (700) za podebljanje; vitest 339.
+      - Dimna provjera prave aplikacije (glavna sesija, bez tipki): `bin/pisar <dokument>` → frontend
+        zove `Start cols=133 rows=35`; Neovim preko socketa javlja `133 35 proba.md pisar`, `Normal`
+        `1D2125` na `FFFFFF`, stanje pod `<home>/nvim/`; nakon gašenja nema procesa ni socketa.
+      - Ispravak glavne sesije (s testom `TestEdRestartReports`): kad se stranica ponovno učita dok
+        Neovim radi, `Start` ponovno javlja aktivni dokument i njegovo stanje.
+      - Tipke i `Resize` pristigli prije nego `Start` završi se odbacuju.
+      - Komponente i `editorController` nemaju testove (vitest bez DOM-a); logika je u `editorState`
 - [ ] 6. Otvaranje i praćenje: `↵` / klik, poruka za `.docx`, aktivni dokument u stablu, stanje u traci
 - [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu
 - [ ] 8. Gašenje: dijalog Spremi / Odbaci / Odustani

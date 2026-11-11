@@ -40,6 +40,8 @@ export const fontFallbacks = {
 export const fontWeights = {
   regular: 400,
   semibold: 600,
+  // The editor colorscheme uses bold (headings, the line number of the cursor line).
+  bold: 700,
 } as const
 export type FontWeightToken = keyof typeof fontWeights
 

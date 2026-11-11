@@ -793,6 +793,35 @@ func TestEdRunDirGone(t *testing.T) {
 	e.rec.waitName(t, from, eventPtyData)
 }
 
+// A reloaded page calls Start again while Neovim runs; it must learn which
+// document is active and its state without waiting for the next change.
+func TestEdRestartReports(t *testing.T) {
+	e := startEd(t)
+	p, dir := docFixture(t, e)
+	a := filepath.Join(dir, "a.md")
+	ctx := context.Background()
+	if err := e.svc.OpenDocument(ctx, p.ID, "a.md"); err != nil {
+		t.Fatal(err)
+	}
+	from := e.rec.mark()
+	if err := e.svc.Write("GoHello"); err != nil {
+		t.Fatal(err)
+	}
+	e.rec.waitState(t, from, a, true)
+	if err := e.svc.Write("\x1b"); err != nil {
+		t.Fatal(err)
+	}
+
+	from = e.rec.mark()
+	if err := e.svc.Start(ctx, 90, 28, sample(t)); err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	e.rec.waitActive(t, from, "a.md after the second Start", func(d DocumentActive) bool {
+		return d.ProjectID == p.ID && d.Rel == "a.md"
+	})
+	e.rec.waitState(t, from, a, true)
+}
+
 func TestEdExit(t *testing.T) {
 	e := startEd(t)
 	p, _ := docFixture(t, e)
@@ -899,8 +928,10 @@ func TestEdInitial(t *testing.T) {
 	}
 	e.rec.waitName(t, from, eventPtyData)
 	time.Sleep(300 * time.Millisecond)
+	// The second Start reports the document that is current now (b.txt, for a
+	// reloaded page); it must never bring the initial document back.
 	for _, ev := range e.rec.since(from) {
-		if ev.name == eventDocumentActive {
+		if d, ok := ev.data.(DocumentActive); ev.name == eventDocumentActive && (!ok || d.Name != "b.txt") {
 			t.Errorf("second Start changed the active document: %v", ev)
 		}
 	}

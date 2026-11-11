@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyTheme, cssVariables } from './cssVars'
-import { colors, sizes, spacing, typography } from './tokens'
+import { applyTheme, cssVariables, fontStack } from './cssVars'
+import { colors, fontWeights, sizes, spacing, typography } from './tokens'
 
 describe('cssVariables', () => {
   const vars = cssVariables()
@@ -37,12 +37,18 @@ describe('cssVariables', () => {
     expect(vars['--font-line-height-editor']).toBe('21px')
     expect(vars['--font-letter-spacing-section-title']).toBe('0.06em')
     expect(vars['--font-weight-semibold']).toBe('600')
+    expect(vars['--font-weight-bold']).toBe('700')
+  })
+
+  it('fontStack is the value of the font variable', () => {
+    expect(fontStack('mono')).toBe(vars['--font-mono'])
+    expect(fontStack('ui')).toBe(vars['--font-ui'])
   })
 
   it('has one variable per token and no duplicate names', () => {
-    // Fonts: 2 stacks + 2 weights; the rest map one to one.
+    // Fonts: 2 stacks + one per weight; the rest map one to one.
     const expected =
-      Object.keys(colors).length + 2 + 2 + Object.keys(typography).length + Object.keys(sizes).length + Object.keys(spacing).length
+      Object.keys(colors).length + 2 + Object.keys(fontWeights).length + Object.keys(typography).length + Object.keys(sizes).length + Object.keys(spacing).length
     expect(Object.keys(vars).length).toBe(expected)
   })
 })

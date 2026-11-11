@@ -9,11 +9,12 @@ const sizeOf = (name: string) => files[`../assets/fonts/${name}`]?.length ?? 0
 describe('fontFaceSpecs', () => {
   const specs = fontFaceSpecs()
 
-  it('lists Inter 400/600 and the mono regular face, derived from the tokens', () => {
+  it('lists Inter 400/600 and JetBrains Mono 400/700, derived from the tokens', () => {
     expect(specs.map((s) => [s.family, s.weight, s.url.split('/').pop()])).toEqual([
       [fontFamilyNames.ui, fontWeights.regular, 'Inter-Regular.woff2'],
       [fontFamilyNames.ui, fontWeights.semibold, 'Inter-SemiBold.woff2'],
       [fontFamilyNames.mono, fontWeights.regular, 'JetBrainsMono-Regular.woff2'],
+      [fontFamilyNames.mono, fontWeights.bold, 'JetBrainsMono-Bold.woff2'],
     ])
   })
 
@@ -24,7 +25,7 @@ describe('fontFaceSpecs', () => {
 })
 
 describe('font files', () => {
-  it.each(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'JetBrainsMono-Regular.woff2'])('%s exists and is not empty', (f) => {
+  it.each(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'JetBrainsMono-Regular.woff2', 'JetBrainsMono-Bold.woff2'])('%s exists and is not empty', (f) => {
     expect(sizeOf(f)).toBeGreaterThan(0)
   })
   it.each(['Inter-OFL.txt', 'JetBrainsMono-OFL.txt'])('licence %s exists', (f) => {

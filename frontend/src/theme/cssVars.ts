@@ -11,7 +11,8 @@ import { colors, fontFallbacks, fontFamilyNames, fontWeights, sizes, spacing, ty
 const kebab = (s: string) => s.replace(/\./g, '-').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
 const px = (n: number) => `${n}px`
 
-function stack(role: keyof typeof fontFamilyNames): string {
+/** CSS font-family value of a role; also what xterm.js gets as its fontFamily option. */
+export function fontStack(role: keyof typeof fontFamilyNames): string {
   // Quoted so family names with spaces stay valid.
   return `"${fontFamilyNames[role]}", ${fontFallbacks[role]}`
 }
@@ -25,8 +26,8 @@ export function cssVariables(): Record<string, string> {
   }
 
   for (const [k, v] of Object.entries(colors)) add(`--${kebab(k)}`, v)
-  add('--font-ui', stack('ui'))
-  add('--font-mono', stack('mono'))
+  add('--font-ui', fontStack('ui'))
+  add('--font-mono', fontStack('mono'))
   for (const [k, v] of Object.entries(fontWeights)) add(`--font-weight-${kebab(k)}`, String(v))
 
   const typeName: Record<keyof typeof typography, string> = {

@@ -350,7 +350,8 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	ctx, cancel := context.WithTimeout(ctx, e.limits.NvimStartTimeout+e.limits.CommandTimeout)
 	defer cancel()
 
-	if !e.session.Running() {
+	wasRunning := e.session.Running()
+	if !wasRunning {
 		if err := e.writeConfig(colorscheme); err != nil {
 			return failEditor("start", err)
 		}
@@ -362,6 +363,15 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	}
 	if err := e.session.Start(ctx, cols, rows); err != nil {
 		return failEditor("start", err)
+	}
+	if wasRunning {
+		// A reloaded page has lost what it knew: tell it again which document
+		// is active and whether it has unsaved changes.
+		if buf, err := e.session.Current(ctx); err != nil {
+			slog.Warn("editor: cannot report the active document after a restart of the page", "err", err)
+		} else {
+			editorEvents{e}.Active(buf.Path, buf.Modified)
+		}
 	}
 
 	// Taken before the call, so a failed open is not retried by the next Start.

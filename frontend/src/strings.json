@@ -19,6 +19,7 @@
   "noProjects": "Još nema projekata.",
   "projectMissingNote": "folder nije dostupan",
   "emptyOpenDocument": "Otvori dokument",
+  "editorLabel": "Uređivač",
   "newDocumentLabel": "Naziv novog dokumenta",
   "renameDocumentLabel": "Novi naziv dokumenta",
   "removeProjectQuestion": "Ukloniti projekt s popisa? Folder ostaje na disku.",
