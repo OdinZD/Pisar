@@ -18,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"Pisar/internal/config"
+	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
 	"Pisar/internal/project"
@@ -1329,6 +1330,13 @@ func TestEdCodes(t *testing.T) {
 		{"binary not found (exec.Error)", &exec.Error{Name: "nvim", Err: exec.ErrNotFound}, codeNvimMissing},
 		{"unnamed buffer", nvim.ErrUnnamedBuffer, codeUnnamedBuffer},
 		{"unsaved", errUnsaved, codeUnsavedChanges},
+		{"pandoc missing", fmt.Errorf("%w: pandoc: %w", convert.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
+		{"convert failed", &convert.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
+		{"not a Word document", convert.ErrNotDocx, codeNotWord},
+		{"document too large", convert.ErrTooLarge, codeDocumentTooLarge},
+		{"read only", &docsafe.ReadOnlyError{Path: "/x", Reason: docsafe.ReadOnlyLocked}, codeReadOnly},
+		{"conflict", docsafe.ErrConflict, codeConflict},
+		{"damaged work", docsafe.ErrDamagedWork, codeDamagedWork},
 		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
 		{"already coded", &apiError{code: codeNotRunning}, codeNotRunning},
 		{"specific beats canceled", errors.Join(nvim.ErrNotRunning, context.Canceled), codeNotRunning},

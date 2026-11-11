@@ -17,6 +17,13 @@ const byCode: Record<ErrorCode, string> = {
   'nvim-missing': strings.errorNvimMissing,
   'unnamed-buffer': strings.errorUnnamedBuffer,
   'unsaved-changes': strings.errorUnsavedChanges,
+  'pandoc-missing': strings.errorPandocMissing,
+  'convert-failed': strings.errorConvertFailed,
+  'not-word': strings.errorNotWord,
+  'document-too-large': strings.errorDocumentTooLarge,
+  'read-only': strings.errorReadOnly,
+  conflict: strings.errorConflict,
+  'damaged-work': strings.errorDamagedWork,
   internal: strings.errorGeneric,
 }
 

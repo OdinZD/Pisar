@@ -47,6 +47,17 @@ type uiText struct {
 	ConfigRecovered       string `json:"configRecovered"` // placeholder {path}
 	ConfigNewerTitle      string `json:"configNewerTitle"`
 	ConfigNewer           string `json:"configNewer"`
+	RecoverTitle          string `json:"recoverTitle"`
+	RecoverMessage        string `json:"recoverMessage"` // placeholder {name}
+	RecoverUse            string `json:"recoverUse"`
+	RecoverDiscard        string `json:"recoverDiscard"`
+	ConflictTitle         string `json:"conflictTitle"`
+	ConflictMessage       string `json:"conflictMessage"` // placeholder {name}
+	ConflictOverwrite     string `json:"conflictOverwrite"`
+	ConflictReload        string `json:"conflictReload"`
+	SaveCopyTitle         string `json:"saveCopyTitle"`
+	SaveCopySuffix        string `json:"saveCopySuffix"`
+	ImportSaveTitle       string `json:"importSaveTitle"`
 }
 
 // parseUIText decodes the texts and reports every key that is missing or empty,

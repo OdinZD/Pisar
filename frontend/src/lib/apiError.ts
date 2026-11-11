@@ -20,6 +20,13 @@ export const errorCodes = [
   'nvim-missing',
   'unnamed-buffer',
   'unsaved-changes',
+  'pandoc-missing',
+  'convert-failed',
+  'not-word',
+  'document-too-large',
+  'read-only',
+  'conflict',
+  'damaged-work',
   'internal',
 ] as const;
 

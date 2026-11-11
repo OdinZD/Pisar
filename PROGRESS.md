@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–5 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–6a gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 6a (logika Wordovih dokumenata bez Neovima)
+- Sljedeći korak: faza 3, korak 6b (uvezivanje u `EditorService`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 3, korak 5)
+- Zadnja izmjena: 2026-11-12 (faza 3, korak 6a)
 
 ## Priprema (2026-11-11)
 
@@ -815,8 +815,22 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       - Ograničenje: prljave radne kopije koje korisnik nikad ne oporavi ostaju u `work/` (nema čišćenja
         po starosti). Rezervni put bez tvrdih linkova testiran je samo zamjenom `os.Link`-a.
 - **Korak 6 je podijeljen** (kao 6/6b u fazi 2), zbog veličine:
-- [ ] 6a. Logika Wordovih dokumenata bez Neovima (`worddocs.go`): otvaranje kroz radnu kopiju, oporavak,
-      izvoz (konflikt, backup, prvo spremanje `.doc`-a), „Spremi kao kopiju”, dijalozi, kodovi grešaka
+- [x] 6a. Logika Wordovih dokumenata bez Neovima (`worddocs.go`): `wordDocs` s `open`, `byMarkdown`, `byPath`,
+      `markSaved`, `export`, `saveCopy`, `renamed`, `removed`, `sweep`, `close`; `wordView` (`Path`,
+      `Markdown`, `ReadOnly`, `Imported`, `Dirty`). Ovisnosti kroz mala sučelja (`wordConverter`,
+      `wordFiles`, `wordDialogs`). 56 testova s pravim pandocom i pravim `docsafe.Ops`.
+      - Oporavak: prljava radna kopija → Oporavi / Odbaci izmjene / Odustani. Konflikt: Prepiši (backup
+        tuđeg sadržaja) / Učitaj ponovno (korisnikov tekst ostaje kao `doc.prev.md`) / Odustani (zadano).
+      - „Učitaj ponovno” stare `media/` i `reference.docx` prvo premješta u stranu i briše ih tek nakon
+        uspjeha; ako ponovna pretvorba ne uspije, sve se vraća (odstupanje od briefa, na bolje).
+      - Uvezeni `.doc`: prvo spremanje stvara `Ime.docx`; ako postoji, nativni dijalog za spremanje pita
+        za ime. Wailsov dijalog na macOS-u nema naslov (ide kao poruka) i ignorira filtere; NSSavePanel
+        sam pita za zamjenu, ali `CreateNew` nikad ne prepisuje pa se pita ponovno.
+      - `doc.md` zapisan tijekom pretvorbe (veličina ili mtime različiti prije i poslije) → pretvorba se
+        ponavlja, najviše 4 puta. Konstanta je zasad u `worddocs.go`; seli se u `config` u 6b.
+      - Novi kodovi grešaka: `pandoc-missing`, `convert-failed`, `not-word`, `document-too-large`,
+        `read-only`, `conflict`, `damaged-work` (Go + frontend + tekstovi u `strings.json`).
+      - Nije provjereno: stvarni prikaz nativnih dijaloga (ide u ručnu provjeru).
 - [ ] 6b. Uvezivanje u `EditorService`: bufferi samo za čitanje, preslikavanje radne kopije u izvornik,
       izvoz nakon `:w`, gašenje, preimenovanje i Smeće, dokument s naredbenog retka
 - [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci

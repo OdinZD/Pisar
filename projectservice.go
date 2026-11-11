@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"Pisar/internal/config"
+	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
 	"Pisar/internal/project"
@@ -441,21 +442,28 @@ func (s *ProjectService) TrashDocument(ctx context.Context, id, rel string) erro
 
 // Error codes the frontend can rely on (see frontend/src/lib/apiError.ts).
 const (
-	codeNotFound        = "not-found"
-	codeMissing         = "missing"
-	codeTooLarge        = "too-large"
-	codeInvalidPath     = "invalid-path"
-	codeExists          = "exists"
-	codeInvalidName     = "invalid-name"
-	codeUnsupportedKind = "unsupported-kind"
-	codeNotDocument     = "not-document"
-	codeNotADirectory   = "not-a-directory"
-	codeCanceled        = "canceled"
-	codeNotRunning      = "not-running"
-	codeNvimMissing     = "nvim-missing"
-	codeUnnamedBuffer   = "unnamed-buffer"
-	codeUnsavedChanges  = "unsaved-changes"
-	codeInternal        = "internal"
+	codeNotFound         = "not-found"
+	codeMissing          = "missing"
+	codeTooLarge         = "too-large"
+	codeInvalidPath      = "invalid-path"
+	codeExists           = "exists"
+	codeInvalidName      = "invalid-name"
+	codeUnsupportedKind  = "unsupported-kind"
+	codeNotDocument      = "not-document"
+	codeNotADirectory    = "not-a-directory"
+	codeCanceled         = "canceled"
+	codeNotRunning       = "not-running"
+	codeNvimMissing      = "nvim-missing"
+	codeUnnamedBuffer    = "unnamed-buffer"
+	codeUnsavedChanges   = "unsaved-changes"
+	codePandocMissing    = "pandoc-missing"
+	codeConvertFailed    = "convert-failed"
+	codeNotWord          = "not-word"
+	codeDocumentTooLarge = "document-too-large"
+	codeReadOnly         = "read-only"
+	codeConflict         = "conflict"
+	codeDamagedWork      = "damaged-work"
+	codeInternal         = "internal"
 )
 
 // codeOf maps an error to its stable code, looking through wrapping. Package
@@ -463,6 +471,7 @@ const (
 // "canceled" when both are in the chain.
 func codeOf(err error) string {
 	var ae *apiError
+	var te *convert.ToolError
 	switch {
 	case errors.As(err, &ae):
 		return ae.code
@@ -484,6 +493,22 @@ func codeOf(err error) string {
 		return codeNotDocument
 	case errors.Is(err, config.ErrNotADirectory):
 		return codeNotADirectory
+	// A missing pandoc wraps exec.ErrNotFound, so it must come before the
+	// nvim-missing case below.
+	case errors.Is(err, convert.ErrToolMissing):
+		return codePandocMissing
+	case errors.As(err, &te):
+		return codeConvertFailed
+	case errors.Is(err, convert.ErrNotDocx):
+		return codeNotWord
+	case errors.Is(err, convert.ErrTooLarge):
+		return codeDocumentTooLarge
+	case errors.Is(err, docsafe.ErrReadOnly):
+		return codeReadOnly
+	case errors.Is(err, docsafe.ErrConflict):
+		return codeConflict
+	case errors.Is(err, docsafe.ErrDamagedWork):
+		return codeDamagedWork
 	case errors.Is(err, nvim.ErrNotRunning), errors.Is(err, term.ErrClosed):
 		return codeNotRunning
 	// Only Neovim is looked up through PATH so far; a service that runs another
@@ -504,21 +529,28 @@ func codeOf(err error) string {
 // and developers; the user sees the Croatian text the frontend picks by code.
 // It never contains paths: the full error, which may, is only logged.
 var codeText = map[string]string{
-	codeNotFound:        "unknown project",
-	codeMissing:         "the project folder does not exist",
-	codeTooLarge:        "the project has too many entries",
-	codeInvalidPath:     "invalid path",
-	codeExists:          "an item with that name already exists",
-	codeInvalidName:     "invalid name",
-	codeUnsupportedKind: "unsupported document type",
-	codeNotDocument:     "not a document",
-	codeNotADirectory:   "not a folder",
-	codeCanceled:        "the operation was canceled or timed out",
-	codeNotRunning:      "the editor is not running",
-	codeNvimMissing:     "the Neovim binary was not found",
-	codeUnnamedBuffer:   "a modified buffer has no file name",
-	codeUnsavedChanges:  "the document has unsaved changes",
-	codeInternal:        "unexpected error",
+	codeNotFound:         "unknown project",
+	codeMissing:          "the project folder does not exist",
+	codeTooLarge:         "the project has too many entries",
+	codeInvalidPath:      "invalid path",
+	codeExists:           "an item with that name already exists",
+	codeInvalidName:      "invalid name",
+	codeUnsupportedKind:  "unsupported document type",
+	codeNotDocument:      "not a document",
+	codeNotADirectory:    "not a folder",
+	codeCanceled:         "the operation was canceled or timed out",
+	codeNotRunning:       "the editor is not running",
+	codeNvimMissing:      "the Neovim binary was not found",
+	codeUnnamedBuffer:    "a modified buffer has no file name",
+	codeUnsavedChanges:   "the document has unsaved changes",
+	codePandocMissing:    "pandoc is not installed",
+	codeConvertFailed:    "the document conversion failed",
+	codeNotWord:          "not a valid Word document",
+	codeDocumentTooLarge: "the document is too large to open",
+	codeReadOnly:         "the document is open read-only",
+	codeConflict:         "the file changed outside Pisar",
+	codeDamagedWork:      "the working copy is damaged",
+	codeInternal:         "unexpected error",
 }
 
 // apiError is what service methods return. Wails delivers it to JavaScript as

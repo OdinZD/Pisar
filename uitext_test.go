@@ -80,3 +80,29 @@ func TestFill(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// The Word document texts exist, and the templates keep their placeholders.
+func TestUITextWordDocuments(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, v := range map[string]string{
+		"recoverTitle": text.RecoverTitle, "recoverUse": text.RecoverUse, "recoverDiscard": text.RecoverDiscard,
+		"conflictTitle": text.ConflictTitle, "conflictOverwrite": text.ConflictOverwrite,
+		"conflictReload": text.ConflictReload, "saveCopyTitle": text.SaveCopyTitle,
+		"saveCopySuffix": text.SaveCopySuffix, "importSaveTitle": text.ImportSaveTitle,
+	} {
+		if strings.TrimSpace(v) == "" {
+			t.Errorf("%s is empty", name)
+		}
+	}
+	for _, c := range []struct{ name, tmpl, ph string }{
+		{"recoverMessage", text.RecoverMessage, "name"},
+		{"conflictMessage", text.ConflictMessage, "name"},
+	} {
+		if !strings.Contains(c.tmpl, "{"+c.ph+"}") {
+			t.Errorf("%s has no {%s} placeholder", c.name, c.ph)
+		}
+	}
+}

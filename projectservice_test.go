@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"Pisar/internal/config"
+	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
 	"Pisar/internal/project"
@@ -866,6 +868,13 @@ func TestCodeOf(t *testing.T) {
 		{"not document", docsafe.ErrNotDocument, codeNotDocument},
 		{"not a directory", config.ErrNotADirectory, codeNotADirectory},
 		{"unsaved", errUnsaved, codeUnsavedChanges},
+		{"pandoc missing", fmt.Errorf("%w: pandoc: %w", convert.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
+		{"convert failed", &convert.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
+		{"not a Word document", convert.ErrNotDocx, codeNotWord},
+		{"document too large", convert.ErrTooLarge, codeDocumentTooLarge},
+		{"read only", &docsafe.ReadOnlyError{Path: "/x", Reason: docsafe.ReadOnlyLocked}, codeReadOnly},
+		{"conflict", docsafe.ErrConflict, codeConflict},
+		{"damaged work", docsafe.ErrDamagedWork, codeDamagedWork},
 		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
 		{"deadline", context.DeadlineExceeded, codeCanceled},
 		{"canceled", context.Canceled, codeCanceled},

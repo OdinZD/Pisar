@@ -13,6 +13,15 @@ import (
 //   - MessageDialog.Show does not block: it returns at once and the pressed
 //     button's callback runs later on the main thread. ConfirmTrash turns that
 //     into a blocking call with a channel.
+//   - SaveFile().PromptForSingleSelection blocks like the open dialog (it waits on
+//     the channel the NSSavePanel completion handler fills) and returns "" with no
+//     error when the user cancels, or when called before the application has
+//     started. SetDirectory and SetFilename give the starting folder and name.
+//     The macOS implementation (dialogs_darwin.go) has no title: it passes only
+//     the message, folder, name and button text to the panel, so the title goes
+//     in as the message. It ignores filters. NSSavePanel itself asks before
+//     replacing a file and then returns the existing path; that is harmless here,
+//     because docsafe.CreateNew never overwrites and the caller asks again.
 type wailsDialogs struct {
 	app  *application.App
 	text uiText
@@ -98,4 +107,44 @@ func (d *wailsDialogs) AskUnresponsive() bool {
 func (d *wailsDialogs) ShowSaveError(message string) {
 	dlg := d.app.Dialog.Error().SetTitle(d.text.QuitSaveFailedTitle).SetMessage(message)
 	d.askButtons(dlg, []string{d.text.OK}, 0, 0)
+}
+
+// wordDialogs is the question side of the Word documents (worddocs.go).
+var _ wordDialogs = (*wailsDialogs)(nil)
+
+// AskRecover asks whether to take back the changes of an unsaved working copy.
+// Recover is the default; Escape means Cancel.
+func (d *wailsDialogs) AskRecover(name string) recoverChoice {
+	dlg := d.app.Dialog.Question().SetTitle(d.text.RecoverTitle).SetMessage(fill(d.text.RecoverMessage, "name", name))
+	switch d.askButtons(dlg, []string{d.text.RecoverUse, d.text.RecoverDiscard, d.text.Cancel}, 0, 2) {
+	case 0:
+		return recoverUse
+	case 1:
+		return recoverDiscard
+	default:
+		return recoverCancel
+	}
+}
+
+// AskConflict asks what to do with a document that another program changed.
+// Cancel is the default and the Escape button: a stray key must overwrite nothing.
+func (d *wailsDialogs) AskConflict(name string) conflictChoice {
+	dlg := d.app.Dialog.Warning().SetTitle(d.text.ConflictTitle).SetMessage(fill(d.text.ConflictMessage, "name", name))
+	switch d.askButtons(dlg, []string{d.text.ConflictOverwrite, d.text.ConflictReload, d.text.Cancel}, 2, 2) {
+	case 0:
+		return conflictOverwrite
+	case 1:
+		return conflictReload
+	default:
+		return conflictCancel
+	}
+}
+
+// AskSavePath shows the native save panel and returns the chosen path, "" when cancelled.
+func (d *wailsDialogs) AskSavePath(title, dir, name string) (string, error) {
+	return d.app.Dialog.SaveFile().
+		SetMessage(title).
+		SetDirectory(dir).
+		SetFilename(name).
+		PromptForSingleSelection()
 }
