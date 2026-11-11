@@ -4,10 +4,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 1 — Kostur, projekti i stablo (plan faze u izradi). Faza 0 je prihvaćena 2026-11-11:
+- Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 1 i vlasnikovo „kreni”
-- Zadnja izmjena: 2026-11-11 (faza 0 prihvaćena)
+- Sljedeći korak: faza 1, korak 1 (kostur aplikacije u korijenu)
+- Zadnja izmjena: 2026-11-11 (plan faze 1 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -161,8 +161,67 @@ odjeljak 3); agent ih nije provjeravao. Odluka vlasnika: **idemo**.
 
 ## Faza 1 — Kostur, projekti i stablo
 
-Odobreno 2026-11-11: `github.com/fsnotify/fsevents` v0.2.0 za praćenje promjena na disku (kao Trag);
-`vitest` kao razvojna ovisnost za frontend testove (kao Trag).
+Effort medium. `spike/` ostaje netaknut do faze 2 (radni primjer za Neovim).
+
+### Odluke vlasnika (2026-11-11)
+
+- Praćenje promjena na disku: `github.com/fsnotify/fsevents` v0.2.0 (kao Trag).
+- Frontend testovi: `vitest` kao razvojna ovisnost (kao Trag). `jsdom` ili bilo što drugo → pitati.
+- Radnje u stablu: tipke kad stablo ima fokus — `a` nova datoteka, `r` preimenuj, `d` u Smeće uz
+  potvrdu; uz gumb „Novi dokument” i `⌘N`. Bez kontekstnog menija.
+- Folderi bez podržanih dokumenata (ni u podfolderima) su skriveni.
+- Font Inter (woff2, OFL) iz službenog izdanja rsms/inter; JetBrains Mono se kopira iz `spike/`.
+
+### Ugovor Go servis ↔ frontend
+
+Frontend šalje putanje relativne prema korijenu projekta; Go ih razrješava i provjerava da ostaju
+unutar projekta (i nakon `EvalSymlinks`). Redoslijed u stablu određuje frontend
+(`Intl.Collator('hr', {numeric: true})`, folderi pa dokumenti).
+
+```go
+type ProjectInfo struct { ID, Name, Path string; Missing bool }
+type Node struct { Name, Rel, Kind string; Children []Node } // Kind: "dir" | "md" | "txt" | "docx" | "doc"
+
+ProjectService.Projects() []ProjectInfo
+ProjectService.AddProject() (ProjectInfo, error)                      // dijalog; odustajanje → prazno, nil
+ProjectService.RemoveProject(id string) error                         // samo konfiguracija
+ProjectService.Tree(id string) ([]Node, error)
+ProjectService.CreateDocument(id, dirRel, name string) (Node, error)  // .md ako ime nema .md/.txt
+ProjectService.RenameDocument(id, rel, newName string) (Node, error)  // ekstenzija ostaje
+ProjectService.TrashDocument(id, rel string) error                    // potvrda: nativni dijalog u Go-u
+```
+Događaji: `projects:changed` (payload `""`), `project:changed` (payload ID projekta).
+
+### Pravila za sve briefove
+
+Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi pišu samo u
+`t.TempDir()`; pravi `/usr/bin/trash` se u testovima ne poziva (lažni izvršitelj); pravi
+`~/Library/Application Support/Pisar` se u testovima ne dira (`PISAR_HOME`).
+
+### Koraci
+
+- [ ] 1. Kostur: `wails3 init -t svelte` u privremenu mapu pa prijenos u korijen (modul `Pisar`, Wails
+      v3.1.0); `Taskfile.yml` s `dev`, `build`, `test`, `test:race`, `test:frontend` (vitest), `lint`;
+      `.golangci.yml` kao u Tragu; prozor „Pisar”, najmanje 1000×600
+- [ ] 2. `internal/config`: JSON u `~/Library/Application Support/Pisar/`, projekti, putanje i limiti,
+      `PISAR_HOME`, atomski zapis, pokvarena datoteka → `config.bad-<vrijeme>.json`
+- [ ] 3. `internal/project` — stablo: podržane vrste, bez skrivenih i `~$…`, bez praćenja linkova, prazni
+      folderi izostavljeni, limit čvorova
+- [ ] 4. `internal/docsafe`: `CreateFile`, `Rename` (bez prepisivanja, i promjena samo veličine slova),
+      `Trash` (`/usr/bin/trash`), provjera korijena i imena
+- [ ] 5. `internal/project` — praćenje: FSEvents po projektu, debounce, izvor iza sučelja
+- [ ] 6. `ProjectService` i meni: servis prema ugovoru, dijalog za folder, potvrda brisanja, događaji
+- [ ] 7. Tema: `theme/tokens.ts`, CSS varijable, test kontrasta, fontovi Inter i JetBrains Mono, `strings.ts`
+- [ ] 8. Raspored i stablo: alatna traka 48 px, stablo 240 px, prazno stanje; stablo s `j`/`k`,
+      `a`/`r`/`d`, „+ Dodaj projekt”, osvježavanje na događaje; model stabla s vitest testovima
+- [ ] 9. Kraj faze: `scripts/smoke.sh`, kriteriji s dokazima, popis za ručni pogled, `plan-reviewer`,
+      sažetak, STOP
+
+### Izvan opsega
+
+Otvaranje dokumenta u Neovimu, terminal, `internal/nvim`, prijenos i brisanje `spike/`, konverzija
+`.docx` / `.doc` i novi `.docx`, pregled, tražilica, stanje „Izmijenjeno / Spremljeno”, radnje nad
+folderima, povlačenje, kontekstni meni, hrvatski meni umjesto Wailsovih uloga, tamna tema, pakiranje.
 
 ### Kriteriji prihvaćanja
 
