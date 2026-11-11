@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 1 (kostur aplikacije u korijenu)
-- Zadnja izmjena: 2026-11-11 (plan faze 1 odobren)
+- Sljedeći korak: faza 1, korak 2 (`internal/config`)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 1 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -200,9 +200,10 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
 
 ### Koraci
 
-- [ ] 1. Kostur: `wails3 init -t svelte` u privremenu mapu pa prijenos u korijen (modul `Pisar`, Wails
-      v3.1.0); `Taskfile.yml` s `dev`, `build`, `test`, `test:race`, `test:frontend` (vitest), `lint`;
-      `.golangci.yml` kao u Tragu; prozor „Pisar”, najmanje 1000×600
+- [x] 1. Kostur: predložak `svelte` generiran u privremenoj mapi i prenesen u korijen (modul `Pisar`,
+      `go 1.27`, Wails v3.1.0); `Taskfile.yml` s `dev`, `build`, `test`, `test:race`, `test:frontend`
+      (vitest 5.1.0), `lint`; `.golangci.yml` kao u Tragu; prozor „Pisar” 1280×800, najmanje 1000×600.
+      Zadaci imaju `summary`, pa ih prikazuje `task --list-all`, ne `task --list`
 - [ ] 2. `internal/config`: JSON u `~/Library/Application Support/Pisar/`, projekti, putanje i limiti,
       `PISAR_HOME`, atomski zapis, pokvarena datoteka → `config.bad-<vrijeme>.json`
 - [ ] 3. `internal/project` — stablo: podržane vrste, bez skrivenih i `~$…`, bez praćenja linkova, prazni
