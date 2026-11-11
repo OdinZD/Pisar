@@ -21,6 +21,10 @@ import (
 // EnvHome overrides the directory that holds everything Pisar owns.
 const EnvHome = "PISAR_HOME"
 
+// EnvLog set to "debug" makes the application log every service call to
+// stderr. It is a diagnostic for development and for scripts/smoke.sh.
+const EnvLog = "PISAR_LOG"
+
 const (
 	fileName    = "config.json"
 	appDirName  = "Pisar"

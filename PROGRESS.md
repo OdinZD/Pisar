@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 9 (dimna provjera, dokazi, pregled)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 8 gotov)
+- Sljedeći korak: faza 1, korak 9 — `plan-reviewer`, zatim vlasnikov ručni pogled (popis u odjeljku faze 1)
+- Zadnja izmjena: 2026-11-11 (faza 1, koraci 1–8 gotovi; korak 9: pregled u tijeku)
 
 ## Priprema (2026-11-11)
 
@@ -266,8 +266,70 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       - Dok traje jedna radnja servisa (i dok je otvoren nativni dijalog), ostale radnje čekaju.
       - Komponente i `treeController` nemaju testove (vitest radi bez DOM-a; `jsdom` nije odobren).
         Izgled, fokus i tipke provjerava vlasnik ručno
-- [ ] 9. Kraj faze: `scripts/smoke.sh`, kriteriji s dokazima, popis za ručni pogled, `plan-reviewer`,
-      sažetak, STOP
+- [ ] 9. Kraj faze: `scripts/smoke.sh` (napisan i prolazi), kriteriji s dokazima i popis za ručni pogled
+      (dolje); `plan-reviewer`: krug 1 u tijeku; zatim sažetak i STOP.
+      - `scripts/smoke.sh` i dijagnostiku `PISAR_LOG=debug` (ispis poziva servisa na stderr; tri mjesta,
+        petnaestak redaka) napisala je glavna sesija, da se frontend i osvježavanje mogu dokazati bez
+        klikanja
+
+### Dokazi po kriterijima (2026-11-11)
+
+Naredbe iz korijena repozitorija; sve su pokrenute nakon zadnje izmjene koda.
+
+- `task test` → exit 0: `ok Pisar`, `ok Pisar/internal/config`, `ok Pisar/internal/docsafe`,
+  `ok Pisar/internal/project`; vitest `Test Files 12 passed`, `Tests 143 passed`.
+- `task test:race` → exit 0, bez `DATA RACE`. `task lint` → `0 issues.`, svelte-check
+  `0 ERRORS 0 WARNINGS`. `task build` → exit 0, `bin/pisar`.
+- Pokrivenost (`go test -cover ./...`): `Pisar` 69 %, `config` 84 %, `docsafe` 88 %, `project` 95 %.
+- `bash scripts/smoke.sh` → `smoke: all checks passed` (prava aplikacija, bez tipki i klikova):
+  frontend je zatražio popis (1 projekt) i stablo (2 stavke: skrivena datoteka i slika izostavljene);
+  dokument stvoren izvana osvježio je stablo (3 stavke); slika i `.DS_Store` nisu izazvali
+  osvježavanje; SIGTERM gasi aplikaciju; `config.json` nepromijenjen; prava mapa
+  `~/Library/Application Support/Pisar` nije nastala.
+
+Uz svaki kriterij iz odjeljka „Kriteriji prihvaćanja” ispod:
+
+1. Struktura i zadaci: `test -d internal/config -a -d internal/project -a -d internal/docsafe -a -f
+   frontend/src/theme/tokens.ts` → exit 0; `task --list-all` sadrži `dev`, `build`, `test`, `lint`
+   (zadaci imaju `summary`, pa ih `task --list` ne prikazuje). `internal/nvim`, `convert`, `preview`
+   i mapa `nvim/` namjerno još ne postoje (dolaze s fazama 2–4).
+2. Projekti i konfiguracija: `internal/config` (`TestPersistence`, `TestAddDuplicate`, `TestRemove`,
+   `TestDamagedFile`, `TestNewerVersion`); servis (`projectservice_test.go`: dodavanje kroz lažni
+   dijalog, odustajanje, uklanjanje, folder koji nestane i vrati se).
+3. Stablo i vrste: `internal/project` (`TestScanMixedAndNested`, `TestScanHidden`, `TestScanSymlinks`,
+   `TestScanEmptyDirs`); frontend `lib/tree.test.ts` (naziv bez ekstenzije, oznaka vrste, hrvatski
+   redoslijed); dimna provjera (2 stavke od 4 datoteke).
+4. Nova datoteka, preimenovanje, Smeće: `internal/docsafe` (23 testa, uključujući postojeće ime,
+   promjenu samo veličine slova, tvrdi link, izlazak iz projekta, argumente za `trash`); servis
+   (kodovi grešaka, potvrda brisanja). Pravi `trash` NIJE pozvan ni u jednom testu.
+5. Osvježavanje izvana: `internal/project` (`watch_test.go` s lažnim izvorom, `watch_darwin_test.go` s
+   pravim FSEventsom); dimna provjera od diska do frontenda.
+6. Tokeni i CSS varijable: `theme/tokens.test.ts` (tokeni = tablica u `DESIGN.md`), `cssVars.test.ts`,
+   `contrast.test.ts`, `noHardcodedStyle.test.ts`, `usedVariables.test.ts`; `grep -rnE
+   '#[0-9a-fA-F]{3,8}\b' frontend/src` izvan `theme/tokens.ts` i testova → bez pogodaka.
+
+### Ručni pogled — za vlasnika (agent ovo ne može provjeriti)
+
+Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-proba bin/pisar` (ili bez varijable,
+tada nastaje `~/Library/Application Support/Pisar/`).
+
+1. „+ Dodaj projekt” i Datoteka → „Dodaj projekt…”: otvara se dijalog za folder s naslovom „Odaberi
+   folder projekta”; odustajanje ne mijenja ništa; odabrani folder se pojavi u stablu i ostaje nakon
+   ponovnog pokretanja.
+2. Stablo prema `DESIGN.md`: traka 48 px, stablo 240 px, naslov „PROJEKTI”, redovi 28 px, naziv bez
+   ekstenzije i oznaka vrste desno, odabrani dokument u boji akcenta; skrivene datoteke, slike i
+   prazni folderi se ne vide; č ć š ž đ su na pravom mjestu u redoslijedu.
+3. Fokus i kretanje: klik u stablo pokaže prsten fokusa; `j` / `k` / strelice; `↵` širi i skuplja
+   projekt i folder; tipke s `⌘` stablo ne dira.
+4. `a`, gumb „Novi dokument” i `⌘N`: polje u ciljnom folderu; postojeće ime → poruka, polje ostaje;
+   `Esc`, prazno ime i klik izvan polja → odustajanje.
+5. `r` na dokumentu: naziv bez ekstenzije, cijeli označen; ekstenzija ostaje.
+6. `d` na dokumentu: dijalog „Premjestiti u Smeće?” (Return i Esc = „Odustani”); nakon potvrde je
+   dokument stvarno u Smeću, a odabir prijeđe na susjedni red.
+7. `d` na projektu: potvrda u stablu; folder ostaje na disku.
+8. Promjene iz Findera (nova datoteka, brisanje, preimenovanje) pojave se same; preimenovan folder
+   projekta dobije napomenu „folder nije dostupan” i oporavi se kad ga vratiš i vratiš fokus u prozor.
+9. Najmanja veličina prozora 1000×600; meni Uređivanje (kopiraj, zalijepi, poništi) radi u poljima.
 
 ### Izvan opsega
 

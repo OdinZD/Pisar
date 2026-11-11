@@ -146,7 +146,11 @@ func (s *ProjectService) syncWatchers() []ProjectInfo {
 }
 
 // Projects returns the registered projects in the order they were added.
-func (s *ProjectService) Projects() []ProjectInfo { return s.syncWatchers() }
+func (s *ProjectService) Projects() []ProjectInfo {
+	out := s.syncWatchers()
+	slog.Debug("service call", "method", "Projects", "projects", len(out))
+	return out
+}
 
 // AddProject asks for a folder and registers it. Cancelling is not an error:
 // the result is the zero ProjectInfo.
@@ -220,6 +224,7 @@ func (s *ProjectService) Tree(ctx context.Context, id string) ([]project.Node, e
 		// Relative paths only; the frontend does not need to know.
 		slog.Warn("unreadable folders skipped", "project", id, "count", len(tree.Skipped), "folders", tree.Skipped)
 	}
+	slog.Debug("service call", "method", "Tree", "project", id, "top", len(tree.Nodes))
 	if tree.Nodes == nil {
 		return []project.Node{}, nil // JSON [] rather than null
 	}
