@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, u tijeku korak 1). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, korak 1 gotov). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 1 (konfiguracija i probni dokumenti)
+- Sljedeći korak: faza 3, korak 2 (`internal/convert`: pregled dokumenta)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (plan faze 3 odobren)
+- Zadnja izmjena: 2026-11-11 (faza 3, korak 1)
 
 ## Priprema (2026-11-11)
 
@@ -722,8 +722,19 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
 
 ### Koraci
 
-- [ ] 1. Konfiguracija (putanje `work/` i `backups/`, imena alata, ograničenja) i probni dokumenti
-      (`scripts/make-fixtures.sh`, `testdata/docx/`)
+- [x] 1. Konfiguracija (putanje `work/` i `backups/`, imena alata, ograničenja) i probni dokumenti
+      (`scripts/make-fixtures.sh`, `testdata/docx/`). `config`: `PandocBin()`, `TextutilBin()`, `WorkDir()`,
+      `BackupsDir()`, `Limits.ConvertTimeout` (60 s), `Limits.MaxBackups` (10). Probni dokumenti:
+      `basic.docx`, `complex-table.docx`, `comments.docx`, `tracked-changes.docx`, `textbox.docx` (VML
+      okvir umetnut u pandocov izlaz), `legacy.doc` (`textutil -convert doc`); izvori u `testdata/docx/src/`.
+      Skripta ima 23 provjere i bajt-stabilan izlaz (`SOURCE_DATE_EPOCH`, fiksna vremena u arhivi).
+      - Sintaksa za pandoc: `[tekst komentara]{.comment-start id="0" author="A" date="…"}raspon[]{.comment-end id="0"}`,
+        `[tekst]{.insertion author="A" date="…"}`, `[tekst]{.deletion author="A" date="…"}`.
+      - `footnotes.xml` postoji i bez fusnota (kao i `comments.xml`); provjera gleda `<w:footnoteReference`.
+      - `textutil` iz `legacy.doc` gubi naslov, poveznicu, tekst fusnote i strukturu tablice; listu zadrži
+        kao natuknice „•”.
+      - Ispravak glavne sesije (5 redaka): `valid_docx` je imao `unzip -Z1 | grep -qx` pod `pipefail`, pa je
+        provjera povremeno padala; popis sada ide u datoteku. 25 uzastopnih pokretanja bez pada.
 - [ ] 2. `internal/convert`: pregled dokumenta (komentari, praćene izmjene, tekstualni okviri)
 - [ ] 3. `internal/convert`: pretvorbe `.docx → .md`, `.md → .docx`, `.doc → .docx`; golden testovi
 - [ ] 4. `internal/docsafe`: atomski zapis, backup s rotacijom, snimka izvornika i konflikt
