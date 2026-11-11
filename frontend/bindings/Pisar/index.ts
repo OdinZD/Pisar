@@ -10,6 +10,7 @@ export {
 
 export type {
     DocumentActive,
+    DocumentExport,
     DocumentState,
     ProjectInfo
 } from "./models.js";

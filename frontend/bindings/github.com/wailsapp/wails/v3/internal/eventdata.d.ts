@@ -13,6 +13,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "document:active": main$0.DocumentActive;
+            "document:export": main$0.DocumentExport;
             "document:state": main$0.DocumentState;
             "menu:copy": string;
             "menu:new-document": string;

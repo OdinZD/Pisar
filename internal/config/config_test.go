@@ -562,6 +562,17 @@ func TestLimitsConvert(t *testing.T) {
 	}
 }
 
+func TestLimitsExportAttempts(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.ExportAttempts != DefaultExportAttempts || DefaultExportAttempts != 4 {
+		t.Fatalf("ExportAttempts = %d, want %d", l.ExportAttempts, DefaultExportAttempts)
+	}
+	// One attempt would mean no repeat at all.
+	if l.ExportAttempts < 2 {
+		t.Fatalf("ExportAttempts %d leaves no room for a repeat", l.ExportAttempts)
+	}
+}
+
 func TestLimitsDocx(t *testing.T) {
 	l := mustOpen(t, t.TempDir()).Limits()
 	if l.MaxDocxEntries != DefaultMaxDocxEntries || l.MaxDocxPartBytes != DefaultMaxDocxPartBytes {

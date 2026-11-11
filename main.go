@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"Pisar/internal/config"
+	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/project"
 )
@@ -37,6 +38,7 @@ func init() {
 	application.RegisterEvent[string](eventNvimExit)
 	application.RegisterEvent[DocumentActive](eventDocumentActive)
 	application.RegisterEvent[DocumentState](eventDocumentState)
+	application.RegisterEvent[DocumentExport](eventDocumentExport)
 	application.RegisterEvent[string](eventFocusTree)
 }
 
@@ -77,7 +79,18 @@ func run() error {
 	}
 	limits := store.Limits()
 
-	docs, err := docsafe.New(docsafe.Options{TrashBin: store.TrashBin(), Timeout: limits.CommandTimeout})
+	docs, err := docsafe.New(docsafe.Options{
+		TrashBin: store.TrashBin(), Timeout: limits.CommandTimeout,
+		BackupsDir: store.BackupsDir(), MaxBackups: limits.MaxBackups, WorkDir: store.WorkDir(),
+	})
+	if err != nil {
+		return err
+	}
+	docxLimits := convert.InspectLimits{MaxEntries: limits.MaxDocxEntries, MaxPartBytes: limits.MaxDocxPartBytes}
+	converter, err := convert.New(convert.Options{
+		PandocBin: store.PandocBin(), TextutilBin: store.TextutilBin(),
+		Timeout: limits.ConvertTimeout, Limits: docxLimits,
+	})
 	if err != nil {
 		return err
 	}
@@ -88,6 +101,16 @@ func run() error {
 	var app *application.App
 	emit := func(name, data string) { app.Event.Emit(name, data) }
 	dlg := &wailsDialogs{text: text}
+	words, err := newWordDocs(wordDocsDeps{
+		Convert: converter,
+		Inspect: func(ctx context.Context, path string) ([]convert.Loss, error) {
+			return convert.Inspect(ctx, path, docxLimits)
+		},
+		Files: docs, Dialogs: dlg, Text: text, ExportAttempts: limits.ExportAttempts,
+	})
+	if err != nil {
+		return err
+	}
 
 	// The editor comes first: the project service asks it which documents are
 	// open. Deferred calls run in reverse, so the project service stops before
@@ -98,6 +121,7 @@ func run() error {
 		Clipboard:   func(text string) bool { return app.Clipboard.SetText(text) },
 		Limits:      limits,
 		InitialFile: initialFile(os.Args),
+		Words:       words,
 	})
 	if err != nil {
 		return err

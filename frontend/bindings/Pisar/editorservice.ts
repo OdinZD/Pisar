@@ -60,6 +60,15 @@ export function Save(): $CancellablePromise<void> {
 }
 
 /**
+ * SaveCopy saves the active Word document as a new .docx the user names, and
+ * opens that file in its place. Closing the dialog is not an error. The
+ * original, and the document's working copy, stay as they are.
+ */
+export function SaveCopy(): $CancellablePromise<void> {
+    return $Call.ByID(3287177652);
+}
+
+/**
  * Start launches Neovim at the given size with the colorscheme the frontend
  * generated, or, when Neovim already runs (the page was reloaded), only resizes
  * it and repaints; the colorscheme is then left as it is.

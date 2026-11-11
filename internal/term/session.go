@@ -386,6 +386,26 @@ func (s *Session) Wipe(ctx context.Context, path string) (bool, error) {
 	return was, err
 }
 
+// SetReadOnly makes the buffer of the file at path read-only or writable; see
+// nvim.Process.SetReadOnly.
+func (s *Session) SetReadOnly(ctx context.Context, path string, readOnly bool) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.SetReadOnly(ctx, path, readOnly)
+}
+
+// Reload reads the file at path again into its buffer, current or not; see
+// nvim.Process.Reload.
+func (s *Session) Reload(ctx context.Context, path string) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.Reload(ctx, path)
+}
+
 // Save writes the current buffer to its file.
 func (s *Session) Save(ctx context.Context) error {
 	p, err := s.proc()

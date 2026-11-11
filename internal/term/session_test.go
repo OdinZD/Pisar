@@ -564,15 +564,44 @@ func TestBuffers(t *testing.T) {
 	}
 }
 
+// SetReadOnly and Reload reach the buffer of a file that is not on screen.
+func TestReadOnlyReload(t *testing.T) {
+	s, _, ctx := started(t)
+	a := writeFile(t, "a.md", "a\n")
+	b := writeFile(t, "b.md", "b\n")
+	for _, f := range []string{a, b} {
+		if err := s.OpenFile(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetReadOnly(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a, []byte("from outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Reload(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetReadOnly(ctx, a, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Reload(ctx, "/nonexistent/x.md"); !errors.Is(err, nvim.ErrNoBuffer) {
+		t.Errorf("Reload of an unknown file: %v, want ErrNoBuffer", err)
+	}
+}
+
 func TestNoProc(t *testing.T) {
 	check := func(t *testing.T, s *Session, ctx context.Context, want error) {
 		t.Helper()
 		errs := map[string]error{
-			"Save":     s.Save(ctx),
-			"SaveAll":  s.SaveAll(ctx),
-			"OpenFile": s.OpenFile(ctx, "x"),
-			"Write":    s.Write("x"),
-			"Resize":   s.Resize(80, 24),
+			"Save":        s.Save(ctx),
+			"SaveAll":     s.SaveAll(ctx),
+			"OpenFile":    s.OpenFile(ctx, "x"),
+			"Write":       s.Write("x"),
+			"Resize":      s.Resize(80, 24),
+			"SetReadOnly": s.SetReadOnly(ctx, "x", true),
+			"Reload":      s.Reload(ctx, "x"),
 		}
 		_, errs["CopyVisual"] = s.CopyVisual(ctx)
 		for name, err := range errs {

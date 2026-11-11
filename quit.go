@@ -112,6 +112,13 @@ func (g *quitGate) ask() {
 		ctx, cancel := context.WithTimeout(context.Background(), g.timeout)
 		err := g.editor.saveAll(ctx)
 		cancel()
+		if errors.Is(err, errSaveDeclined) {
+			// The user answered a question about a document with Cancel or
+			// Reload: nothing failed, so no error dialog, but nothing is saved
+			// either, so the application stays open.
+			slog.Info("quit: a document was not saved because the user declined")
+			return
+		}
 		if err != nil {
 			slog.Warn("quit: saving all documents failed", "err", err)
 			g.dialogs.ShowSaveError(fill(g.text.QuitSaveFailed, "reason", g.saveFailure(err)))
@@ -141,15 +148,29 @@ func (g *quitGate) unsavedMessage(bufs []nvim.Buffer) string {
 	return fill(g.text.QuitMessage, "names", strings.Join(lines, "\n"))
 }
 
-// saveFailure is the reason shown to the user. A buffer without a name gets
-// the explanation the rest of the interface uses; anything else shows what
-// Neovim reported (the service error hides it behind a code, so look at its cause).
+// saveFailure is the reason shown to the user. A buffer without a name and the
+// failures of saving a Word document get the explanation the rest of the
+// interface uses; anything else shows what Neovim reported (the service error
+// hides it behind a code, so look at its cause).
 func (g *quitGate) saveFailure(err error) string {
 	if errors.Is(err, nvim.ErrUnnamedBuffer) {
 		return g.text.ErrorUnnamedBuffer
 	}
 	var ae *apiError
-	if errors.As(err, &ae) && ae.cause != nil {
+	if !errors.As(err, &ae) {
+		return err.Error()
+	}
+	switch ae.code {
+	case codeConflict:
+		return g.text.ErrorConflict
+	case codeConvertFailed:
+		return g.text.ErrorConvertFailed
+	case codePandocMissing:
+		return g.text.ErrorPandocMissing
+	case codeReadOnly:
+		return g.text.ErrorReadOnly
+	}
+	if ae.cause != nil {
 		return ae.cause.Error()
 	}
 	return err.Error()

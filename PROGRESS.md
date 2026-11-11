@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–6a gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–6b gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 6b (uvezivanje u `EditorService`)
+- Sljedeći korak: faza 3, korak 7 (frontend)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, korak 6a)
+- Zadnja izmjena: 2026-11-12 (faza 3, korak 6b)
 
 ## Priprema (2026-11-11)
 
@@ -831,8 +831,29 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       - Novi kodovi grešaka: `pandoc-missing`, `convert-failed`, `not-word`, `document-too-large`,
         `read-only`, `conflict`, `damaged-work` (Go + frontend + tekstovi u `strings.json`).
       - Nije provjereno: stvarni prikaz nativnih dijaloga (ide u ručnu provjeru).
-- [ ] 6b. Uvezivanje u `EditorService`: bufferi samo za čitanje, preslikavanje radne kopije u izvornik,
-      izvoz nakon `:w`, gašenje, preimenovanje i Smeće, dokument s naredbenog retka
+- [x] 6b. Uvezivanje u `EditorService` (`editorwords.go`): `OpenDocument` prima `.docx`/`.doc`; `doc.md` se u
+      svim događajima zamjenjuje korisnikovom datotekom; `SaveCopy`; događaj `document:export`
+      (`converting` / `saved` / `failed` + kod / `canceled` / `reloaded`); `DocumentActive` ima
+      `readOnly` (uvijek niz), `imported`, `unexported`. 22 nova testa s pravim Neovimom i pandocom.
+      - Radnik: jedna goroutina s redom zadataka (izvoz, početni dokument, zatvaranje nakon `:q`),
+        pokrenuta s uslugom, zaustavljena u `shutdown`. Izvozi istog dokumenta koji još nisu počeli se
+        spajaju. `:wq` → izvoz se izvrši prije zatvaranja Wordovih dokumenata.
+      - „Nespremljeno” za Wordov dokument = izmijenjen buffer ILI neizvezena radna kopija ILI izvoz u
+        redu. Gašenje sa „Spremi” čeka kraj izvoza; neuspjeh → aplikacija ostaje otvorena s hrvatskom
+        porukom; Odustani / Učitaj ponovno u konfliktu → ostaje otvorena bez dijaloga greške.
+        `running()` je istinit i dok radnik ima posla nakon što se Neovim ugasio.
+      - `internal/nvim` + `term`: `SetReadOnly` (`modifiable=false`, `readonly=true`; izmjena kroz RPC i
+        tipkama ne uspijeva, `:w` pada) i `Reload` (`:edit!` i za pozadinski buffer). Između `OpenFile`
+        i `SetReadOnly` buffer je kratko upisiv; izvoz takvog dokumenta Go ionako odbija.
+      - Početni `.docx`/`.doc` s naredbenog retka otvara radnik nakon `Start`-a (ne unutar njega).
+      - `Limits.ExportAttempts` (4) je u `config`. Usluga bez `Words` ponaša se kao prije faze 3.
+      - Izmijenjeni postojeći testovi (zbog novih polja `DocumentActive`, koji više nije usporediv s
+        `!=`): `TestEdSwitch`, `TestEdLocate`, `TestEdRemoved` (usporedba kroz `reflect.DeepEqual`),
+        `TestEdEventJSON` (očekuje i nova polja). Testovi o odbijanju `.docx`-a ostali su netaknuti.
+      - Poznata ograničenja: prozor od nekoliko ms između `:w` i obrade događaja (gašenje baš tada ne
+        vidi dokument kao neizvezen); „Spremi kao kopiju” uzima `doc.md` s diska (bez teksta koji je
+        utipkan, a nije zapisan); ako dijalog drži radnika dulje od `CommandTimeout` pri gašenju, radne
+        kopije ostaju neočišćene; Neovim prikazuje ime `doc.md`, ne ime dokumenta.
 - [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci
 - [ ] 8. `docs/known-losses.md`
 - [ ] 9. Dimna provjera (`scripts/smoke.sh`)

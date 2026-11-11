@@ -14,6 +14,11 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 export const DocumentActive = "document:active";
 
 /**
+ * Name of the custom event "document:export".
+ */
+export const DocumentExport = "document:export";
+
+/**
  * Name of the custom event "document:state".
  */
 export const DocumentState = "document:state";

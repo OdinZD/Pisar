@@ -90,6 +90,8 @@ var (
 	ErrUnnamedBuffer = errors.New("nvim: a modified buffer has no file name")
 	// ErrBufferModified is returned (wrapped) by Wipe for a buffer with unsaved changes.
 	ErrBufferModified = errors.New("nvim: buffer has unsaved changes")
+	// ErrNoBuffer is returned (wrapped) by SetReadOnly and Reload when Neovim has no buffer for the file.
+	ErrNoBuffer = errors.New("nvim: no buffer for that file")
 )
 
 // Options configures Start. Cols, Rows, StartTimeout and StopTimeout are
@@ -539,6 +541,37 @@ const bufferLua = `
 		return vim.api.nvim_buf_get_name(b)
 	end`
 
+// findLua defines buffersOf(file), the buffers whose name is file, and needs
+// bufferLua. Neovim stores a buffer name with the symbolic links of its folder
+// resolved (/private/var/... for /var/...) and the file name as given, so both
+// sides are brought to that form. For a folder that is gone, the nearest one
+// that exists is resolved (vim.uv.fs_realpath returns nil for a path that does
+// not exist; measured with Neovim 0.12).
+const findLua = `
+	local function normalize(file)
+		local dir, tail = vim.fs.dirname(file), vim.fs.basename(file)
+		while true do
+			local real = vim.uv.fs_realpath(dir)
+			if real then return vim.fs.joinpath(real, tail) end
+			local parent = vim.fs.dirname(dir)
+			if parent == dir then return file end
+			tail = vim.fs.joinpath(vim.fs.basename(dir), tail)
+			dir = parent
+		end
+	end
+
+	local function buffersOf(file)
+		local want = normalize(file)
+		local hits = {}
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			local name = pathOf(b)
+			if name ~= "" and normalize(name) == want then
+				table.insert(hits, b)
+			end
+		end
+		return hits
+	end`
+
 // Current returns the current buffer. Path is "" for an unnamed buffer and for
 // one that is not an ordinary file.
 func (p *Process) Current(ctx context.Context) (Buffer, error) {
@@ -619,38 +652,14 @@ func (p *Process) Wipe(ctx context.Context, path string) (wasCurrent bool, err e
 		Modified bool
 		Current  bool
 	}
-	err = p.execLua(ctx, "wipe buffer", &res, bufferLua+`
-		-- Neovim stores a buffer name with the symbolic links of its folder
-		-- resolved (/private/var/... for /var/...) and the file name as given.
-		-- Do the same for both sides, and for a folder that is gone, resolve the
-		-- nearest one that exists (vim.uv.fs_realpath returns nil for a path that
-		-- does not exist; measured with Neovim 0.12).
-		local function normalize(file)
-			local dir, tail = vim.fs.dirname(file), vim.fs.basename(file)
-			while true do
-				local real = vim.uv.fs_realpath(dir)
-				if real then return vim.fs.joinpath(real, tail) end
-				local parent = vim.fs.dirname(dir)
-				if parent == dir then return file end
-				tail = vim.fs.joinpath(vim.fs.basename(dir), tail)
-				dir = parent
-			end
-		end
-
+	err = p.execLua(ctx, "wipe buffer", &res, bufferLua+findLua+`
 		-- While a prompt is up the current buffer may be half loaded (see Save).
 		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
 			error("Neovim is waiting for an answer to a prompt; no buffer was removed", 0)
 		end
 
-		local want = normalize((...))
 		local current = vim.api.nvim_get_current_buf()
-		local hits = {}
-		for _, b in ipairs(vim.api.nvim_list_bufs()) do
-			local name = pathOf(b)
-			if name ~= "" and normalize(name) == want then
-				table.insert(hits, b)
-			end
-		end
+		local hits = buffersOf((...))
 		-- Checked for all before anything is removed, and without force: a
 		-- buffer with unsaved changes would otherwise be asked about (or lost).
 		for _, b in ipairs(hits) do
@@ -671,6 +680,83 @@ func (p *Process) Wipe(ctx context.Context, path string) (wasCurrent bool, err e
 		return false, fmt.Errorf("%w: %s", ErrBufferModified, path)
 	}
 	return res.Current, nil
+}
+
+// SetReadOnly makes the buffer that holds the file at path read-only or
+// writable again. Read-only means 'nomodifiable' and 'readonly': nothing can
+// change the text, not even a call to the API (it fails with E21), and :w says
+// E45 (:w! still writes the unchanged text, which is harmless). A buffer
+// that is not current and one that is hidden are treated alike. No buffer for
+// that file: ErrNoBuffer (wrapped).
+func (p *Process) SetReadOnly(ctx context.Context, path string, readOnly bool) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("nvim: set read-only: %w", err)
+	}
+	var found bool
+	err = p.execLua(ctx, "set read-only", &found, bufferLua+findLua+`
+		local file, readOnly = ...
+		local hits = buffersOf(file)
+		for _, b in ipairs(hits) do
+			vim.bo[b].modifiable = not readOnly
+			vim.bo[b].readonly = readOnly
+		end
+		return #hits > 0`, abs, readOnly)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("nvim: set read-only: %w: %s", ErrNoBuffer, path)
+	}
+	return nil
+}
+
+// Reload reads the file at path again into its buffer and drops the buffer's
+// changes, as :edit! does, whether or not the buffer is current: the file was
+// replaced behind the buffer's back (the working copy of a Word document that
+// was reloaded from the user's file). A read-only buffer is reloaded too and
+// stays read-only; Reload does not choose the new state, SetReadOnly does. No
+// buffer for that file: ErrNoBuffer (wrapped), which the caller may take as
+// "nothing to reload".
+func (p *Process) Reload(ctx context.Context, path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("nvim: reload: %w", err)
+	}
+	var found bool
+	// The :redraw is there for the same reason as in OpenFile: messages left on
+	// the screen must be settled inside the call, or a hit-enter prompt opens
+	// after it and freezes Neovim.
+	err = p.execLua(ctx, "reload", &found, bufferLua+findLua+`
+		-- While a prompt is up the buffer may be half loaded (see Save).
+		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
+			error("Neovim is waiting for an answer to a prompt; nothing was reloaded", 0)
+		end
+		local hits = buffersOf((...))
+		local ok, err = pcall(function()
+			for _, b in ipairs(hits) do
+				-- :edit! of a buffer that is not modifiable fails with E21.
+				local modifiable, readonly = vim.bo[b].modifiable, vim.bo[b].readonly
+				vim.bo[b].modifiable = true
+				local eok, eerr = pcall(vim.api.nvim_buf_call, b, function()
+					vim.cmd({ cmd = "edit", bang = true })
+				end)
+				vim.bo[b].modifiable, vim.bo[b].readonly = modifiable, readonly
+				if not eok then error(eerr, 0) end
+			end
+		end)
+		vim.cmd.redraw()
+		if not ok then
+			error(err, 0)
+		end
+		return #hits > 0`, abs)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("nvim: reload: %w: %s", ErrNoBuffer, path)
+	}
+	return nil
 }
 
 // messageLua defines fit(msg, max) and show(msg) for the chunks that report

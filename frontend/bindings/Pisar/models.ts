@@ -4,8 +4,10 @@
 /**
  * DocumentActive describes the buffer Neovim has in front of it. ProjectID and
  * Rel are empty when the file belongs to no project; everything is empty when
- * the buffer has no file. It reaches JavaScript as a typed event payload: the
- * binding generator emits the class from this struct (frontend/bindings/Pisar/models.ts).
+ * the buffer has no file. For a Word document Path, Rel and Name are those of
+ * the user's .docx or .doc, never of the Markdown working copy Neovim edits. It
+ * reaches JavaScript as a typed event payload: the binding generator emits the
+ * class from this struct (frontend/bindings/Pisar/models.ts).
  */
 export interface DocumentActive {
     "projectId": string;
@@ -24,11 +26,50 @@ export interface DocumentActive {
      * file name with extension
      */
     "name": string;
+
+    /**
+     * ReadOnly lists the reasons why the document must not be saved (codes
+     * such as "comments"); it is an empty array, never null, when it may be.
+     */
+    "readOnly": string[] | null;
+
+    /**
+     * Imported: the document came from a .doc, so its first save makes a new .docx.
+     */
+    "imported": boolean;
+
+    /**
+     * Unexported: the working copy has text that is not in the user's file yet
+     * (it was written but not exported, or the export is on its way).
+     */
+    "unexported": boolean;
+}
+
+/**
+ * DocumentExport is a step of an export (see eventDocumentExport). It reaches
+ * JavaScript as a typed event payload, like DocumentActive.
+ */
+export interface DocumentExport {
+    /**
+     * the user's file; after the first save of a .doc, the new .docx
+     */
+    "path": string;
+
+    /**
+     * one of the phase constants
+     */
+    "phase": string;
+
+    /**
+     * the error code when Phase is "failed", otherwise ""
+     */
+    "code": string;
 }
 
 /**
  * DocumentState is a change of the "modified" flag of a buffer. Path is the
- * path as Neovim reports it, "" for a buffer without a file.
+ * path as Neovim reports it ("" for a buffer without a file); for a Word
+ * document it is the user's file.
  */
 export interface DocumentState {
     "path": string;

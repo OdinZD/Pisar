@@ -27,12 +27,6 @@ const (
 	wordPrevReference = "reference.prev.docx"
 )
 
-// maxExportAttempts bounds how often a conversion is repeated because the
-// editor wrote doc.md while pandoc was reading it. A real save takes
-// milliseconds, so more than one repeat means something keeps writing. It is a
-// constant here because the limits in internal/config are not part of this step.
-const maxExportAttempts = 4
-
 var (
 	// errRecoverDeclined is the user's "Cancel" in the recovery question. It is
 	// a cancellation (code "canceled"), not a failure.
@@ -89,6 +83,10 @@ type wordDocsDeps struct {
 	Files   wordFiles
 	Dialogs wordDialogs
 	Text    uiText
+
+	// ExportAttempts is config.Limits.ExportAttempts: how often a conversion is
+	// repeated because the editor wrote doc.md while pandoc was reading it.
+	ExportAttempts int
 }
 
 // wordView is what the rest of the application may know about a document.
@@ -196,6 +194,8 @@ type wordDocs struct {
 	dialogs wordDialogs
 	text    uiText
 
+	attempts int // conversions per export
+
 	mu      sync.Mutex // guards docs and opening; never held over I/O or a dialog
 	docs    []*wordDoc
 	opening map[string]*openCall
@@ -211,10 +211,13 @@ func newWordDocs(d wordDocsDeps) (*wordDocs, error) {
 		return nil, errors.New("word documents: the file operations are required")
 	case d.Dialogs == nil:
 		return nil, errors.New("word documents: the dialogs are required")
+	case d.ExportAttempts < 1:
+		return nil, fmt.Errorf("word documents: ExportAttempts must be positive, got %d", d.ExportAttempts)
 	}
 	return &wordDocs{
 		conv: d.Convert, inspect: d.Inspect, files: d.Files, dialogs: d.Dialogs, text: d.Text,
-		opening: make(map[string]*openCall),
+		attempts: d.ExportAttempts,
+		opening:  make(map[string]*openCall),
 	}, nil
 }
 
@@ -522,7 +525,7 @@ func removeOwn(path string) {
 func (w *wordDocs) convertMarkdown(ctx context.Context, d *wordDoc, out string) error {
 	md := d.markdownPath()
 	ref := filepath.Join(d.dir, wordReferenceName)
-	for range maxExportAttempts {
+	for range w.attempts {
 		if err := os.Remove(out); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove the previous output: %w", err)
 		}
@@ -895,15 +898,26 @@ func (w *wordDocs) sweep(ctx context.Context) error {
 }
 
 // close is for the shutdown: working copies with nothing unsaved go, the
-// others stay for the recovery question at the next start.
+// others stay for the recovery question at the next start. Afterwards no
+// document is open.
 func (w *wordDocs) close(ctx context.Context) error {
+	return w.release(ctx, w.snapshotDocs())
+}
+
+// release closes the given documents and forgets them: a working copy with
+// nothing unsaved is discarded, one that is Dirty stays on disk for the
+// recovery question the next time the document is opened. It is for the end of
+// an editor process too, when the application goes on and opens documents
+// again; only the documents it is given are touched, so one that was opened
+// after the editor quit is not closed under its new editor.
+func (w *wordDocs) release(ctx context.Context, docs []*wordDoc) error {
 	var errs []error
-	for _, d := range w.snapshotDocs() {
+	for _, d := range docs {
 		d.opMu.Lock()
+		w.mu.Lock()
+		w.docs = slices.DeleteFunc(w.docs, func(x *wordDoc) bool { return x == d })
+		w.mu.Unlock()
 		if !d.metaCopy().Dirty {
-			w.mu.Lock()
-			w.docs = slices.DeleteFunc(w.docs, func(x *wordDoc) bool { return x == d })
-			w.mu.Unlock()
 			if err := w.files.DiscardWork(ctx, d.workCopy()); err != nil {
 				errs = append(errs, fmt.Errorf("close %q: %w", filepath.Base(d.view().Path), err))
 			}

@@ -22,8 +22,9 @@ import (
 	"Pisar/internal/term"
 )
 
-// Events sent to the frontend by the editor. Only the two document events carry
-// a structure; the others are strings (see DocumentActive).
+// Events sent to the frontend by the editor. The document events carry a
+// structure (DocumentActive, DocumentState, and DocumentExport in editorwords.go);
+// the others are strings.
 const (
 	eventPtyData        = "pty:data"        // payload: a piece of terminal output
 	eventNvimExit       = "nvim:exit"       // Neovim ended on its own; payload ""
@@ -34,17 +35,29 @@ const (
 
 // DocumentActive describes the buffer Neovim has in front of it. ProjectID and
 // Rel are empty when the file belongs to no project; everything is empty when
-// the buffer has no file. It reaches JavaScript as a typed event payload: the
-// binding generator emits the class from this struct (frontend/bindings/Pisar/models.ts).
+// the buffer has no file. For a Word document Path, Rel and Name are those of
+// the user's .docx or .doc, never of the Markdown working copy Neovim edits. It
+// reaches JavaScript as a typed event payload: the binding generator emits the
+// class from this struct (frontend/bindings/Pisar/models.ts).
 type DocumentActive struct {
 	ProjectID string `json:"projectId"`
 	Rel       string `json:"rel"`  // path inside the project, "/" separators
 	Path      string `json:"path"` // absolute, as Neovim reports it
 	Name      string `json:"name"` // file name with extension
+
+	// ReadOnly lists the reasons why the document must not be saved (codes
+	// such as "comments"); it is an empty array, never null, when it may be.
+	ReadOnly []string `json:"readOnly"`
+	// Imported: the document came from a .doc, so its first save makes a new .docx.
+	Imported bool `json:"imported"`
+	// Unexported: the working copy has text that is not in the user's file yet
+	// (it was written but not exported, or the export is on its way).
+	Unexported bool `json:"unexported"`
 }
 
 // DocumentState is a change of the "modified" flag of a buffer. Path is the
-// path as Neovim reports it, "" for a buffer without a file.
+// path as Neovim reports it ("" for a buffer without a file); for a Word
+// document it is the user's file.
 type DocumentState struct {
 	Path     string `json:"path"`
 	Modified bool   `json:"modified"`
@@ -77,6 +90,10 @@ type editorServiceDeps struct {
 
 	// InitialFile is the document named on the command line, "" if none.
 	InitialFile string
+
+	// Words opens .docx and .doc documents. Without it they are refused as
+	// unsupported, which is how the service behaved before they were supported.
+	Words *wordDocs
 }
 
 // EditorService is the Wails service behind the editor: it runs Neovim, moves
@@ -92,6 +109,12 @@ type EditorService struct {
 	clipboard func(text string) bool
 	session   *term.Session
 	runDir    string // holds the RPC socket; removed by shutdown
+
+	// words, queue and marks are the Word documents' part (editorwords.go);
+	// queue is nil exactly when words is.
+	words *wordDocs
+	queue *workQueue
+	marks exportMarks
 
 	// startMu serialises Start: it writes the configuration and may open the
 	// initial document, which must happen once.
@@ -136,6 +159,7 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 		emit:      d.Emit,
 		clipboard: d.Clipboard,
 		runDir:    runDir,
+		words:     d.Words,
 	}
 	if d.InitialFile != "" {
 		abs, err := filepath.Abs(d.InitialFile)
@@ -146,7 +170,7 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 		// Decided here, not in Start: a document that is refused must leave
 		// HasInitialDocument false, so the frontend does not take the
 		// "open the editor straight away" path for it.
-		if reason := initialRefusal(abs); reason != "" {
+		if reason := e.initialRefusal(abs); reason != "" {
 			// Only the name, never the content.
 			slog.Warn("editor: ignoring the document on the command line", "file", filepath.Base(abs), "reason", reason)
 		} else {
@@ -176,6 +200,16 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 	if err != nil {
 		_ = os.RemoveAll(runDir)
 		return nil, fmt.Errorf("editor service: %w", err)
+	}
+	if e.words != nil {
+		// A start of the application: working copies of an earlier run that hold
+		// nothing unsaved go, the others wait for the recovery question.
+		ctx, cancel := context.WithTimeout(context.Background(), d.Limits.CommandTimeout)
+		if err := e.words.sweep(ctx); err != nil {
+			slog.Warn("editor: cannot clean up the working copies of an earlier run", "err", err)
+		}
+		cancel()
+		e.queue = newWorkQueue(e.runTask)
 	}
 	return e, nil
 }
@@ -263,6 +297,10 @@ func (e *EditorService) shutdown() {
 		e.closeMu.Lock()
 		e.closed = true
 		e.closeMu.Unlock()
+
+		if e.words != nil {
+			e.stopWords()
+		}
 
 		// Close escalates through three stages (RPC quit, SIGTERM, SIGKILL), each
 		// bounded by NvimStopTimeout; one more is slack for waiting on goroutines.
@@ -388,6 +426,14 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	e.initial = ""
 	e.initialMu.Unlock()
 	if file != "" {
+		if e.words != nil && isWordName(file) {
+			// Not here: the conversion and the recovery question can take long,
+			// and Start must not wait for them (see runOpen).
+			t := newWorkTask(workOpen)
+			t.path = file
+			e.queue.add(t)
+			return nil
+		}
 		if err := e.session.OpenFile(ctx, file); err != nil {
 			return failEditor("open initial document", err)
 		}
@@ -406,11 +452,27 @@ func neovimMayEdit(name string) bool {
 }
 
 // initialRefusal says why the document named on the command line is not
-// opened, or "" when it is accepted. A file that does not exist yet is fine
+// opened, or "" when it is accepted. A .docx or .doc is accepted when Word
+// documents are supported and the file exists as a regular file (never a link). A file that does not exist yet is fine
 // (Neovim opens a new buffer with that name). Anything that exists must be a
 // regular file: Lstat, not Stat, because a link named x.md may point at a
 // .docx, and Neovim's :w writes through a link into its target.
-func initialRefusal(abs string) string {
+func (e *EditorService) initialRefusal(abs string) string {
+	if e.words != nil && isWordName(abs) {
+		info, err := os.Lstat(abs)
+		switch {
+		case err != nil:
+			return "cannot be examined"
+		case !info.Mode().IsRegular():
+			return "not a regular file (a folder, a link or a special file)"
+		}
+		return ""
+	}
+	return mdInitialRefusal(abs)
+}
+
+// mdInitialRefusal is initialRefusal for what Neovim opens itself.
+func mdInitialRefusal(abs string) string {
 	if !neovimMayEdit(abs) {
 		return "not a .md or .txt file"
 	}
@@ -475,13 +537,21 @@ func (e *EditorService) OpenDocument(ctx context.Context, projectID, rel string)
 		return failEditor("open document", err)
 	}
 	// requireDocument has accepted the extension, so what neovimMayEdit refuses
-	// here is .docx and .doc, whose conversion comes in a later phase.
-	if !neovimMayEdit(rel) {
+	// here is .docx and .doc: opened through a working copy, or not at all
+	// when Word documents are not supported.
+	word := isWordName(rel)
+	if !neovimMayEdit(rel) && (!word || e.words == nil) {
 		return failEditor("open document", fmt.Errorf("%w: %q", docsafe.ErrUnsupportedKind, rel))
 	}
 	abs, err := project.Resolve(root, rel)
 	if err != nil {
 		return failEditor("open document", err)
+	}
+	if word {
+		if err := e.openWord(ctx, abs); err != nil {
+			return failEditor("open document", err)
+		}
+		return nil
 	}
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
@@ -496,6 +566,11 @@ func (e *EditorService) Save(ctx context.Context) error {
 	slog.Debug("service call", "method", "Save")
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
+	// A Word document: the write itself (of doc.md) is followed by an export
+	// (see editorEvents.Saved), which a read-only document must not get.
+	if err := e.refuseReadOnlySave(ctx); err != nil {
+		return failEditor("save", err)
+	}
 	if err := e.session.Save(ctx); err != nil {
 		return failEditor("save", err)
 	}
@@ -531,9 +606,14 @@ func (e *EditorService) CopyText(text string) error {
 	return nil
 }
 
-// running reports whether Neovim is running. Unexported: the menu and the quit
-// logic ask it, the frontend has the phase it learns from events.
-func (e *EditorService) running() bool { return e.session.Running() }
+// running reports whether the editor has work that must not be cut off: Neovim
+// is running, or a Word document still has an export waiting or running after
+// Neovim ended (:wq leaves the text in the working copy until the export is
+// done). Unexported: the menu and the quit logic ask it, the frontend has the
+// phase it learns from events.
+func (e *EditorService) running() bool {
+	return e.session.Running() || (e.queue != nil && !e.queue.idle())
+}
 
 // modified returns the buffers with unsaved changes, for the dialog that
 // appears when the application quits. Unexported: not part of the frontend API.
@@ -544,11 +624,24 @@ func (e *EditorService) modified(ctx context.Context) ([]nvim.Buffer, error) {
 	if err != nil {
 		return nil, failEditor("modified", err)
 	}
+	if e.words != nil {
+		// A Word document is listed under the name of the user's file, and also
+		// when only its export is missing.
+		bufs = e.withWords(bufs)
+	}
 	return bufs, nil
 }
 
-// saveAll writes every modified buffer. Unexported, like modified.
+// saveAll writes every modified buffer and, for the Word documents, exports
+// them into the user's files. Unexported, like modified. ctx limits the calls to
+// Neovim only; waiting for the exports does not depend on it (see saveAllWords).
 func (e *EditorService) saveAll(ctx context.Context) error {
+	if e.words != nil {
+		if err := e.saveAllWords(ctx); err != nil {
+			return failEditor("save all", err)
+		}
+		return nil
+	}
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
 	if err := e.session.SaveAll(ctx); err != nil {
@@ -565,6 +658,14 @@ func (e *EditorService) saveAll(ctx context.Context) error {
 func (e *EditorService) unsaved(ctx context.Context, path string) (bool, error) {
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
+	// A Word document counts as unsaved until the user's file has the text too,
+	// not only until doc.md is written.
+	if unsaved, isWord, err := e.wordUnsaved(ctx, path); isWord {
+		if err != nil {
+			return false, failEditor("unsaved", err)
+		}
+		return unsaved, nil
+	}
 	bufs, err := e.session.Buffers(ctx)
 	if err != nil {
 		return false, failEditor("unsaved", err)
@@ -584,6 +685,13 @@ func (e *EditorService) unsaved(ctx context.Context, path string) (bool, error) 
 func (e *EditorService) renamed(ctx context.Context, oldPath, newPath string) error {
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
+	// A Word document keeps its buffer (doc.md); only its file's name changes.
+	if handled, err := e.wordRenamed(ctx, oldPath, newPath); handled {
+		if err != nil {
+			return failEditor("renamed", err)
+		}
+		return nil
+	}
 	wasCurrent, err := e.session.Wipe(ctx, oldPath)
 	if err != nil {
 		return failEditor("renamed", err)
@@ -603,6 +711,12 @@ func (e *EditorService) renamed(ctx context.Context, oldPath, newPath string) er
 func (e *EditorService) removed(ctx context.Context, path string) error {
 	ctx, cancel := e.bounded(ctx)
 	defer cancel()
+	if handled, err := e.wordRemoved(ctx, path); handled {
+		if err != nil {
+			return failEditor("removed", err)
+		}
+		return nil
+	}
 	if _, err := e.session.Wipe(ctx, path); err != nil {
 		return failEditor("removed", err)
 	}
@@ -657,11 +771,20 @@ func (e *EditorService) locate(file string) (projectID, rel string, ok bool) {
 }
 
 // describe builds the document:active payload for the path Neovim reported.
+// The Markdown working copy of a Word document is reported as the user's file.
 func (e *EditorService) describe(file string) DocumentActive {
-	if file == "" {
-		return DocumentActive{}
+	if d, ok := e.wordDoc(file); ok {
+		return e.describeWord(d)
 	}
-	d := DocumentActive{Path: file, Name: filepath.Base(file)}
+	return e.describePath(file)
+}
+
+// describePath is describe for a file as it is.
+func (e *EditorService) describePath(file string) DocumentActive {
+	if file == "" {
+		return DocumentActive{ReadOnly: []string{}}
+	}
+	d := DocumentActive{Path: file, Name: filepath.Base(file), ReadOnly: []string{}}
 	if id, rel, ok := e.locate(file); ok {
 		d.ProjectID, d.Rel = id, rel
 	}
@@ -679,8 +802,10 @@ func (v editorEvents) Data(chunk string) {
 }
 
 func (v editorEvents) Saved(file string) {
-	// The state change that follows a write (document:state) is what the frontend needs.
+	// The state change that follows a write (document:state) is what the
+	// frontend needs; for a Word document the write is also the cue to export.
 	slog.Debug("editor event", "event", "saved", "path", file)
+	v.e.queueExport(file)
 }
 
 func (v editorEvents) Active(file string, modified bool) {
@@ -690,13 +815,17 @@ func (v editorEvents) Active(file string, modified bool) {
 	// The buffer that becomes active may already carry unsaved changes; without
 	// this the toolbar would keep the state of the buffer that was left.
 	if file != "" {
-		v.e.notify(eventDocumentState, DocumentState{Path: file, Modified: modified})
+		v.e.notify(eventDocumentState, DocumentState{Path: d.Path, Modified: modified})
 	}
 }
 
 func (v editorEvents) Modified(file string, modified bool) {
 	slog.Debug("editor event", "event", eventDocumentState, "path", file, "modified", modified)
-	v.e.notify(eventDocumentState, DocumentState{Path: file, Modified: modified})
+	path := file
+	if d, ok := v.e.wordDoc(file); ok {
+		path = d.view().Path
+	}
+	v.e.notify(eventDocumentState, DocumentState{Path: path, Modified: modified})
 }
 
 func (v editorEvents) FocusTree() {
@@ -707,4 +836,6 @@ func (v editorEvents) FocusTree() {
 func (v editorEvents) Exited() {
 	slog.Debug("editor event", "event", eventNvimExit)
 	v.e.notify(eventNvimExit, "")
+	// Behind the exports that the writes before the quit queued.
+	v.e.closeWords()
 }

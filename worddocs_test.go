@@ -211,7 +211,7 @@ func (e *wordEnv) manager(conv wordConverter, wrapFiles func(wordFiles) wordFile
 		Inspect: func(ctx context.Context, p string) ([]convert.Loss, error) {
 			return convert.Inspect(ctx, p, wordLimits())
 		},
-		Files: files, Dialogs: e.dlg, Text: e.text,
+		Files: files, Dialogs: e.dlg, Text: e.text, ExportAttempts: config.DefaultExportAttempts,
 	})
 	if err != nil {
 		e.t.Fatal(err)
@@ -752,8 +752,8 @@ func TestWordDocsExportRefusals(t *testing.T) {
 		if !errors.Is(err, errMarkdownUnstable) {
 			t.Fatalf("err = %v", err)
 		}
-		if n := hc.mdToDocxCalls.Load(); n != maxExportAttempts {
-			t.Errorf("%d conversions, want %d", n, maxExportAttempts)
+		if n := hc.mdToDocxCalls.Load(); n != config.DefaultExportAttempts {
+			t.Errorf("%d conversions, want %d", n, config.DefaultExportAttempts)
 		}
 		sameBytes(t, p, orig)
 		if !d.view().Dirty {
@@ -1402,5 +1402,71 @@ func TestWordDocsConcurrency(t *testing.T) {
 func TestNewWordDocsNeedsDeps(t *testing.T) {
 	if _, err := newWordDocs(wordDocsDeps{}); err == nil {
 		t.Error("empty dependencies must be refused")
+	}
+}
+
+// ExportAttempts is a limit from config: zero would make every export fail without trying.
+func TestNewWordDocsNeedsAttempts(t *testing.T) {
+	e := newWordEnv(t)
+	_, err := newWordDocs(wordDocsDeps{
+		Convert: e.conv, Inspect: func(context.Context, string) ([]convert.Loss, error) { return nil, nil },
+		Files: e.ops, Dialogs: e.dlg, Text: e.text,
+	})
+	if err == nil || !strings.Contains(err.Error(), "ExportAttempts") {
+		t.Errorf("err = %v, want one about ExportAttempts", err)
+	}
+}
+
+// release is what the end of an editor process uses: the documents it is given
+// are forgotten, a clean working copy goes, a Dirty one stays for recovery, and
+// a document that was not given (opened later, under a new editor) is not touched.
+func TestWordDocsRelease(t *testing.T) {
+	e := newWordEnv(t)
+	clean := mustOpen(t, e.docs, fixture(t, "basic.docx", e.user))
+	dirtyPath := filepath.Join(e.user, "dirty.docx")
+	if err := os.WriteFile(dirtyPath, readFile(t, filepath.Join(e.user, "basic.docx")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirty := mustOpen(t, e.docs, dirtyPath)
+	edit(t, e.docs, dirty, newText)
+	laterPath := filepath.Join(e.user, "later.docx")
+	if err := os.WriteFile(laterPath, readFile(t, filepath.Join(e.user, "basic.docx")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := mustOpen(t, e.docs, laterPath)
+
+	if err := e.docs.release(t.Context(), []*wordDoc{clean, dirty}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.docs.all(); len(got) != 1 || got[0] != later {
+		t.Errorf("open documents = %v, want only the one that was not released", got)
+	}
+	got := workDirs(t, e)
+	slices.Sort(got)
+	want := []string{dirty.dir, later.dir}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("working folders = %v, want %v (the clean one gone)", got, want)
+	}
+
+	// The released Dirty document is asked about at its next open, not found in the list.
+	if _, ok := e.docs.byPath(dirtyPath); ok {
+		t.Error("a released document is still found")
+	}
+	e.dlg.recovers = []recoverChoice{recoverUse}
+	again := mustOpen(t, e.docs, dirtyPath)
+	if !again.view().Dirty {
+		t.Error("the recovered document lost its Dirty flag")
+	}
+	if n, _, _ := e.dlg.counts(); n != 1 {
+		t.Errorf("%d recovery questions, want 1", n)
+	}
+
+	// close forgets everything, the Dirty ones included.
+	if err := e.docs.close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.docs.all(); len(got) != 0 {
+		t.Errorf("open documents after close = %v", got)
 	}
 }

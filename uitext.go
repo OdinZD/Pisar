@@ -37,6 +37,10 @@ type uiText struct {
 	QuitUnresponsive      string `json:"quitUnresponsive"`
 	QuitAnyway            string `json:"quitAnyway"`
 	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
+	ErrorConflict         string `json:"errorConflict"`
+	ErrorConvertFailed    string `json:"errorConvertFailed"`
+	ErrorPandocMissing    string `json:"errorPandocMissing"`
+	ErrorReadOnly         string `json:"errorReadOnly"`
 	ChooseFolderTitle     string `json:"chooseFolderTitle"`
 	TrashTitle            string `json:"trashTitle"`
 	TrashMessage          string `json:"trashMessage"` // placeholder {name}

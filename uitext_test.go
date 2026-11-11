@@ -106,3 +106,19 @@ func TestUITextWordDocuments(t *testing.T) {
 		}
 	}
 }
+
+// The save failures of Word documents the quit dialog explains.
+func TestUITextSaveFailures(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, v := range map[string]string{
+		"errorConflict": text.ErrorConflict, "errorConvertFailed": text.ErrorConvertFailed,
+		"errorPandocMissing": text.ErrorPandocMissing, "errorReadOnly": text.ErrorReadOnly,
+	} {
+		if strings.TrimSpace(v) == "" {
+			t.Errorf("%s is empty", name)
+		}
+	}
+}

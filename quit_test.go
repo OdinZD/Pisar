@@ -453,3 +453,72 @@ func TestQuitConcurrentWithDialog(t *testing.T) {
 		t.Errorf("%d dialogs", n)
 	}
 }
+
+// The reasons a Word document cannot be saved have texts of their own.
+func TestQuitSaveFailsWord(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"conflict", &apiError{code: codeConflict, cause: errors.New("docsafe: conflict: /p/a.docx")}, text.ErrorConflict},
+		{"conversion", &apiError{code: codeConvertFailed, cause: errors.New("pandoc: exit status 1")}, text.ErrorConvertFailed},
+		{"no pandoc", &apiError{code: codePandocMissing, cause: errors.New("exec: not found")}, text.ErrorPandocMissing},
+		{"read only", &apiError{code: codeReadOnly, cause: errors.New("docsafe: read-only: /p/a.docx (comments)")}, text.ErrorReadOnly},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			g, _ := newTestGate(t, &fakeQuitEditor{}, &fakeQuitDialogs{})
+			got := g.saveFailure(c.err)
+			if got != c.want || strings.TrimSpace(got) == "" {
+				t.Errorf("saveFailure = %q, want %q", got, c.want)
+			}
+			if strings.Contains(got, "/p/a.docx") || strings.Contains(got, "exit status") {
+				t.Errorf("the text shows technical detail: %q", got)
+			}
+		})
+	}
+}
+
+// The user answered a question about a Word document with Cancel or Reload:
+// nothing failed, so there is no error dialog, but nothing is saved either, so
+// the application stays open and the next request asks again.
+func TestQuitSaveDeclined(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+	}{
+		{"bare", errSaveDeclined},
+		{"as the editor returns it", &apiError{code: codeCanceled, cause: errSaveDeclined}},
+		{"wrapped", fmt.Errorf("save all: %w", &apiError{code: codeCanceled, cause: errSaveDeclined})},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ed := &fakeQuitEditor{isRunning: true, bufs: []nvim.Buffer{doc("/p/a.docx")}, saveErr: c.err}
+			dlg := &fakeQuitDialogs{choice: quitChoiceSave}
+			g, p := newTestGate(t, ed, dlg)
+			if g.request() {
+				t.Fatal("must be refused")
+			}
+			g.wait()
+			if _, save := ed.counts(); save != 1 {
+				t.Errorf("saveAll calls = %d", save)
+			}
+			if p.quits() != 0 {
+				t.Error("the application quit although the document was not saved")
+			}
+			if len(dlg.errors) != 0 {
+				t.Errorf("an error dialog was shown: %q", dlg.errors)
+			}
+			if g.request() {
+				t.Fatal("the next request must be refused too")
+			}
+			g.wait()
+			if len(dlg.unsaved) != 2 {
+				t.Errorf("asked %d times, want 2", len(dlg.unsaved))
+			}
+		})
+	}
+}

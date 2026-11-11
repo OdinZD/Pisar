@@ -55,6 +55,12 @@ const (
 	// DefaultMaxBackups is how many backups of one document are kept; older ones
 	// are rotated out.
 	DefaultMaxBackups = 10
+	// DefaultExportAttempts bounds how often one export converts the Markdown
+	// again because the editor wrote it while pandoc was reading it. A real save
+	// takes milliseconds, so more than one repeat means something keeps writing;
+	// 4 allows a few unlucky overlaps and still ends the export with an error
+	// instead of looping.
+	DefaultExportAttempts = 4
 	// The two .docx numbers bound the inspection of one archive that may come
 	// from anywhere (see internal/convert). Both are far above anything a real
 	// document needs and only exist to stop a hostile archive:
@@ -151,6 +157,7 @@ type Limits struct {
 	CommandTimeout   time.Duration // short external commands (trash)
 	ConvertTimeout   time.Duration // one call of pandoc or textutil; longer than CommandTimeout, see DefaultConvertTimeout
 	MaxBackups       int           // backups kept per document
+	ExportAttempts   int           // conversions of one export, repeated while the editor writes the Markdown
 	MaxDocxEntries   int           // archive entries a .docx may have before it is refused
 	MaxDocxPartBytes int64         // uncompressed bytes read from one XML part of a .docx before it is refused
 	QuitDialogNames  int           // document names listed in the quit dialog
@@ -307,6 +314,7 @@ func (s *Store) Limits() Limits {
 		CommandTimeout:   DefaultCommandTimeout,
 		ConvertTimeout:   DefaultConvertTimeout,
 		MaxBackups:       DefaultMaxBackups,
+		ExportAttempts:   DefaultExportAttempts,
 		MaxDocxEntries:   DefaultMaxDocxEntries,
 		MaxDocxPartBytes: DefaultMaxDocxPartBytes,
 		QuitDialogNames:  DefaultQuitDialogNames,
