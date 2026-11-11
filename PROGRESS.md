@@ -208,7 +208,7 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
 - [x] 2. `internal/config`: `Store` nad `<home>/config.json` (verzija 1), projekti, limiti na jednom mjestu
       (debounce 200 ms, 20000 čvorova, 10 s), `PISAR_HOME`, atomski zapis, pokvarena datoteka →
       `config.bad-<vrijeme>.json`, novija verzija se ne dira; 16 testova (14 u ovom koraku, 2 dodana u
-      koracima 5 i 6), pokrivenost 84 %
+      koracima 5 i 6), pokrivenost 83,5 %
 - [x] 3. `internal/project` — stablo: `Scan` (podržane vrste, bez skrivenih i `~$…`, linkovi se ne prate ni
       ne prikazuju, prazni folderi izostavljeni, limit čvorova, nečitljiv podfolder ide u `Skipped`) i
       `Resolve` (relativna putanja → putanja unutar projekta; odbija `..`, linkove prema van i viseće
@@ -217,7 +217,7 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
 - [x] 4. `internal/docsafe`: `CreateFile` (isključivo stvaranje, `.md` ako nema `.md`/`.txt`), `Rename`
       (tvrdi link pa brisanje starog imena; promjena samo veličine slova; ekstenzija ostaje), `Trash`
       (`trash -s <putanja>`, zatim provjera da datoteke više nema); 18 testova (17 se izvodi,
-      `TestRealTrash` je preskočen), pokrivenost 88 %.
+      `TestRealTrash` je preskočen), pokrivenost u tom koraku 87,8 %.
       - Pravi `trash` se u testovima ne poziva; `TestRealTrash` radi samo uz `PISAR_TEST_REAL_TRASH=1`.
       - Dvotočka u imenu je zabranjena (Finder je prikazuje kao `/`) — odluka glavne sesije.
       - Preimenovanje na drugi tvrdi link iste datoteke vraća `ErrExists` (ispravak glavne sesije
@@ -275,8 +275,8 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       - Komponente i `treeController` nemaju testove (vitest radi bez DOM-a; `jsdom` nije odobren).
         Izgled, fokus i tipke provjerava vlasnik ručno
 - [ ] 9. Kraj faze: `scripts/smoke.sh` (napisan i prolazi), kriteriji s dokazima i popis za ručni pogled
-      (dolje); `plan-reviewer`: krug 1 FAIL (6 manjih odstupanja, ispravljena), krug 2 u tijeku; zatim
-      sažetak i STOP.
+      (dolje); `plan-reviewer`: krug 1 FAIL (6 manjih odstupanja, ispravljena), krug 2 FAIL (jedna netočna
+      brojka pokrivenosti u ovom dokumentu, ispravljena), krug 3 u tijeku; zatim sažetak i STOP.
       - `scripts/smoke.sh` i dijagnostiku `PISAR_LOG=debug` (ispis poziva servisa na stderr; tri mjesta,
         petnaestak redaka) napisala je glavna sesija, da se frontend i osvježavanje mogu dokazati bez
         klikanja.
@@ -295,7 +295,9 @@ Naredbe iz korijena repozitorija; sve su pokrenute nakon zadnje izmjene koda.
   `ok Pisar/internal/project`; vitest `Test Files 12 passed`, `Tests 143 passed`.
 - `task test:race` → exit 0, bez `DATA RACE`. `task lint` → `0 issues.`, svelte-check
   `0 ERRORS 0 WARNINGS`. `task build` → exit 0, `bin/pisar`.
-- Pokrivenost (`go test -cover ./...`): `Pisar` 69 %, `config` 84 %, `docsafe` 88 %, `project` 95 %.
+- Pokrivenost (`go test -count=1 -cover ./...`): `Pisar` 69,2 %, `config` 83,5 %, `docsafe` 87,1 %,
+  `project` 94,5 %. Grana u `docsafe` za neuspjelo vraćanje nakon neuspjelog preimenovanja nema test
+  (ne da se pouzdano izazvati), pa je pokrivenost tog paketa pala s 87,8 % na 87,1 %.
   Broj Go testova (`go test -list`): `Pisar` 17, `config` 16, `docsafe` 18, `project` 36 (20 za stablo
   i putanje, 11 za praćenje s lažnim izvorom, 5 s pravim FSEventsom).
 - `bash scripts/smoke.sh` → `smoke: all checks passed` (prava aplikacija, bez tipki i klikova):
