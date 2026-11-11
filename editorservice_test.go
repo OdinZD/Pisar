@@ -962,8 +962,6 @@ func initialLoose(name string) func(*editorServiceDeps) {
 	}
 }
 
-// What is not a .md or .txt file must never reach Neovim from the command line:
-// its bytes would be written back by :w outside internal/docsafe.
 // A link named like a document may point at a .docx; Neovim's :w would write
 // through it, outside docsafe. The command-line document must be a real file.
 func TestEdInitialSymlink(t *testing.T) {
@@ -993,6 +991,8 @@ func TestEdInitialSymlink(t *testing.T) {
 	}
 }
 
+// What is not a .md or .txt file must never reach Neovim from the command line:
+// its bytes would be written back by :w outside internal/docsafe.
 func TestEdInitialRefused(t *testing.T) {
 	needNvim(t)
 	for _, name := range []string{"x.docx", "x.DOC", "slika.png", "README", "dir", "dir.md"} {

@@ -4,13 +4,13 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 2 — `.md` i `.txt` (koraci 1–10 gotovi 2026-11-11; čeka vlasnikovu ručnu provjeru **[R]**). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 10 — `plan-reviewer`, zatim vlasnikova ručna provjera **[R]** (popis u odjeljku faze 2)
+- Sljedeći korak: vlasnik prolazi popis „Ručna provjera [R]” u odjeljku faze 2; zatim plan faze 3 (preduvjet: `brew install pandoc`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, koraci 1–9 gotovi, `spike/` uklonjen; korak 10: pregled u tijeku)
+- Zadnja izmjena: 2026-11-11 (faza 2, koraci 1–10 gotovi; `plan-reviewer` PASS u krugu 3 od 3)
 
 ## Priprema (2026-11-11)
 
@@ -556,11 +556,11 @@ zaglavlju). `internal/docsafe` i `CLAUDE.md` su netaknuti; `DESIGN.md` ima točn
       s naredbenog retka, veličina mreže, colorscheme i boje `Normal`, stanje Neovima pod `<home>`,
       promjena buffera, izmjena i zapis, `␣e`, gašenje bez ostataka) i `scripts/shutdown.sh` (SIGTERM,
       SIGINT, SIGHUP, SIGKILL; nakon rušenja sljedeće pokretanje čisti zaostale mape socketa).
-- [ ] 10. Kraj faze: `spike/` uklonjen (`git rm -r spike`, commit `0ec6386`; preostali generirani ostaci
+- [x] 10. Kraj faze: `spike/` uklonjen (`git rm -r spike`, commit `0ec6386`; preostali generirani ostaci
       na disku obrisani), kriteriji s dokazima i popis **[R]** (dolje); `plan-reviewer`: krug 1 FAIL
       (8 odstupanja: 3 u kodu, 5 u ovom dokumentu; ispravljena), krug 2 FAIL (simbolički link kao
-      početni dokument; jedna netočna rečenica u ovom dokumentu; ispravljeno), krug 3 u tijeku; zatim
-      sažetak i STOP.
+      početni dokument; jedna netočna rečenica u ovom dokumentu; ispravljeno), krug 3 PASS; sažetak
+      predan, STOP.
       - Ispravci u kodu nakon kruga 1 (`coder` na `high`): dokument s naredbenog retka se prihvaća samo
         ako je `.md` ili `.txt` (inače se zanemaruje uz zapis u log; zajednička provjera
         `neovimMayEdit` s `OpenDocument`; testovi `TestEdInitialRefused`, `TestEdInitialAccepted`);
@@ -644,12 +644,19 @@ menija, tamna tema, pakiranje, brisanje `~/.local/state/pisar-spike/` i `~/.loca
 
 ### Kriteriji prihvaćanja
 
-- [ ] klik ili `↵` u stablu otvara dokument u Neovimu
-- [ ] aktivni dokument je označen u stablu i kad se buffer promijeni iz Neovima
-- [ ] alatna traka prikazuje „Izmijenjeno” / „Spremljeno” prema stanju buffera
-- [ ] gašenje s nespremljenim izmjenama traži potvrdu
-- [ ] xterm.js tema i Neovim colorscheme generirani su iz tokena
-- [ ] **[R]** fokus: tipke iz terminala ne aktiviraju stablo, i obratno
+Dokazi su u odjeljku „Dokazi po kriterijima” gore. Označen je samo kriterij koji je u cijelosti dokazan
+naredbom. Za ostale je logika pokrivena testovima i dimnom provjerom, ali zadnji korak (klik u
+prozoru, boja reda, tekst u traci, nativni dijalog) može potvrditi samo vlasnik.
+
+- [ ] klik ili `↵` u stablu otvara dokument u Neovimu — dokaz 1; klik i `↵` u prozoru čekaju ručnu
+      provjeru (stavka 1)
+- [ ] aktivni dokument je označen u stablu i kad se buffer promijeni iz Neovima — dokaz 2; boja reda
+      čeka ručnu provjeru (stavka 2)
+- [ ] alatna traka prikazuje „Izmijenjeno” / „Spremljeno” prema stanju buffera — dokaz 3; prikaz u traci
+      čeka ručnu provjeru (stavka 3)
+- [ ] gašenje s nespremljenim izmjenama traži potvrdu — dokaz 4; sam dijalog čeka ručnu provjeru (stavka 6)
+- [x] xterm.js tema i Neovim colorscheme generirani su iz tokena — dokaz 5
+- [ ] **[R]** fokus: tipke iz terminala ne aktiviraju stablo, i obratno — ručna provjera, stavka 4
 
 ## Faza 3 — `.docx` i `.doc`
 
