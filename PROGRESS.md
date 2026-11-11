@@ -578,8 +578,9 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda i nakon uk
 - Go testovi (`go test -list`): `Pisar` 80, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
   `term` 33; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD`. Pokrivenost
   (`go test -count=1 -cover ./...`, nakon ispravaka iz kruga 1): `Pisar` 77,8 %, `config` 83,9 %,
-  `docsafe` 87,1 %, `nvim` oko 87 %, `project` 94,5 %, `term` 93,3 %. Pokrivenost paketa `nvim` se
-  između pokretanja mijenja za do jedan postotni bod (grane ovise o tome koja faza gašenja pobijedi).
+  `docsafe` 87,1 %, `nvim` 87,3–88,3 %, `project` 94,5 %, `term` 93,3 %. Pokrivenost paketa `nvim` se
+  mijenja između pokretanja (tri uzastopna: 88,3 %, 87,3 %, 88,3 %), jer grane ovise o tome koja faza
+  gašenja pobijedi.
 - `bash scripts/smoke.sh` → `smoke: all checks passed`; `bash scripts/shutdown.sh` →
   `shutdown: all checks passed`. `test ! -e spike` → exit 0. `pgrep -fl 'nvim|bin/pisar'` → ništa.
   `~/Library/Application Support/Pisar`, `~/.local/state/pisar`, `~/.config/pisar` ne postoje.
