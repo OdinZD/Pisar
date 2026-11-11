@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 2 (Neovim proces: PTY + RPC)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 1 gotov)
+- Sljedeći korak: faza 0, korak 3 (most PTY ↔ frontend)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 2 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -42,8 +42,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   `--listen <socket u privremenoj mapi>`. Korisnikova konfiguracija se ne učitava i ne dira.
 - Izlaz PTY-ja ide Wails događajima; propusnost se mjeri. Drugi prijenos je promjena stacka (STOP).
 - Koraci idu redom, bez paralelnih agenata.
-- Dok `coder` nije registriran u sesiji (učitava se tek pri pokretanju), korake radi general-purpose
-  agent na Sonnetu s uputama iz `.claude/agents/coder.md` na početku briefa (odobrio vlasnik 2026-11-11).
+- Korake 1 i 2 radio je general-purpose agent na Sonnetu s uputama iz `.claude/agents/coder.md` na
+  početku briefa, jer `coder` još nije bio registriran (odobrio vlasnik 2026-11-11).
 
 ### Ovisnosti (odobrene)
 
@@ -54,8 +54,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 
 - [x] 1. Kostur: `wails3 init -n spike -t svelte -mod Pisar/spike`, Wails na v3.1.0, zadaci `test` i
       `lint`, `.golangci.yml` kao u Tragu; aplikacija se gradi (`spike/bin/spike`) i pokreće
-- [ ] 2. Neovim proces (Go): PTY, promjena veličine, RPC preko socketa, uredno gašenje; integracijski
-      testovi s pravim `nvim`-om (otvaranje datoteke, obavijest nakon `:w`, nema procesa nakon `Close`)
+- [x] 2. Neovim proces (Go): `spike/internal/nvim` — PTY, promjena veličine, RPC preko socketa, uredno
+      gašenje; 14 integracijskih testova s pravim `nvim`-om, čisto i s `-race`
 - [ ] 3. Most PTY ↔ frontend: Wails servis (`Write`, `Resize`), događaji s izlazom grupirani po
       vremenu i veličini, bez rezanja usred UTF-8 znaka; brojači propusnosti
 - [ ] 4. Terminal (Svelte): xterm.js + fit, prekidač DOM / WebGL, JetBrains Mono učitan prije
@@ -66,6 +66,20 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - [ ] 7. Gašenje aplikacije: hook zove `Close`; skripta gradi, pokreće, gasi i provjerava `pgrep`
 - [ ] 8. Popis za ručnu provjeru **[R]** predan vlasniku
 - [ ] 9. `docs/spike-report.md`, kriteriji s dokazima, `plan-reviewer`, sažetak, STOP
+
+### Nalazi tijekom faze (ulaze u `docs/spike-report.md`)
+
+- Neovim 0.12 su dva procesa: TUI (dijete u PTY-ju) i server iza RPC socketa, koji je u vlastitoj
+  sesiji. Signal grupi procesa pogađa samo TUI, pa `Close` pamti PID servera i gasi ga zasebno.
+- Neovim pri pokretanju šalje terminalu upit DSR i čeka odgovor 100 ms; bez odgovora ispiše upozorenje
+  s hit-enter promptom i pokretanje stane. Pri izlasku šalje DA1 i čeka do 1 s. Zato na ta dva upita
+  odgovara Go (`pump`), neovisno o tome je li xterm.js već priključen. Kasni dvostruki odgovori
+  terminala ne ulaze u buffer kao tipke (`TestLateReplies`); s pravim xterm.js-om potvrditi u koraku 4.
+- Proces se pokreće s `exec.Command`, ne `CommandContext`: kontekst `Start`-a ograničava samo
+  pokretanje, inače bi njegov istek kasnije ubio Neovim. Odstupanje od pravila iz `CLAUDE.md` za
+  dugoživuće procese; odlučiti u fazi 1 kako ga zapisati.
+- Putanja RPC socketa mora stati u `sun_path` (103 bajta na macOS-u); `Start` to provjerava unaprijed.
+- `coder` je registriran od koraka 3 (agent se pojavio u sesiji nakon koraka 2).
 
 ### API-ji koje treba potvrditi prije upotrebe
 

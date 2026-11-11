@@ -36,6 +36,12 @@ tasks:
     cmds:
       - go test ./...
 
+  test:race:
+    summary: Runs all Go tests with the race detector
+    deps: [common:build:frontend]
+    cmds:
+      - go test -race ./...
+
   lint:
     summary: Runs golangci-lint and the frontend type check
     deps: [common:build:frontend]

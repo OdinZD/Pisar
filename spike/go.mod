@@ -2,7 +2,11 @@ module Pisar/spike
 
 go 1.26.0
 
-require github.com/wailsapp/wails/v3 v3.1.0
+require (
+	github.com/creack/pty v1.1.24
+	github.com/neovim/go-client v1.2.1
+	github.com/wailsapp/wails/v3 v3.1.0
+)
 
 require (
 	github.com/coder/websocket v1.8.14 // indirect
