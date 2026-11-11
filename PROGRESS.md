@@ -4,9 +4,9 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 0 — Spike (plan odobren 2026-11-11, još nije započeta)
-- Sljedeći korak: faza 0, korak 1 (kostur u `spike/`)
-- Zadnja izmjena: 2026-11-11 (priprema repozitorija)
+- Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
+- Sljedeći korak: faza 0, korak 2 (Neovim proces: PTY + RPC)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 1 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -42,6 +42,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   `--listen <socket u privremenoj mapi>`. Korisnikova konfiguracija se ne učitava i ne dira.
 - Izlaz PTY-ja ide Wails događajima; propusnost se mjeri. Drugi prijenos je promjena stacka (STOP).
 - Koraci idu redom, bez paralelnih agenata.
+- Dok `coder` nije registriran u sesiji (učitava se tek pri pokretanju), korake radi general-purpose
+  agent na Sonnetu s uputama iz `.claude/agents/coder.md` na početku briefa (odobrio vlasnik 2026-11-11).
 
 ### Ovisnosti (odobrene)
 
@@ -50,8 +52,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 
 ### Koraci
 
-- [ ] 1. Kostur: `wails3 init -n spike -t svelte`, Wails na v3.1.0, zadaci `test` i `lint`,
-      `.golangci.yml` kao u Tragu; prazan prozor se gradi i otvara
+- [x] 1. Kostur: `wails3 init -n spike -t svelte -mod Pisar/spike`, Wails na v3.1.0, zadaci `test` i
+      `lint`, `.golangci.yml` kao u Tragu; aplikacija se gradi (`spike/bin/spike`) i pokreće
 - [ ] 2. Neovim proces (Go): PTY, promjena veličine, RPC preko socketa, uredno gašenje; integracijski
       testovi s pravim `nvim`-om (otvaranje datoteke, obavijest nakon `:w`, nema procesa nakon `Close`)
 - [ ] 3. Most PTY ↔ frontend: Wails servis (`Write`, `Resize`), događaji s izlazom grupirani po
