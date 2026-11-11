@@ -34,5 +34,8 @@
   "errorUnsupportedKind": "Nove .docx i .doc dokumente za sada nije moguće stvoriti, a vrsta dokumenta se ne mijenja preimenovanjem.",
   "errorNotRunning": "Uređivač trenutno nije pokrenut.",
   "errorNvimMissing": "Neovim nije pronađen. Instaliraj ga naredbom: brew install neovim",
-  "errorUnnamedBuffer": "Dokument bez naziva ne može se spremiti. U uređivaču ga spremi naredbom :w s nazivom datoteke."
+  "errorUnnamedBuffer": "Dokument bez naziva ne može se spremiti. U uređivaču ga spremi naredbom :w s nazivom datoteke.",
+  "openUnsupportedNotice": "Otvaranje .docx i .doc dokumenata dolazi u sljedećoj fazi.",
+  "documentSaved": "Spremljeno",
+  "documentModified": "Izmijenjeno"
 }

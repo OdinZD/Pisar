@@ -5,7 +5,10 @@ import type { DirRow, DocRow, ProjectRow } from './tree'
 const base = { key: 'k', projectId: 'p', depth: 0 }
 const project: ProjectRow = { ...base, type: 'project', name: 'P', expanded: true, missing: false, note: null }
 const folder: DirRow = { ...base, type: 'dir', rel: 'd', name: 'd', expanded: false }
-const doc: DocRow = { ...base, type: 'doc', rel: 'a.md', fileName: 'a.md', title: 'a', kindLabel: 'MD' }
+const doc: DocRow = { ...base, type: 'doc', rel: 'a.md', fileName: 'a.md', title: 'a', kind: 'md', kindLabel: 'MD' }
+const txt: DocRow = { ...doc, key: 'k2', rel: 'mapa/b.txt', fileName: 'b.txt', kind: 'txt', kindLabel: 'TXT' }
+const word: DocRow = { ...doc, rel: 'c.docx', fileName: 'c.docx', kind: 'docx', kindLabel: 'DOCX' }
+const oldWord: DocRow = { ...word, rel: 'd.doc', fileName: 'd.doc', kind: 'doc', kindLabel: 'DOC' }
 const press = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({ key, metaKey: false, ctrlKey: false, altKey: false, ...mods })
 
 describe('keyToAction', () => {
@@ -16,7 +19,10 @@ describe('keyToAction', () => {
     ['ArrowUp', folder, { type: 'move', delta: -1 }],
     ['Enter', folder, { type: 'toggle' }],
     ['Enter', project, { type: 'toggle' }],
-    ['Enter', doc, null],
+    ['Enter', doc, { type: 'open', projectId: 'p', rel: 'a.md' }],
+    ['Enter', txt, { type: 'open', projectId: 'p', rel: 'mapa/b.txt' }],
+    ['Enter', word, { type: 'unsupported' }],
+    ['Enter', oldWord, { type: 'unsupported' }],
     ['Enter', null, null],
     ['a', doc, { type: 'new-document' }],
     ['a', null, { type: 'new-document' }],

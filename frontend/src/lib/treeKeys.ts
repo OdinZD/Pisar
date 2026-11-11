@@ -1,8 +1,9 @@
+import { activateAction, type ActivateAction } from './activeDocument'
 import type { ItemRow } from './tree'
 
 export type TreeAction =
   | { type: 'move'; delta: 1 | -1 }
-  | { type: 'toggle' }
+  | ActivateAction
   | { type: 'new-document' }
   | { type: 'rename' }
   | { type: 'trash' }
@@ -30,9 +31,7 @@ export function keyToAction(ev: KeyLike, row: ItemRow | null): TreeAction | null
     case 'ArrowUp':
       return { type: 'move', delta: -1 }
     case 'Enter':
-      if (row?.type === 'project' || row?.type === 'dir') return { type: 'toggle' }
-      // Phase 2: Enter on a document will open it in the editor. Intentionally nothing yet.
-      return null
+      return row ? activateAction(row) : null
     case 'a':
       return { type: 'new-document' }
     case 'r':

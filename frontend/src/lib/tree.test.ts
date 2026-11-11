@@ -11,7 +11,6 @@ import {
   reconcileSelection,
   rowKey,
   sortNodes,
-  toolbarInfo,
   withOverlay,
   type ProjectRef,
   type TreeNode,
@@ -74,7 +73,7 @@ describe('buildRows', () => {
 
     const open = buildRows([p1], trees({ p1: nodes }), new Map([[rowKey('p1', 'mapa'), true]]))
     const inner = open.find((r) => r.key === rowKey('p1', 'mapa/Članak.docx'))
-    expect(inner).toMatchObject({ type: 'doc', depth: 2, title: 'Članak', kindLabel: 'DOCX' })
+    expect(inner).toMatchObject({ type: 'doc', depth: 2, title: 'Članak', kind: 'docx', kindLabel: 'DOCX' })
     expect(open.find((r) => r.key === rowKey('p1', 'mapa'))).toMatchObject({ depth: 1, expanded: true })
   })
 
@@ -220,6 +219,13 @@ describe('withOverlay', () => {
     expect(shown.map((r) => r.type)).toEqual(['project', 'confirm', 'dir', 'doc', 'message'])
   })
 
+  it('draws a notice in the error tone unless it asks for the muted one', () => {
+    const key = rowKey('p1', 'a.md')
+    const tone = (notice: { key: string; text: string; tone?: 'error' | 'muted' }) => withOverlay(rows, { notice }).at(-1)
+    expect(tone({ key, text: 'x' })).toMatchObject({ type: 'message', tone: 'error', depth: 2 })
+    expect(tone({ key, text: 'x', tone: 'muted' })).toMatchObject({ type: 'message', tone: 'muted' })
+  })
+
   it('prunes parts whose row vanished', () => {
     const overlay = {
       create: { projectId: 'p1', dirRel: 'nema', error: null },
@@ -227,30 +233,6 @@ describe('withOverlay', () => {
       confirmRemove: 'p9',
     }
     expect(pruneOverlay(rows, overlay)).toEqual({ rename: overlay.rename })
-  })
-})
-
-describe('toolbarInfo', () => {
-  const rows = buildRows(
-    [p1],
-    trees({ p1: [dir('mapa', [dir('pod', [file('Članak.md', 'mapa/pod/Članak.md')], 'mapa/pod')], 'mapa'), file('Bilješke.md')] }),
-    new Map([
-      [rowKey('p1', 'mapa'), true],
-      [rowKey('p1', 'mapa/pod'), true],
-    ]),
-  )
-  it('shows only the project for a document in the root', () => {
-    expect(toolbarInfo([p1], rows, rowKey('p1', 'Bilješke.md'), 'Pisar')).toEqual({ title: 'Bilješke', path: 'Roman' })
-  })
-  it('shows project / folder / subfolder for a nested document', () => {
-    expect(toolbarInfo([p1], rows, rowKey('p1', 'mapa/pod/Članak.md'), 'Pisar')).toEqual({
-      title: 'Članak',
-      path: 'Roman / mapa / pod',
-    })
-  })
-  it('shows the app name without a selected document', () => {
-    expect(toolbarInfo([p1], rows, null, 'Pisar')).toEqual({ title: 'Pisar', path: '' })
-    expect(toolbarInfo([p1], rows, rowKey('p1', 'mapa'), 'Pisar')).toEqual({ title: 'Pisar', path: '' })
   })
 })
 

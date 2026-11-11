@@ -1,11 +1,13 @@
 <script lang="ts">
   import { strings } from '../strings'
+  import { isActiveRow } from '../lib/activeDocument'
+  import type { EditorController } from '../lib/editorController.svelte'
   import { isItemRow } from '../lib/tree'
   import type { TreeController } from '../lib/treeController.svelte'
   import TreeField from './TreeField.svelte'
   import TreeRow from './TreeRow.svelte'
 
-  let { tree }: { tree: TreeController } = $props()
+  let { tree, editor }: { tree: TreeController; editor: EditorController } = $props()
 
   let treeEl: HTMLElement | undefined = $state()
 
@@ -16,7 +18,7 @@
   const rowId = (i: number) => `tree-row-${i}`
   const activeIndex = $derived(tree.displayRows.findIndex((r) => isItemRow(r) && r.key === tree.selectedKey))
 
-  // One handler for all rows: a click selects the row (and toggles a project or folder).
+  // One handler for all rows: a click selects the row (and toggles a project or folder, or opens a document).
   function onclick(e: MouseEvent) {
     const el = e.target instanceof Element ? e.target.closest('[data-index]') : null
     const row = el ? tree.displayRows[Number((el as HTMLElement).dataset.index)] : undefined
@@ -45,7 +47,13 @@
   >
     {#each tree.displayRows as row, i (row.key)}
       {#if isItemRow(row)}
-        <TreeRow {row} id={rowId(i)} index={i} selected={row.key === tree.selectedKey} />
+        <TreeRow
+          {row}
+          id={rowId(i)}
+          index={i}
+          selected={row.key === tree.selectedKey}
+          active={isActiveRow(row, editor.active)}
+        />
       {:else if row.type === 'message'}
         <p class="message {row.tone}" role="none" style:--depth={row.depth}>{row.text}</p>
       {:else if row.type === 'input'}

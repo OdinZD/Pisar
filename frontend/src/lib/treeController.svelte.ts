@@ -5,7 +5,9 @@ import { MenuNewDocument, ProjectChanged, ProjectsChanged } from '../../bindings
 import * as service from '../../bindings/Pisar/projectservice'
 import type { ProjectInfo } from '../../bindings/Pisar/models'
 import { strings } from '../strings'
+import { activateAction, activeRowKey, revealExpansion, selectionForActive, type ActivateAction } from './activeDocument'
 import { errorCode } from './apiError'
+import type { ActiveDocument } from './editorState'
 import { errorMessage } from './errorMessage'
 import { createLatestTracker } from './latest'
 import {
@@ -18,7 +20,6 @@ import {
   reconcileSelection,
   rowKey,
   toggleExpansion,
-  toolbarInfo,
   withOverlay,
   type Expansion,
   type ItemRow,
@@ -28,6 +29,12 @@ import {
 import { keyToAction, type KeyLike } from './treeKeys'
 
 const PROJECTS_KEY = '\u0000projects'
+
+/** The part of the editor the tree needs; EditorController satisfies it. */
+export interface EditorPort {
+  open(projectId: string, rel: string): Promise<void>
+  focusTerminal(): void
+}
 
 export class TreeController {
   projects = $state.raw<ProjectInfo[]>([])
@@ -46,9 +53,17 @@ export class TreeController {
   displayRows = $derived(withOverlay(this.rows, this.overlay))
   selectedRow = $derived<ItemRow | null>(this.rows.find((r): r is ItemRow => isItemRow(r) && r.key === this.selectedKey) ?? null)
   canCreate = $derived(newDocumentTarget(this.rows, this.selectedKey, this.projects) !== null)
-  toolbar = $derived(toolbarInfo(this.projects, this.rows, this.selectedKey, strings.appName))
 
   #latest = createLatestTracker()
+  #editor: EditorPort
+  // Counts open attempts so only the newest one reports its outcome (a newer open replaces an older one).
+  #openSeq = 0
+  // The active document's row, when the tree did not have it yet: selected as soon as it appears.
+  #pendingSelectKey: string | null = null
+
+  constructor(editor: EditorPort) {
+    this.#editor = editor
+  }
 
   /** Loads everything and subscribes to refresh events. Returns the cleanup that unsubscribes them. */
   start(): () => void {
@@ -74,6 +89,27 @@ export class TreeController {
     const after = this.rows
     this.selectedKey = reconcileSelection(before, after, this.selectedKey)
     this.overlay = pruneOverlay(after, this.overlay)
+    if (this.#pendingSelectKey !== null && after.some((r) => isItemRow(r) && r.key === this.#pendingSelectKey)) {
+      this.selectedKey = this.#pendingSelectKey
+      this.#pendingSelectKey = null
+    }
+  }
+
+  /**
+   * Neovim has another document in front of it (opened from here or by `:e`, `:bnext`): open the
+   * folders to it and select its row. Called from an effect in App.svelte, which wraps the call in
+   * untrack(): this method reads and writes tree state and must not become a dependency of that effect.
+   */
+  followActive(active: ActiveDocument | null): void {
+    const key = activeRowKey(active)
+    this.#pendingSelectKey = null
+    if (key === null) return // no document, or one outside the projects: the selection stays
+    this.#change(() => {
+      this.expansion = revealExpansion(this.expansion, active)
+    })
+    this.selectedKey = selectionForActive(this.rows, this.selectedKey, active)
+    // The tree may not have the row yet (still loading, or the file was just created).
+    if (this.selectedKey !== key) this.#pendingSelectKey = key
   }
 
   async loadProjects(): Promise<void> {
@@ -146,10 +182,13 @@ export class TreeController {
     this.#clearNotices()
     switch (action.type) {
       case 'move':
+        this.#pendingSelectKey = null // the user is navigating: do not pull the selection away later
         this.selectedKey = moveSelection(this.rows, this.selectedKey, action.delta)
         break
       case 'toggle':
-        this.toggleSelected()
+      case 'open':
+      case 'unsupported':
+        this.#activate(action)
         break
       case 'new-document':
         this.startCreate()
@@ -179,9 +218,45 @@ export class TreeController {
   clickRow(row: ItemRow): void {
     this.#clearNotices()
     this.overlay = { ...this.overlay, confirmRemove: undefined }
+    this.#pendingSelectKey = null
     this.selectedKey = row.key
-    this.toggleSelected()
+    this.#activate(activateAction(row))
+    // After a successful open the focus moves on to the terminal; until then (and on failure) it stays here.
     this.focusTree()
+  }
+
+  // ---- open -----------------------------------------------------------------------------------
+
+  // Acts on the selected row. Opening is deliberately not run through #exclusive: starting Neovim
+  // can take seconds and must not lock the tree; a newer open replaces an older one in the editor.
+  #activate(action: ActivateAction): void {
+    switch (action.type) {
+      case 'toggle':
+        this.toggleSelected()
+        break
+      case 'open':
+        void this.#open(action.projectId, action.rel)
+        break
+      case 'unsupported':
+        if (this.selectedKey !== null) {
+          this.overlay = { ...this.overlay, notice: { key: this.selectedKey, text: strings.openUnsupportedNotice, tone: 'muted' } }
+        }
+        break
+    }
+  }
+
+  async #open(projectId: string, rel: string): Promise<void> {
+    const seq = ++this.#openSeq
+    try {
+      await this.#editor.open(projectId, rel)
+    } catch (err) {
+      // An older attempt that was replaced has nothing to report: the newer one decides.
+      if (seq === this.#openSeq) {
+        this.overlay = { ...this.overlay, notice: { key: rowKey(projectId, rel), text: errorMessage(errorCode(err)) } }
+      }
+      return
+    }
+    if (seq === this.#openSeq) this.#editor.focusTerminal()
   }
 
   // ---- new document ---------------------------------------------------------------------------

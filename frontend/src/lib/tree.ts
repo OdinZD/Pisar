@@ -52,6 +52,8 @@ export interface DocRow extends RowBase {
   fileName: string
   /** shown name, without extension */
   title: string
+  /** document kind as the service reports it: `md`, `txt`, `docx` or `doc` */
+  kind: string
   kindLabel: string
 }
 export interface MessageRow extends RowBase {
@@ -137,6 +139,7 @@ function pushNodes(
         rel: node.rel,
         fileName: node.name,
         title: displayName(node.name, node.kind),
+        kind: node.kind,
         kindLabel: kindLabel(node.kind),
       })
     }
@@ -255,11 +258,12 @@ export interface Overlay {
   create?: CreateTarget & { error: string | null }
   rename?: { key: string; error: string | null }
   confirmRemove?: string
-  notice?: { key: string; text: string }
+  /** a message under a row; `tone` defaults to `error` (`muted` is for information, not failure) */
+  notice?: { key: string; text: string; tone?: 'error' | 'muted' }
 }
 
-function overlayMessage(row: RowBase, suffix: string, text: string): MessageRow {
-  return { type: 'message', key: `${row.key}${suffix}`, projectId: row.projectId, depth: row.depth, text, tone: 'error' }
+function overlayMessage(row: RowBase, suffix: string, text: string, tone: MessageRow['tone'] = 'error'): MessageRow {
+  return { type: 'message', key: `${row.key}${suffix}`, projectId: row.projectId, depth: row.depth, text, tone }
 }
 
 /** Rows plus the transient rows of the overlay. Navigation uses `rows`, rendering uses this. */
@@ -287,7 +291,7 @@ export function withOverlay(rows: readonly Row[], overlay: Overlay): DisplayRow[
       out.push({ type: 'confirm', key: `${row.key}confirm`, projectId: row.projectId, depth: row.depth + 1 })
     }
     if (overlay.notice?.key === row.key) {
-      out.push(overlayMessage({ ...row, depth: row.depth + 1 }, 'notice', overlay.notice.text))
+      out.push(overlayMessage({ ...row, depth: row.depth + 1 }, 'notice', overlay.notice.text, overlay.notice.tone))
     }
   }
   return out
@@ -303,24 +307,4 @@ export function pruneOverlay(rows: readonly Row[], overlay: Overlay): Overlay {
   if (confirmRemove !== undefined && has(rowKey(confirmRemove, ''))) next.confirmRemove = confirmRemove
   if (notice && has(notice.key)) next.notice = notice
   return next
-}
-
-export interface ToolbarInfo {
-  title: string
-  /** "Project / folder / subfolder"; empty when no document is selected */
-  path: string
-}
-
-/** Toolbar text for the selected row: only a document shows its name and location. */
-export function toolbarInfo(
-  projects: readonly ProjectRef[],
-  rows: readonly Row[],
-  selectedKey: string | null,
-  appName: string,
-): ToolbarInfo {
-  const doc = rows.find((r): r is DocRow => r.type === 'doc' && r.key === selectedKey)
-  if (!doc) return { title: appName, path: '' }
-  const project = projects.find((p) => p.id === doc.projectId)
-  const folders = doc.rel.split('/').slice(0, -1)
-  return { title: doc.title, path: [project?.name ?? '', ...folders].filter((s) => s !== '').join(' / ') }
 }

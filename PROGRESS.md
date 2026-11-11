@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 6 (otvaranje iz stabla i praćenje)
+- Sljedeći korak: faza 2, korak 6b (preimenovanje i Smeće za dokument otvoren u Neovimu)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 5 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 6 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -485,7 +485,22 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         Neovim radi, `Start` ponovno javlja aktivni dokument i njegovo stanje.
       - Tipke i `Resize` pristigli prije nego `Start` završi se odbacuju.
       - Komponente i `editorController` nemaju testove (vitest bez DOM-a); logika je u `editorState`
-- [ ] 6. Otvaranje i praćenje: `↵` / klik, poruka za `.docx`, aktivni dokument u stablu, stanje u traci
+- [x] 6. Otvaranje i praćenje (frontend): `↵` / klik na `.md` / `.txt` zove `editor.open` i fokus prelazi
+      u terminal; `.docx` / `.doc` daju prigušenu poruku bez poziva servisa; aktivni dokument je u
+      akcentu (`aria-current`), odabrani red u `bg.selected`; stablo se raširi do aktivnog dokumenta i
+      odabir ga prati; alatna traka pokazuje naziv, putanju i „Izmijenjeno” / „Spremljeno”
+      (`lib/activeDocument.ts`); vitest 362.
+      - Promjene prema fazi 1: akcentom je ispunjen AKTIVNI dokument (ne odabrani); traka pokazuje
+        aktivni dokument (ne odabrani red). Očekivanja u `treeKeys.test.ts` i `tree.test.ts` su
+        prilagođena tome.
+      - Otvaranje nije pod zaštitom „jedna radnja servisa odjednom”, da pokretanje Neovima ne zaključa
+        stablo; vrijedi samo najnoviji pokušaj.
+      - Dimna provjera agenta (bez tipki; naredbe Neovimu preko njegova socketa): promjena buffera →
+        `document:active` s novim `rel`; izmjena → `modified=true`; zapis → `modified=false`, sadržaj
+        na disku promijenjen.
+- [ ] 6b. (dodano izvan plana, odobrio vlasnik 2026-11-11) Preimenovanje i Smeće za dokument otvoren u
+      Neovimu: s nespremljenim izmjenama se odbija uz poruku; bez izmjena Neovim zatvara stari buffer
+      i, ako je bio aktivan, otvara dokument pod novim imenom
 - [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu
 - [ ] 8. Gašenje: dijalog Spremi / Odbaci / Odustani
 - [ ] 9. Dimne provjere prave aplikacije: `scripts/smoke.sh`, `scripts/shutdown.sh`

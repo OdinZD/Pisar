@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ItemRow } from '../lib/tree'
 
-  let { row, id, index, selected }: { row: ItemRow; id: string; index: number; selected: boolean } = $props()
+  // `selected` is the keyboard cursor of the tree; `active` is the document Neovim has open.
+  let { row, id, index, selected, active }: { row: ItemRow; id: string; index: number; selected: boolean; active: boolean } = $props()
 
   let el: HTMLElement | undefined = $state()
 
@@ -17,11 +18,13 @@
   {id}
   class="row {row.type}"
   class:selected
+  class:active
   class:missing={row.type === 'project' && row.missing}
   style:--depth={row.depth}
   role="treeitem"
   data-index={index}
   aria-selected={selected}
+  aria-current={active ? 'true' : undefined}
   aria-level={row.depth + 1}
   aria-expanded={row.type === 'doc' ? undefined : row.expanded}
 >
@@ -82,11 +85,12 @@
   .selected {
     background: var(--bg-selected);
   }
-  .doc.selected {
+  /* The open document is filled with the accent, whether or not the cursor is on it. */
+  .doc.active {
     background: var(--accent);
     color: var(--accent-text);
   }
-  .doc.selected .kind {
+  .doc.active .kind {
     color: var(--accent-text);
   }
 </style>
