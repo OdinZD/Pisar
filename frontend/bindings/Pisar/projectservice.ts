@@ -50,7 +50,10 @@ export function RemoveProject(id: string): $CancellablePromise<void> {
 }
 
 /**
- * RenameDocument renames the document rel and returns its new state.
+ * RenameDocument renames the document rel and returns its new state. A
+ * document that is open in the editor with unsaved changes is not renamed: the
+ * editor would write the old file back at the next save. Otherwise the editor
+ * closes the old buffer and, when it was the current one, opens the new file.
  */
 export function RenameDocument(id: string, rel: string, newName: string): $CancellablePromise<project$0.Node> {
     return $Call.ByID(1480994167, id, rel, newName);

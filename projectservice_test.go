@@ -14,6 +14,7 @@ import (
 
 	"Pisar/internal/config"
 	"Pisar/internal/docsafe"
+	"Pisar/internal/nvim"
 	"Pisar/internal/project"
 )
 
@@ -43,6 +44,45 @@ func (f *fakeDialogs) ConfirmTrash(name string) (bool, error) {
 }
 
 func (f *fakeDialogs) set(fn func(*fakeDialogs)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn(f)
+}
+
+// fakeOpen is the editor as the project service sees it: it records what it was
+// told and answers what the test sets.
+type fakeOpen struct {
+	mu         sync.Mutex
+	open       bool  // unsaved reports this
+	unsavedErr error // unsaved fails with this
+	tellErr    error // renamed and removed fail with this
+	asked      []string
+	renames    [][2]string
+	removes    []string
+}
+
+func (f *fakeOpen) unsaved(_ context.Context, path string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.asked = append(f.asked, path)
+	return f.open, f.unsavedErr
+}
+
+func (f *fakeOpen) renamed(_ context.Context, oldPath, newPath string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.renames = append(f.renames, [2]string{oldPath, newPath})
+	return f.tellErr
+}
+
+func (f *fakeOpen) removed(_ context.Context, path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removes = append(f.removes, path)
+	return f.tellErr
+}
+
+func (f *fakeOpen) set(fn func(*fakeOpen)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	fn(f)
@@ -101,6 +141,7 @@ type env struct {
 	store   *config.Store
 	svc     *ProjectService
 	dlg     *fakeDialogs
+	ed      *fakeOpen
 	src     *fakeSource
 	trashFn func(name string, args []string) error // fake trash tool
 
@@ -151,7 +192,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Limits)) *env {
 	for _, m := range mutate {
 		m(&limits)
 	}
-	e := &env{t: t, home: home, store: store, dlg: &fakeDialogs{}, src: &fakeSource{}}
+	e := &env{t: t, home: home, store: store, dlg: &fakeDialogs{}, ed: &fakeOpen{}, src: &fakeSource{}}
 	// The fake tool really removes the file: docsafe checks that it is gone.
 	run := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		e.mu.Lock()
@@ -171,7 +212,7 @@ func newEnv(t *testing.T, mutate ...func(*config.Limits)) *env {
 		t.Fatal(err)
 	}
 	svc, err := newProjectService(projectServiceDeps{
-		Store: store, Docs: docs, Dialogs: e.dlg, Source: e.src, Emit: e.emit, Limits: limits,
+		Store: store, Docs: docs, Dialogs: e.dlg, Editor: e.ed, Source: e.src, Emit: e.emit, Limits: limits,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -540,6 +581,140 @@ func TestRenameDocument(t *testing.T) {
 	wantCode(t, err, codeNotFound)
 }
 
+func TestRenameOpen(t *testing.T) {
+	ctx := context.Background()
+	setup := func(t *testing.T) (*env, ProjectInfo, string) {
+		e := newEnv(t)
+		info, root := e.addProject()
+		write(t, filepath.Join(root, "dir", "old.md"), "text")
+		return e, info, root
+	}
+
+	t.Run("unsaved", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.ed.set(func(f *fakeOpen) { f.open = true })
+		_, err := e.svc.RenameDocument(ctx, info.ID, "dir/old.md", "fresh.md")
+		wantCode(t, err, codeUnsavedChanges)
+		if !exists(filepath.Join(root, "dir", "old.md")) || exists(filepath.Join(root, "dir", "fresh.md")) {
+			t.Fatal("the disk changed")
+		}
+		if len(e.emits()) != 0 || len(e.ed.renames) != 0 {
+			t.Fatalf("events %+v, renamed calls %v", e.emits(), e.ed.renames)
+		}
+	})
+
+	t.Run("saved", func(t *testing.T) {
+		e, info, root := setup(t)
+		if _, err := e.svc.RenameDocument(ctx, info.ID, "dir/old.md", "fresh.md"); err != nil {
+			t.Fatal(err)
+		}
+		if !exists(filepath.Join(root, "dir", "fresh.md")) || exists(filepath.Join(root, "dir", "old.md")) {
+			t.Fatal("not renamed")
+		}
+		want := [][2]string{{filepath.Join(root, "dir", "old.md"), filepath.Join(root, "dir", "fresh.md")}}
+		if !reflect.DeepEqual(e.ed.renames, want) {
+			t.Fatalf("renamed calls = %v, want %v", e.ed.renames, want)
+		}
+		if !slices.Equal(e.ed.asked, []string{want[0][0]}) {
+			t.Fatalf("asked about %v", e.ed.asked)
+		}
+		if e.count(eventProjectChanged, info.ID) != 1 {
+			t.Fatalf("events = %+v", e.emits())
+		}
+	})
+
+	t.Run("editor not told is not an error", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.ed.set(func(f *fakeOpen) { f.tellErr = errors.New("nvim went away") })
+		node, err := e.svc.RenameDocument(ctx, info.ID, "dir/old.md", "fresh.md")
+		if err != nil || node.Rel != "dir/fresh.md" {
+			t.Fatalf("got %+v, %v; want success", node, err)
+		}
+		if !exists(filepath.Join(root, "dir", "fresh.md")) || e.count(eventProjectChanged, info.ID) != 1 {
+			t.Fatalf("renamed = %v, events = %+v", exists(filepath.Join(root, "dir", "fresh.md")), e.emits())
+		}
+	})
+
+	t.Run("editor cannot tell: refused", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.ed.set(func(f *fakeOpen) { f.unsavedErr = errors.New("rpc broke") })
+		_, err := e.svc.RenameDocument(ctx, info.ID, "dir/old.md", "fresh.md")
+		wantCode(t, err, codeInternal)
+		if !exists(filepath.Join(root, "dir", "old.md")) || len(e.emits()) != 0 || len(e.ed.renames) != 0 {
+			t.Fatal("renamed blind")
+		}
+	})
+}
+
+func TestTrashOpen(t *testing.T) {
+	ctx := context.Background()
+	setup := func(t *testing.T) (*env, ProjectInfo, string) {
+		e := newEnv(t)
+		info, root := e.addProject()
+		write(t, filepath.Join(root, "dir", "doc.md"), "text")
+		return e, info, root
+	}
+
+	t.Run("unsaved", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+		e.ed.set(func(f *fakeOpen) { f.open = true })
+		wantCode(t, e.svc.TrashDocument(ctx, info.ID, "dir/doc.md"), codeUnsavedChanges)
+		if len(e.dlg.confirmed) != 0 || len(e.trashRuns()) != 0 || len(e.ed.removes) != 0 {
+			t.Fatalf("dialog %v, tool %v, removed %v", e.dlg.confirmed, e.trashRuns(), e.ed.removes)
+		}
+		if !exists(filepath.Join(root, "dir", "doc.md")) || len(e.emits()) != 0 {
+			t.Fatal("the disk or the tree changed")
+		}
+	})
+
+	t.Run("confirmed", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+		if err := e.svc.TrashDocument(ctx, info.ID, "dir/doc.md"); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.trashRuns()) != 1 || !slices.Equal(e.ed.removes, []string{filepath.Join(root, "dir", "doc.md")}) {
+			t.Fatalf("tool %v, removed %v", e.trashRuns(), e.ed.removes)
+		}
+		if e.count(eventProjectChanged, info.ID) != 1 {
+			t.Fatalf("events = %+v", e.emits())
+		}
+	})
+
+	t.Run("declined", func(t *testing.T) {
+		e, info, _ := setup(t)
+		if err := e.svc.TrashDocument(ctx, info.ID, "dir/doc.md"); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.trashRuns()) != 0 || len(e.ed.removes) != 0 || len(e.emits()) != 0 {
+			t.Fatalf("tool %v, removed %v, events %v", e.trashRuns(), e.ed.removes, e.emits())
+		}
+	})
+
+	t.Run("editor not told is not an error", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+		e.ed.set(func(f *fakeOpen) { f.tellErr = errors.New("nvim went away") })
+		if err := e.svc.TrashDocument(ctx, info.ID, "dir/doc.md"); err != nil {
+			t.Fatal(err)
+		}
+		if exists(filepath.Join(root, "dir", "doc.md")) || e.count(eventProjectChanged, info.ID) != 1 {
+			t.Fatalf("still there = %v, events = %+v", exists(filepath.Join(root, "dir", "doc.md")), e.emits())
+		}
+	})
+
+	t.Run("editor cannot tell: refused, no dialog", func(t *testing.T) {
+		e, info, root := setup(t)
+		e.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+		e.ed.set(func(f *fakeOpen) { f.unsavedErr = errors.New("rpc broke") })
+		wantCode(t, e.svc.TrashDocument(ctx, info.ID, "dir/doc.md"), codeInternal)
+		if len(e.dlg.confirmed) != 0 || len(e.trashRuns()) != 0 || !exists(filepath.Join(root, "dir", "doc.md")) {
+			t.Fatal("went ahead blind")
+		}
+	})
+}
+
 func TestTrashDocument(t *testing.T) {
 	setup := func(t *testing.T) (*env, ProjectInfo, string) {
 		e := newEnv(t)
@@ -690,6 +865,8 @@ func TestCodeOf(t *testing.T) {
 		{"unsupported kind", docsafe.ErrUnsupportedKind, codeUnsupportedKind},
 		{"not document", docsafe.ErrNotDocument, codeNotDocument},
 		{"not a directory", config.ErrNotADirectory, codeNotADirectory},
+		{"unsaved", errUnsaved, codeUnsavedChanges},
+		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
 		{"deadline", context.DeadlineExceeded, codeCanceled},
 		{"canceled", context.Canceled, codeCanceled},
 		{"unknown", errors.New("whatever"), codeInternal},

@@ -352,6 +352,40 @@ func (s *Session) Modified(ctx context.Context) ([]nvim.Buffer, error) {
 	return bufs, err
 }
 
+// Buffers returns the listed buffers that have a file. Without a process it
+// returns an empty list and nil: no Neovim means no open documents.
+func (s *Session) Buffers(ctx context.Context) ([]nvim.Buffer, error) {
+	p, err := s.proc()
+	if errors.Is(err, nvim.ErrNotRunning) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	bufs, err := p.Buffers(ctx)
+	if errors.Is(err, nvim.ErrNotRunning) {
+		return nil, nil // quit between proc and the call
+	}
+	return bufs, err
+}
+
+// Wipe removes the buffer that holds the file at path; see nvim.Process.Wipe.
+// Without a process it reports false and nil: there is nothing to close.
+func (s *Session) Wipe(ctx context.Context, path string) (bool, error) {
+	p, err := s.proc()
+	if errors.Is(err, nvim.ErrNotRunning) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	was, err := p.Wipe(ctx, path)
+	if errors.Is(err, nvim.ErrNotRunning) {
+		return false, nil // quit between proc and the call
+	}
+	return was, err
+}
+
 // Save writes the current buffer to its file.
 func (s *Session) Save(ctx context.Context) error {
 	p, err := s.proc()

@@ -88,6 +88,8 @@ var (
 	ErrSocketPathTooLong = errors.New("nvim: socket path too long")
 	// ErrUnnamedBuffer is returned (wrapped) by SaveAll when a modified buffer has no file to write to.
 	ErrUnnamedBuffer = errors.New("nvim: a modified buffer has no file name")
+	// ErrBufferModified is returned (wrapped) by Wipe for a buffer with unsaved changes.
+	ErrBufferModified = errors.New("nvim: buffer has unsaved changes")
 )
 
 // Options configures Start. Cols, Rows, StartTimeout and StopTimeout are
@@ -568,6 +570,107 @@ func (p *Process) Modified(ctx context.Context) ([]Buffer, error) {
 		return nil, err
 	}
 	return bufs, nil
+}
+
+// Buffers returns every listed buffer that has a file, in buffer-number order
+// (nvim_list_bufs order). Unnamed buffers and those that are not ordinary files
+// (help, quickfix, terminal...) are left out.
+func (p *Process) Buffers(ctx context.Context) ([]Buffer, error) {
+	var bufs []Buffer
+	err := p.execLua(ctx, "list buffers", &bufs, bufferLua+`
+		local out = {}
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.bo[b].buflisted then
+				local name = pathOf(b)
+				if name ~= "" then
+					table.insert(out, { Path = name, Modified = vim.bo[b].modified })
+				end
+			end
+		end
+		return out`)
+	if err != nil {
+		return nil, err
+	}
+	return bufs, nil
+}
+
+// Wipe removes the buffer that holds the file at path, if there is one, and
+// reports whether it was the current buffer. A buffer with unsaved changes is
+// not wiped: the error is ErrBufferModified. No buffer for that file: (false, nil).
+//
+// The buffer is wiped, not just deleted (:help :bwipeout, :help :bdelete):
+// :bdelete leaves the buffer in the buffer list as an unlisted one that keeps
+// its name, so ":edit #" or an alternate-file mapping would bring the old name
+// back; wiping forgets it completely. Wiping the current buffer needs no
+// special care: Neovim shows the alternate or another buffer in its window,
+// or a new empty one when it was the last, and never closes the last window
+// (measured with Neovim 0.12). BufEnter then fires for the buffer that took
+// its place, which is how Go learns about it (see init.lua).
+//
+// The file is found by name, not by what is on disk: it may have been renamed
+// or trashed just before the call, so bufnr(path), which compares file
+// identities when the file exists, cannot be relied on.
+func (p *Process) Wipe(ctx context.Context, path string) (wasCurrent bool, err error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false, fmt.Errorf("nvim: wipe buffer: %w", err)
+	}
+	var res struct {
+		Modified bool
+		Current  bool
+	}
+	err = p.execLua(ctx, "wipe buffer", &res, bufferLua+`
+		-- Neovim stores a buffer name with the symbolic links of its folder
+		-- resolved (/private/var/... for /var/...) and the file name as given.
+		-- Do the same for both sides, and for a folder that is gone, resolve the
+		-- nearest one that exists (vim.uv.fs_realpath returns nil for a path that
+		-- does not exist; measured with Neovim 0.12).
+		local function normalize(file)
+			local dir, tail = vim.fs.dirname(file), vim.fs.basename(file)
+			while true do
+				local real = vim.uv.fs_realpath(dir)
+				if real then return vim.fs.joinpath(real, tail) end
+				local parent = vim.fs.dirname(dir)
+				if parent == dir then return file end
+				tail = vim.fs.joinpath(vim.fs.basename(dir), tail)
+				dir = parent
+			end
+		end
+
+		-- While a prompt is up the current buffer may be half loaded (see Save).
+		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
+			error("Neovim is waiting for an answer to a prompt; no buffer was removed", 0)
+		end
+
+		local want = normalize((...))
+		local current = vim.api.nvim_get_current_buf()
+		local hits = {}
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			local name = pathOf(b)
+			if name ~= "" and normalize(name) == want then
+				table.insert(hits, b)
+			end
+		end
+		-- Checked for all before anything is removed, and without force: a
+		-- buffer with unsaved changes would otherwise be asked about (or lost).
+		for _, b in ipairs(hits) do
+			if vim.bo[b].modified then
+				return { Modified = true, Current = false }
+			end
+		end
+		local wasCurrent = false
+		for _, b in ipairs(hits) do
+			wasCurrent = wasCurrent or b == current
+			vim.api.nvim_buf_delete(b, {})
+		end
+		return { Modified = false, Current = wasCurrent }`, abs)
+	if err != nil {
+		return false, err
+	}
+	if res.Modified {
+		return false, fmt.Errorf("%w: %s", ErrBufferModified, path)
+	}
+	return res.Current, nil
 }
 
 // messageLua defines fit(msg, max) and show(msg) for the chunks that report

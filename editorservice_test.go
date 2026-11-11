@@ -1221,6 +1221,8 @@ func TestEdCodes(t *testing.T) {
 		{"binary not found", exec.ErrNotFound, codeNvimMissing},
 		{"binary not found (exec.Error)", &exec.Error{Name: "nvim", Err: exec.ErrNotFound}, codeNvimMissing},
 		{"unnamed buffer", nvim.ErrUnnamedBuffer, codeUnnamedBuffer},
+		{"unsaved", errUnsaved, codeUnsavedChanges},
+		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
 		{"already coded", &apiError{code: codeNotRunning}, codeNotRunning},
 		{"specific beats canceled", errors.Join(nvim.ErrNotRunning, context.Canceled), codeNotRunning},
 		{"unknown", errors.New("whatever"), codeInternal},
@@ -1299,5 +1301,250 @@ func TestEdInitialFileArg(t *testing.T) {
 func TestEdNew(t *testing.T) {
 	if _, err := newEditorService(editorServiceDeps{}); err == nil {
 		t.Error("no store and no emit must be an error")
+	}
+}
+
+func TestEdUnsaved(t *testing.T) {
+	ctx := context.Background()
+	t.Run("no editor", func(t *testing.T) {
+		e := newEd(t) // Neovim is never started
+		if got, err := e.svc.unsaved(ctx, "/x/a.md"); err != nil || got {
+			t.Fatalf("unsaved = %v, %v; want false, nil", got, err)
+		}
+		if err := e.svc.renamed(ctx, "/x/a.md", "/x/b.md"); err != nil {
+			t.Fatalf("renamed = %v", err)
+		}
+		if err := e.svc.removed(ctx, "/x/a.md"); err != nil {
+			t.Fatalf("removed = %v", err)
+		}
+	})
+
+	e := startEd(t)
+	p, dir := docFixture(t, e)
+	a, b := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.txt")
+	check := func(file string, want bool) {
+		t.Helper()
+		if got, err := e.svc.unsaved(ctx, file); err != nil || got != want {
+			t.Fatalf("unsaved(%s) = %v, %v; want %v", file, got, err, want)
+		}
+	}
+	check(a, false) // not open
+
+	if err := e.svc.OpenDocument(ctx, p.ID, "a.md"); err != nil {
+		t.Fatal(err)
+	}
+	check(a, false) // open, no changes
+	from := e.rec.mark()
+	if err := e.svc.Write("GoX"); err != nil {
+		t.Fatal(err)
+	}
+	e.rec.waitState(t, from, a, true)
+	check(a, true)
+	check(b, false)
+
+	// The path may come through a link to the folder, as a project root can.
+	link := filepath.Join(e.root, "ln")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	check(filepath.Join(link, "a.md"), true)
+}
+
+func TestEdRenamed(t *testing.T) {
+	ctx := context.Background()
+	t.Run("active", func(t *testing.T) {
+		e := startEd(t)
+		p, dir := docFixture(t, e)
+		a, z := filepath.Join(dir, "a.md"), filepath.Join(dir, "z.md")
+		if err := e.svc.OpenDocument(ctx, p.ID, "a.md"); err != nil {
+			t.Fatal(err)
+		}
+		e.rec.waitActive(t, 0, "a.md", func(d DocumentActive) bool { return d.Rel == "a.md" })
+		if err := os.Rename(a, z); err != nil {
+			t.Fatal(err)
+		}
+		from := e.rec.mark()
+		if err := e.svc.renamed(ctx, a, z); err != nil {
+			t.Fatal(err)
+		}
+		d := e.rec.waitActive(t, from, "z.md", func(d DocumentActive) bool { return d.Rel == "z.md" })
+		if d.ProjectID != p.ID || d.Name != "z.md" || !sameFile(d.Path, z) {
+			t.Fatalf("active = %+v", d)
+		}
+		bufs, err := e.svc.session.Buffers(ctx)
+		if err != nil || len(bufs) != 1 || !sameFile(bufs[0].Path, z) {
+			t.Fatalf("Buffers = %+v, %v; want only z.md", bufs, err)
+		}
+	})
+
+	t.Run("background", func(t *testing.T) {
+		e := startEd(t)
+		p, dir := docFixture(t, e)
+		a, z, b := filepath.Join(dir, "a.md"), filepath.Join(dir, "z.md"), filepath.Join(dir, "b.txt")
+		for _, rel := range []string{"a.md", "b.txt"} {
+			if err := e.svc.OpenDocument(ctx, p.ID, rel); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e.rec.waitActive(t, 0, "b.txt", func(d DocumentActive) bool { return d.Rel == "b.txt" })
+		if err := os.Rename(a, z); err != nil {
+			t.Fatal(err)
+		}
+		from := e.rec.mark()
+		if err := e.svc.renamed(ctx, a, z); err != nil {
+			t.Fatal(err)
+		}
+		// An edit gives a barrier: events come in order, so anything the
+		// rename sent has arrived once this one has.
+		if err := e.svc.Write("GoX"); err != nil {
+			t.Fatal(err)
+		}
+		e.rec.waitState(t, from, b, true)
+		for _, ev := range e.rec.since(from) {
+			if ev.name == eventDocumentActive {
+				t.Fatalf("the active document changed: %+v", ev)
+			}
+		}
+		bufs, err := e.svc.session.Buffers(ctx)
+		if err != nil || len(bufs) != 1 || !sameFile(bufs[0].Path, b) {
+			t.Fatalf("Buffers = %+v, %v; want only b.txt", bufs, err)
+		}
+	})
+}
+
+func TestEdRemoved(t *testing.T) {
+	ctx := context.Background()
+	e := startEd(t)
+	p, dir := docFixture(t, e)
+	a := filepath.Join(dir, "a.md")
+	if err := e.svc.OpenDocument(ctx, p.ID, "a.md"); err != nil {
+		t.Fatal(err)
+	}
+	e.rec.waitActive(t, 0, "a.md", func(d DocumentActive) bool { return d.Rel == "a.md" })
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+	from := e.rec.mark()
+	if err := e.svc.removed(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	d := e.rec.waitActive(t, from, "empty", func(d DocumentActive) bool { return d.Path == "" })
+	if d != (DocumentActive{}) {
+		t.Fatalf("active = %+v, want empty fields", d)
+	}
+	cur, err := e.svc.session.Current(ctx)
+	if err != nil || cur != (nvim.Buffer{}) {
+		t.Fatalf("Current = %+v, %v; want an unnamed buffer", cur, err)
+	}
+	if !e.svc.session.Running() {
+		t.Fatal("Neovim quit")
+	}
+	// The editor still takes documents.
+	if err := e.svc.OpenDocument(ctx, p.ID, "b.txt"); err != nil {
+		t.Fatalf("OpenDocument after removed: %v", err)
+	}
+}
+
+// bothEnv is a ProjectService and an EditorService over the same project, with
+// no fake between them.
+type bothEnv struct {
+	*edEnv
+	proj  *ProjectService
+	dlg   *fakeDialogs
+	info  config.Project
+	dir   string
+	trash int // calls of the fake trash tool
+	mu    sync.Mutex
+}
+
+func newBoth(t *testing.T) *bothEnv {
+	t.Helper()
+	e := startEd(t)
+	p, dir := docFixture(t, e)
+	b := &bothEnv{edEnv: e, dlg: &fakeDialogs{}, info: p, dir: dir}
+	run := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		b.mu.Lock()
+		b.trash++
+		b.mu.Unlock()
+		return nil, os.Remove(args[len(args)-1])
+	}
+	limits := e.store.Limits()
+	docs, err := docsafe.New(docsafe.Options{TrashBin: e.store.TrashBin(), Timeout: limits.CommandTimeout, Run: run})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.proj, err = newProjectService(projectServiceDeps{
+		Store: e.store, Docs: docs, Dialogs: b.dlg, Editor: e.svc, Source: &fakeSource{},
+		Emit: func(string, string) {}, Limits: limits,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(b.proj.shutdown)
+	return b
+}
+
+func TestBothRename(t *testing.T) {
+	b := newBoth(t)
+	ctx := context.Background()
+	if err := b.svc.OpenDocument(ctx, b.info.ID, "a.md"); err != nil {
+		t.Fatal(err)
+	}
+	b.rec.waitActive(t, 0, "a.md", func(d DocumentActive) bool { return d.Rel == "a.md" })
+
+	from := b.rec.mark()
+	node, err := b.proj.RenameDocument(ctx, b.info.ID, "a.md", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Rel != "b.md" || !exists(filepath.Join(b.dir, "b.md")) || exists(filepath.Join(b.dir, "a.md")) {
+		t.Fatalf("node = %+v; a.md exists %v", node, exists(filepath.Join(b.dir, "a.md")))
+	}
+	b.rec.waitActive(t, from, "b.md", func(d DocumentActive) bool { return d.Rel == "b.md" })
+
+	// A save writes the renamed file; the old one must not come back.
+	from = b.rec.mark()
+	if err := b.svc.Write("GoNEW"); err != nil {
+		t.Fatal(err)
+	}
+	b.rec.waitState(t, from, filepath.Join(b.dir, "b.md"), true)
+	if err := b.svc.Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := readString(t, filepath.Join(b.dir, "b.md")); !strings.Contains(got, "NEW") {
+		t.Fatalf("b.md = %q, want the saved text", got)
+	}
+	if exists(filepath.Join(b.dir, "a.md")) {
+		t.Fatal("a.md came back")
+	}
+}
+
+func TestBothUnsaved(t *testing.T) {
+	b := newBoth(t)
+	ctx := context.Background()
+	a := filepath.Join(b.dir, "a.md")
+	if err := b.svc.OpenDocument(ctx, b.info.ID, "a.md"); err != nil {
+		t.Fatal(err)
+	}
+	from := b.rec.mark()
+	if err := b.svc.Write("GoNEW"); err != nil {
+		t.Fatal(err)
+	}
+	b.rec.waitState(t, from, a, true)
+
+	_, err := b.proj.RenameDocument(ctx, b.info.ID, "a.md", "b")
+	wantCode(t, err, codeUnsavedChanges)
+	b.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+	wantCode(t, b.proj.TrashDocument(ctx, b.info.ID, "a.md"), codeUnsavedChanges)
+
+	if !exists(a) || exists(filepath.Join(b.dir, "b.md")) {
+		t.Fatal("the disk changed")
+	}
+	if len(b.dlg.confirmed) != 0 || b.trash != 0 {
+		t.Fatalf("dialog %v, trash calls %d", b.dlg.confirmed, b.trash)
+	}
+	mod, err := b.svc.modified(ctx)
+	if err != nil || len(mod) != 1 || !sameFile(mod[0].Path, a) {
+		t.Fatalf("modified = %+v, %v; the changes must stay in the buffer", mod, err)
 	}
 }

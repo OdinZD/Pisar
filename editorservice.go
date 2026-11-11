@@ -513,6 +513,58 @@ func (e *EditorService) saveAll(ctx context.Context) error {
 	return nil
 }
 
+// unsaved reports whether the file at path is open in Neovim with changes that
+// are not on disk. Neovim holds the folder part of a buffer's path resolved
+// (see resolveDir), so both sides are compared that way. Without a running
+// Neovim nothing is open: false. Unexported, together with renamed and
+// removed: they are what ProjectService asks of the editor (openDocuments).
+func (e *EditorService) unsaved(ctx context.Context, path string) (bool, error) {
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	bufs, err := e.session.Buffers(ctx)
+	if err != nil {
+		return false, failEditor("unsaved", err)
+	}
+	want := resolveDir(path)
+	for _, b := range bufs {
+		if b.Modified && resolveDir(b.Path) == want {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// renamed closes the buffer of the file that was renamed from oldPath to
+// newPath, so that a later write cannot bring the old file back. When that
+// buffer was the one on screen, the document under its new name takes its place.
+func (e *EditorService) renamed(ctx context.Context, oldPath, newPath string) error {
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	wasCurrent, err := e.session.Wipe(ctx, oldPath)
+	if err != nil {
+		return failEditor("renamed", err)
+	}
+	if !wasCurrent {
+		return nil
+	}
+	if err := e.session.OpenFile(ctx, newPath); err != nil {
+		return failEditor("renamed", err)
+	}
+	return nil
+}
+
+// removed closes the buffer of a file that was moved to the Trash. If it was
+// on screen, Neovim shows another buffer or an empty one, and the frontend
+// hears of it through the usual document:active event.
+func (e *EditorService) removed(ctx context.Context, path string) error {
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	if _, err := e.session.Wipe(ctx, path); err != nil {
+		return failEditor("removed", err)
+	}
+	return nil
+}
+
 // resolveDir resolves the symbolic links of the folder part of file, and only
 // of that. Neovim reports a buffer's path the same way (a symlinked folder
 // becomes its real path, for example /var -> /private/var; the file name stays

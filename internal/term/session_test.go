@@ -518,6 +518,52 @@ func TestForward(t *testing.T) {
 	})
 }
 
+func TestBuffers(t *testing.T) {
+	s, rec, ctx := started(t)
+	a := writeFile(t, "a.md", "a\n")
+	b := writeFile(t, "b.md", "b\n")
+	for _, f := range []string{a, b} {
+		if err := s.OpenFile(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bufs, err := s.Buffers(ctx)
+	if err != nil || len(bufs) != 2 || realPath(t, bufs[0].Path) != realPath(t, a) || realPath(t, bufs[1].Path) != realPath(t, b) {
+		t.Fatalf("Buffers = %+v, %v; want a, b", bufs, err)
+	}
+
+	eventually(t, "Active(b, false)", func() bool { return rec.index(t, evActive, b, false) >= 0 })
+	was, err := s.Wipe(ctx, b)
+	if err != nil || !was {
+		t.Fatalf("Wipe(b) = %v, %v; want true, nil", was, err)
+	}
+	// The buffer that takes the place of b is announced after b was.
+	eventually(t, "Active(a, false) after Wipe", func() bool {
+		calls := rec.snapshot()
+		for i := len(calls) - 1; i >= 0; i-- {
+			if calls[i].name == evActive {
+				return calls[i].s != "" && realPath(t, calls[i].s) == realPath(t, a)
+			}
+		}
+		return false
+	})
+	bufs, err = s.Buffers(ctx)
+	if err != nil || len(bufs) != 1 || realPath(t, bufs[0].Path) != realPath(t, a) {
+		t.Fatalf("Buffers after Wipe = %+v, %v; want only a", bufs, err)
+	}
+
+	if err := s.Write("Oq\x1b"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "a modified", func() bool {
+		m, err := s.Modified(ctx)
+		return err == nil && len(m) == 1
+	})
+	if _, err := s.Wipe(ctx, a); !errors.Is(err, nvim.ErrBufferModified) {
+		t.Fatalf("Wipe of a modified buffer: %v, want ErrBufferModified", err)
+	}
+}
+
 func TestNoProc(t *testing.T) {
 	check := func(t *testing.T, s *Session, ctx context.Context, want error) {
 		t.Helper()
@@ -542,6 +588,12 @@ func TestNoProc(t *testing.T) {
 		}
 		if b, err := s.Current(ctx); err != nil || b != (nvim.Buffer{}) {
 			t.Errorf("Current = %+v, %v; want empty, nil", b, err)
+		}
+		if bufs, err := s.Buffers(ctx); err != nil || len(bufs) != 0 {
+			t.Errorf("Buffers = %v, %v; want empty, nil", bufs, err)
+		}
+		if was, err := s.Wipe(ctx, "/x/a.md"); err != nil || was {
+			t.Errorf("Wipe = %v, %v; want false, nil", was, err)
 		}
 	}
 
@@ -569,6 +621,12 @@ func TestNoProc(t *testing.T) {
 		}
 		if _, err := s.Current(ctx); !errors.Is(err, ErrClosed) {
 			t.Errorf("Current after Close: %v, want ErrClosed", err)
+		}
+		if _, err := s.Buffers(ctx); !errors.Is(err, ErrClosed) {
+			t.Errorf("Buffers after Close: %v, want ErrClosed", err)
+		}
+		if _, err := s.Wipe(ctx, "/x/a.md"); !errors.Is(err, ErrClosed) {
+			t.Errorf("Wipe after Close: %v, want ErrClosed", err)
 		}
 		if err := s.Start(ctx, testSize, testRows); !errors.Is(err, ErrClosed) {
 			t.Errorf("Start after Close: %v, want ErrClosed", err)

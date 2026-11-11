@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 6b (preimenovanje i Smeće za dokument otvoren u Neovimu)
+- Sljedeći korak: faza 2, koraci 7 i 8 (meni, prečaci, fokus; dijalog pri gašenju)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 6 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 6b gotov)
 
 ## Priprema (2026-11-11)
 
@@ -498,9 +498,18 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
       - Dimna provjera agenta (bez tipki; naredbe Neovimu preko njegova socketa): promjena buffera →
         `document:active` s novim `rel`; izmjena → `modified=true`; zapis → `modified=false`, sadržaj
         na disku promijenjen.
-- [ ] 6b. (dodano izvan plana, odobrio vlasnik 2026-11-11) Preimenovanje i Smeće za dokument otvoren u
-      Neovimu: s nespremljenim izmjenama se odbija uz poruku; bez izmjena Neovim zatvara stari buffer
-      i, ako je bio aktivan, otvara dokument pod novim imenom
+- [x] 6b. (dodano izvan plana, odobrio vlasnik 2026-11-11) Preimenovanje i Smeće za dokument otvoren u
+      Neovimu: s nespremljenim izmjenama se odbija (kod `unsaved-changes`, poruka „Spremi ga (⌘S) pa
+      pokušaj ponovno”), i to prije izmjene na disku odnosno prije dijaloga potvrde; bez izmjena
+      Neovim zatvara stari buffer (`:bwipeout`) i, ako je bio aktivan, otvara dokument pod novim
+      imenom. Novo: `nvim.Process.Buffers` i `Wipe`, `openDocuments` sučelje u `projectservice.go`;
+      Go testovi: `main` 59, `internal/nvim` 51, `internal/term` 33; vitest 364.
+      - Test s oba prava servisa i pravim Neovimom: nakon preimenovanja otvorenog `a.md` u `b`, izmjena
+        i `Save` završavaju u `b.md`, a `a.md` ne nastaje ponovno.
+      - Ako radnja na disku uspije, a obavještavanje editora ne, radnja se ne poništava: greška se
+        logira, stablo se osvježi (disk je istina).
+      - Poznato: usporedba putanja je osjetljiva na veličinu slova; promjene iz Findera (izvan
+        aplikacije) nisu pokrivene ovim korakom
 - [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu
 - [ ] 8. Gašenje: dijalog Spremi / Odbaci / Odustani
 - [ ] 9. Dimne provjere prave aplikacije: `scripts/smoke.sh`, `scripts/shutdown.sh`

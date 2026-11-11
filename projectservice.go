@@ -31,6 +31,22 @@ type dialogs interface {
 	ConfirmTrash(name string) (bool, error)
 }
 
+// openDocuments is what the project service needs to know about files the
+// editor has open. The editor ignores paths it does not hold, and when no
+// editor runs, unsaved reports false and the others do nothing.
+type openDocuments interface {
+	unsaved(ctx context.Context, path string) (bool, error) // open in the editor with unsaved changes
+	renamed(ctx context.Context, oldPath, newPath string) error
+	removed(ctx context.Context, path string) error
+}
+
+// noEditor is the openDocuments of a service built without an editor.
+type noEditor struct{}
+
+func (noEditor) unsaved(context.Context, string) (bool, error) { return false, nil }
+func (noEditor) renamed(context.Context, string, string) error { return nil }
+func (noEditor) removed(context.Context, string) error         { return nil }
+
 // ProjectInfo is one row of the project list.
 type ProjectInfo struct {
 	ID      string `json:"id"`
@@ -44,6 +60,7 @@ type projectServiceDeps struct {
 	Store   *config.Store
 	Docs    *docsafe.Ops
 	Dialogs dialogs
+	Editor  openDocuments           // nil: no editor, nothing is ever open
 	Source  project.Source          // file system notifications
 	Emit    func(name, data string) // to the frontend
 	Limits  config.Limits
@@ -56,6 +73,7 @@ type ProjectService struct {
 	store   *config.Store
 	docs    *docsafe.Ops
 	dialogs dialogs
+	editor  openDocuments
 	emit    func(name, data string)
 	limits  config.Limits
 	watcher *project.Watcher
@@ -75,8 +93,12 @@ func newProjectService(d projectServiceDeps) (*ProjectService, error) {
 		store:   d.Store,
 		docs:    d.Docs,
 		dialogs: d.Dialogs,
+		editor:  d.Editor,
 		emit:    d.Emit,
 		limits:  d.Limits,
+	}
+	if s.editor == nil {
+		s.editor = noEditor{}
 	}
 	w, err := project.NewWatcher(project.WatchOptions{
 		Source:   d.Source,
@@ -281,7 +303,43 @@ func (s *ProjectService) CreateDocument(ctx context.Context, id, dirRel, name st
 	return node, nil
 }
 
-// RenameDocument renames the document rel and returns its new state.
+// errUnsaved marks a document that cannot be renamed or removed because the
+// editor holds changes that are not on disk yet.
+var errUnsaved = errors.New("the document has unsaved changes")
+
+// refuseUnsaved fails with errUnsaved when the document at abs is open in the
+// editor with unsaved changes. When the editor cannot say, the action is
+// refused too: it must not go ahead blind, because the open buffer would write
+// the old file back at the next save.
+func (s *ProjectService) refuseUnsaved(ctx context.Context, abs string) error {
+	unsaved, err := s.editor.unsaved(ctx, abs)
+	if err != nil {
+		return fmt.Errorf("ask the editor about %q: %w", abs, err)
+	}
+	if unsaved {
+		return errUnsaved
+	}
+	return nil
+}
+
+// tellEditor runs an editor notification after the disk has already changed.
+// If it fails the action is not undone: the disk is the truth, and a tree that
+// still shows the old state would be worse than a stale editor buffer, so the
+// failure is logged and the caller carries on and reports success. It must not
+// be cut short with the request: the disk change is done, so the editor is told
+// even if the caller went away.
+func (s *ProjectService) tellEditor(ctx context.Context, op string, notify func(context.Context) error) {
+	ctx, cancel := s.bounded(context.WithoutCancel(ctx))
+	defer cancel()
+	if err := notify(ctx); err != nil {
+		slog.Error("project service: the editor was not told about a change on disk", "op", op, "err", err)
+	}
+}
+
+// RenameDocument renames the document rel and returns its new state. A
+// document that is open in the editor with unsaved changes is not renamed: the
+// editor would write the old file back at the next save. Otherwise the editor
+// closes the old buffer and, when it was the current one, opens the new file.
 func (s *ProjectService) RenameDocument(ctx context.Context, id, rel, newName string) (project.Node, error) {
 	root, err := s.root(id)
 	if err != nil {
@@ -289,15 +347,36 @@ func (s *ProjectService) RenameDocument(ctx context.Context, id, rel, newName st
 	}
 	ctx, cancel := s.bounded(ctx)
 	defer cancel()
+	if err := requireDocument(root, rel); err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
+	oldPath, err := project.Resolve(root, rel)
+	if err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
+	// Before anything changes on disk.
+	if err := s.refuseUnsaved(ctx, oldPath); err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
 	newRel, err := s.docs.Rename(ctx, root, rel, newName)
 	if err != nil {
 		return project.Node{}, s.fail("rename document", err)
 	}
-	node, err := nodeFor(newRel)
-	if err != nil {
-		return project.Node{}, s.fail("rename document", err)
+	node, nodeErr := nodeFor(newRel)
+	if newRel != rel {
+		s.tellEditor(ctx, "renamed", func(ctx context.Context) error {
+			newPath, err := project.Resolve(root, newRel)
+			if err != nil {
+				return err
+			}
+			return s.editor.renamed(ctx, oldPath, newPath)
+		})
 	}
+	// The file is renamed whatever nodeFor says, so the tree has to refresh.
 	s.notify(eventProjectChanged, id)
+	if nodeErr != nil {
+		return project.Node{}, s.fail("rename document", nodeErr)
+	}
 	return node, nil
 }
 
@@ -331,6 +410,17 @@ func (s *ProjectService) TrashDocument(ctx context.Context, id, rel string) erro
 	if err := requireDocument(root, rel); err != nil {
 		return s.fail("trash document", err)
 	}
+	absPath, err := project.Resolve(root, rel)
+	if err != nil {
+		return s.fail("trash document", err)
+	}
+	// Before the dialog: the user must not be asked about something that is refused anyway.
+	checkCtx, checkCancel := s.bounded(ctx)
+	err = s.refuseUnsaved(checkCtx, absPath)
+	checkCancel()
+	if err != nil {
+		return s.fail("trash document", err)
+	}
 	// The dialog is outside the time limit: the user may think.
 	ok, err := s.dialogs.ConfirmTrash(path.Base(rel))
 	if err != nil {
@@ -344,6 +434,7 @@ func (s *ProjectService) TrashDocument(ctx context.Context, id, rel string) erro
 	if err := s.docs.Trash(ctx, root, rel); err != nil {
 		return s.fail("trash document", err)
 	}
+	s.tellEditor(ctx, "removed", func(ctx context.Context) error { return s.editor.removed(ctx, absPath) })
 	s.notify(eventProjectChanged, id)
 	return nil
 }
@@ -363,6 +454,7 @@ const (
 	codeNotRunning      = "not-running"
 	codeNvimMissing     = "nvim-missing"
 	codeUnnamedBuffer   = "unnamed-buffer"
+	codeUnsavedChanges  = "unsaved-changes"
 	codeInternal        = "internal"
 )
 
@@ -400,6 +492,8 @@ func codeOf(err error) string {
 		return codeNvimMissing
 	case errors.Is(err, nvim.ErrUnnamedBuffer):
 		return codeUnnamedBuffer
+	case errors.Is(err, errUnsaved), errors.Is(err, nvim.ErrBufferModified):
+		return codeUnsavedChanges
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return codeCanceled
 	}
@@ -423,6 +517,7 @@ var codeText = map[string]string{
 	codeNotRunning:      "the editor is not running",
 	codeNvimMissing:     "the Neovim binary was not found",
 	codeUnnamedBuffer:   "a modified buffer has no file name",
+	codeUnsavedChanges:  "the document has unsaved changes",
 	codeInternal:        "unexpected error",
 }
 

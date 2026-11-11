@@ -15,5 +15,7 @@ describe('errorMessage', () => {
     expect(errorMessage('nvim-missing')).toContain('brew install neovim')
     expect(errorMessage('not-running')).toBe(strings.errorNotRunning)
     expect(errorMessage('unnamed-buffer')).toBe(strings.errorUnnamedBuffer)
+    expect(errorMessage('unsaved-changes')).toBe(strings.errorUnsavedChanges)
+    expect(errorMessage('unsaved-changes')).toContain('⌘S')
   })
 })

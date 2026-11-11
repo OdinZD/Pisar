@@ -18,6 +18,7 @@ describe('errorCode', () => {
     ['editor not running', wailsError('not-running: x', { code: 'not-running' }), 'not-running'],
     ['editor missing', wailsError('nvim-missing: x', { code: 'nvim-missing' }), 'nvim-missing'],
     ['unnamed buffer', wailsError('unnamed-buffer: x'), 'unnamed-buffer'],
+    ['unsaved changes', wailsError('unsaved-changes: x', { code: 'unsaved-changes' }), 'unsaved-changes'],
     ['unknown cause code, known text', wailsError('missing: x', { code: 'bogus' }), 'missing'],
     ['unknown code', wailsError('x', { code: 'bogus' }), 'internal'],
     ['text without code', wailsError('something broke'), 'internal'],

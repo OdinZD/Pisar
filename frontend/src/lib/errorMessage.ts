@@ -16,6 +16,7 @@ const byCode: Record<ErrorCode, string> = {
   'not-running': strings.errorNotRunning,
   'nvim-missing': strings.errorNvimMissing,
   'unnamed-buffer': strings.errorUnnamedBuffer,
+  'unsaved-changes': strings.errorUnsavedChanges,
   internal: strings.errorGeneric,
 }
 

@@ -19,6 +19,7 @@ export const errorCodes = [
   'not-running',
   'nvim-missing',
   'unnamed-buffer',
+  'unsaved-changes',
   'internal',
 ] as const;
 

@@ -88,21 +88,9 @@ func run() error {
 	emit := func(name, data string) { app.Event.Emit(name, data) }
 	dlg := &wailsDialogs{text: text}
 
-	svc, err := newProjectService(projectServiceDeps{
-		Store:   store,
-		Docs:    docs,
-		Dialogs: dlg,
-		Source:  project.FSEventsSource{},
-		Emit:    emit,
-		Limits:  limits,
-	})
-	if err != nil {
-		return err
-	}
-	// On macOS Run does not return when the application quits, so cleanup runs
-	// from OnShutdown; the deferred calls cover a failed start. shutdown is idempotent.
-	defer svc.shutdown()
-
+	// The editor comes first: the project service asks it which documents are
+	// open. Deferred calls run in reverse, so the project service stops before
+	// the editor does, and no rename or Trash reaches an editor that is gone.
 	editor, err := newEditorService(editorServiceDeps{
 		Store:       store,
 		Emit:        func(name string, data any) { app.Event.Emit(name, data) },
@@ -114,6 +102,22 @@ func run() error {
 		return err
 	}
 	defer editor.shutdown()
+
+	svc, err := newProjectService(projectServiceDeps{
+		Store:   store,
+		Docs:    docs,
+		Dialogs: dlg,
+		Editor:  editor,
+		Source:  project.FSEventsSource{},
+		Emit:    emit,
+		Limits:  limits,
+	})
+	if err != nil {
+		return err
+	}
+	// On macOS Run does not return when the application quits, so cleanup runs
+	// from OnShutdown; the deferred calls cover a failed start. shutdown is idempotent.
+	defer svc.shutdown()
 
 	app = application.New(application.Options{
 		Name: text.AppName,

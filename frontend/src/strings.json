@@ -35,6 +35,7 @@
   "errorNotRunning": "Uređivač trenutno nije pokrenut.",
   "errorNvimMissing": "Neovim nije pronađen. Instaliraj ga naredbom: brew install neovim",
   "errorUnnamedBuffer": "Dokument bez naziva ne može se spremiti. U uređivaču ga spremi naredbom :w s nazivom datoteke.",
+  "errorUnsavedChanges": "Dokument ima nespremljene izmjene. Spremi ga (⌘S) pa pokušaj ponovno.",
   "openUnsupportedNotice": "Otvaranje .docx i .doc dokumenata dolazi u sljedećoj fazi.",
   "documentSaved": "Spremljeno",
   "documentModified": "Izmijenjeno"
