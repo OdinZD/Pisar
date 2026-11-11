@@ -124,7 +124,7 @@ Odustani. Zatim gasi Neovim i provjerava da proces ne ostane živ.
 
 ## 7. Faze i kriteriji prihvaćanja
 
-Faze 0 i 3 idu na effort high (vidi `PROMPT.md`).
+Sve faze idu na effort high (vidi `PROMPT.md`).
 
 ### Faza 0 — Spike (rizik)
 Minimalna Wails aplikacija: xterm.js + PTY + `nvim`, bez ostatka sučelja. Kod je za bacanje (`spike/`).
