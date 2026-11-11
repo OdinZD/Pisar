@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 4 (`EditorService`)
+- Sljedeći korak: faza 2, korak 5 (terminal u frontendu)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 3 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 4 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -452,7 +452,28 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         `text.muted`; `Diff*` koriste `bg.chrome` i `bg.selected`; poruke o grešci u stablu su `danger`.
       - Jedina iznimka kontrasta: `WinSeparator` (crta između prozora, nije tekst).
       - Nije pokriveno: LSP i `Diagnostic*` grupe (Pisar ih ne koristi), `g:terminal_color_*`
-- [ ] 4. `EditorService`: servis prema ugovoru, zapis colorschemea, preslikavanje putanja u projekt
+- [x] 4. `EditorService` (`editorservice.go`): servis prema ugovoru; Neovimovo stanje pod `<home>/nvim/`
+      (`XDG_*`, `NVIM_APPNAME=pisar`); `init.lua` i colorscheme se zapisuju pri pokretanju; putanja
+      buffera se preslikava u projekt (najdublji korijen, kroz simboličke linkove); 51 Go test u paketu
+      `main`, pokrivenost 78,6 %; vitest 305.
+      - Događaji `document:active` i `document:state` su tipizirane strukture (u JS stižu kao objekti
+        `{projectId, rel, path, name}` i `{path, modified}`).
+      - **Colorscheme se provjerava prije izvršavanja** (`colorscheme.go`): prihvaćaju se samo točni
+        redci zaglavlja i redci `vim.api.nvim_set_hl(0, "<ime>", { … })` s bojama `#RRGGBB`, `true` ili
+        imenom grupe; sve ostalo se odbija i Neovim se ne pokreće.
+      - `testdata/colorscheme/pisar.lua` je stvarni izlaz generatora (vitest `toMatchFileSnapshot`);
+        Go testovi ga učitavaju u pravi Neovim i provjeravaju boje `Normal`.
+      - Novi kodovi grešaka: `not-running`, `nvim-missing`, `unnamed-buffer`.
+      - Socket je u `$TMPDIR/pisar-run-<pid>-…` (putanja oko 95 od dopuštenih 103 bajta); zaostale
+        mape mrtvih procesa čiste se pri pokretanju.
+      - Ispravci glavne sesije nakon pregleda (s testovima `TestEdActiveState`, `TestEdRunDirGone`):
+        uz `document:active` šalje se i `document:state`, da traka ne zadrži stanje napuštenog buffera;
+        mapa socketa se ponovno stvara ako ju je sustav očistio dok Neovim nije radio.
+      - `⌘S` na bufferu bez imena vraća kod `internal`; korisnik vidi E32 u samom Neovimu.
+      - `exec.ErrNotFound` se općenito preslikava u `nvim-missing`; kad dođe pandoc, treba vlastitu
+        grešku.
+      - `Copy` s pravim vizualnim odabirom nije testiran na ovoj razini (dirao bi sistemski
+        clipboard); pokriva ga `internal/nvim` s lažnim clipboardom
 - [ ] 5. Terminal u frontendu: `Terminal.svelte`, serijsko slanje, kalibracija visine retka
 - [ ] 6. Otvaranje i praćenje: `↵` / klik, poruka za `.docx`, aktivni dokument u stablu, stanje u traci
 - [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu

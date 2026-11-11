@@ -70,6 +70,28 @@ const (
 	DefaultTermMaxChunk      = 16 << 10
 )
 
+// Neovim as Pisar runs it. These are the only places the names are written down
+// (nvim/init.lua refers to the colorscheme by the same name).
+const (
+	NvimBin         = "nvim"
+	NvimAppName     = "pisar" // NVIM_APPNAME: isolates Pisar's Neovim from the user's own
+	NvimColorscheme = "pisar"
+
+	// nvimDirName is the folder under the home that holds everything Neovim
+	// stores for Pisar, one subfolder per XDG base directory.
+	nvimDirName = "nvim"
+
+	// NvimRunDirPrefix starts the name of the short-lived temporary folder that
+	// holds the RPC socket. The name continues with the PID of the application
+	// (see editorservice.go), so a folder left by a crash can be told from a live one.
+	NvimRunDirPrefix = "pisar-run-"
+
+	// DefaultMaxColorscheme bounds the colorscheme text the frontend may send.
+	// The generated one is about 12 KiB; 256 KiB leaves room to grow while still
+	// refusing anything that is not that generator's output.
+	DefaultMaxColorscheme = 256 << 10
+)
+
 // DefaultTrashBin is the macOS tool that moves a file to the Trash. This is
 // the only place its path is written down.
 const DefaultTrashBin = "/usr/bin/trash"
@@ -94,6 +116,8 @@ type Limits struct {
 
 	TermFlushInterval time.Duration // longest a pending byte of terminal output waits before it is sent
 	TermMaxChunk      int           // pending terminal output bytes that force an immediate send
+
+	MaxColorscheme int // largest colorscheme text, in bytes, the editor accepts from the frontend
 }
 
 var (
@@ -243,6 +267,48 @@ func (s *Store) Limits() Limits {
 
 		TermFlushInterval: DefaultTermFlushInterval,
 		TermMaxChunk:      DefaultTermMaxChunk,
+
+		MaxColorscheme: DefaultMaxColorscheme,
+	}
+}
+
+// NvimPaths are the names and locations Pisar's Neovim runs with. They are a
+// value of their own, not Limits fields, because they are names and paths.
+type NvimPaths struct {
+	Bin         string // binary name, resolved with exec.LookPath
+	AppName     string // NVIM_APPNAME
+	Colorscheme string // colorscheme name, also the file name in colors/
+
+	// The four XDG base directories Neovim's stdpath() reads. Each lies under
+	// <home>/nvim, so nothing Neovim writes ends up in the user's ~/.config,
+	// ~/.local or ~/.cache.
+	ConfigHome, DataHome, StateHome, CacheHome string
+
+	InitLua         string // <ConfigHome>/<AppName>/init.lua, passed to `nvim -u`
+	ColorschemeFile string // <ConfigHome>/<AppName>/colors/<Colorscheme>.lua; stdpath("config") is on the runtimepath
+
+	RunDirPrefix string // see NvimRunDirPrefix
+}
+
+// Nvim returns where Neovim's files live under the home. It creates nothing.
+func (s *Store) Nvim() NvimPaths {
+	base := filepath.Join(s.home, nvimDirName)
+	cfg := filepath.Join(base, "config")
+	appCfg := filepath.Join(cfg, NvimAppName)
+	return NvimPaths{
+		Bin:         NvimBin,
+		AppName:     NvimAppName,
+		Colorscheme: NvimColorscheme,
+
+		ConfigHome: cfg,
+		DataHome:   filepath.Join(base, "data"),
+		StateHome:  filepath.Join(base, "state"),
+		CacheHome:  filepath.Join(base, "cache"),
+
+		InitLua:         filepath.Join(appCfg, "init.lua"),
+		ColorschemeFile: filepath.Join(appCfg, "colors", NvimColorscheme+".lua"),
+
+		RunDirPrefix: NvimRunDirPrefix,
 	}
 }
 

@@ -12,5 +12,8 @@ describe('errorMessage', () => {
     expect(errorMessage('exists')).toBe(strings.errorExists)
     expect(errorMessage('invalid-name')).toBe(strings.errorInvalidName)
     expect(errorMessage('internal')).toBe(strings.errorGeneric)
+    expect(errorMessage('nvim-missing')).toContain('brew install neovim')
+    expect(errorMessage('not-running')).toBe(strings.errorNotRunning)
+    expect(errorMessage('unnamed-buffer')).toBe(strings.errorUnnamedBuffer)
   })
 })

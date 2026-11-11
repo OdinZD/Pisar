@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path"
 	"sync"
 
 	"Pisar/internal/config"
 	"Pisar/internal/docsafe"
+	"Pisar/internal/nvim"
 	"Pisar/internal/project"
+	"Pisar/internal/term"
 )
 
 // Events sent to the frontend (payload is always a string).
@@ -357,6 +360,9 @@ const (
 	codeNotDocument     = "not-document"
 	codeNotADirectory   = "not-a-directory"
 	codeCanceled        = "canceled"
+	codeNotRunning      = "not-running"
+	codeNvimMissing     = "nvim-missing"
+	codeUnnamedBuffer   = "unnamed-buffer"
 	codeInternal        = "internal"
 )
 
@@ -386,6 +392,14 @@ func codeOf(err error) string {
 		return codeNotDocument
 	case errors.Is(err, config.ErrNotADirectory):
 		return codeNotADirectory
+	case errors.Is(err, nvim.ErrNotRunning), errors.Is(err, term.ErrClosed):
+		return codeNotRunning
+	// Only Neovim is looked up through PATH so far; a service that runs another
+	// program this way needs its own sentinel, or its failure would read as this one.
+	case errors.Is(err, exec.ErrNotFound):
+		return codeNvimMissing
+	case errors.Is(err, nvim.ErrUnnamedBuffer):
+		return codeUnnamedBuffer
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return codeCanceled
 	}
@@ -406,6 +420,9 @@ var codeText = map[string]string{
 	codeNotDocument:     "not a document",
 	codeNotADirectory:   "not a folder",
 	codeCanceled:        "the operation was canceled or timed out",
+	codeNotRunning:      "the editor is not running",
+	codeNvimMissing:     "the Neovim binary was not found",
+	codeUnnamedBuffer:   "a modified buffer has no file name",
 	codeInternal:        "unexpected error",
 }
 

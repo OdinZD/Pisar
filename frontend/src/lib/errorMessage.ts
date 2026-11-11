@@ -13,6 +13,9 @@ const byCode: Record<ErrorCode, string> = {
   'not-document': strings.errorGeneric,
   'not-a-directory': strings.errorGeneric,
   canceled: strings.errorGeneric,
+  'not-running': strings.errorNotRunning,
+  'nvim-missing': strings.errorNvimMissing,
+  'unnamed-buffer': strings.errorUnnamedBuffer,
   internal: strings.errorGeneric,
 }
 

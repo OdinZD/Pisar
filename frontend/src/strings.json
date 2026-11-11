@@ -30,5 +30,8 @@
   "errorInvalidPath": "Putanja nije valjana.",
   "errorExists": "Dokument s tim nazivom već postoji.",
   "errorInvalidName": "Naziv nije valjan. Ne smije počinjati točkom ni sadržavati / ili :.",
-  "errorUnsupportedKind": "Nove .docx i .doc dokumente za sada nije moguće stvoriti, a vrsta dokumenta se ne mijenja preimenovanjem."
+  "errorUnsupportedKind": "Nove .docx i .doc dokumente za sada nije moguće stvoriti, a vrsta dokumenta se ne mijenja preimenovanjem.",
+  "errorNotRunning": "Uređivač trenutno nije pokrenut.",
+  "errorNvimMissing": "Neovim nije pronađen. Instaliraj ga naredbom: brew install neovim",
+  "errorUnnamedBuffer": "Dokument bez naziva ne može se spremiti. U uređivaču ga spremi naredbom :w s nazivom datoteke."
 }

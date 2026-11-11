@@ -16,6 +16,9 @@ export const errorCodes = [
   'not-document',
   'not-a-directory',
   'canceled',
+  'not-running',
+  'nvim-missing',
+  'unnamed-buffer',
   'internal',
 ] as const;
 

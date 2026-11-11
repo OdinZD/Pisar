@@ -9,9 +9,24 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "document:active".
+ */
+export const DocumentActive = "document:active";
+
+/**
+ * Name of the custom event "document:state".
+ */
+export const DocumentState = "document:state";
+
+/**
  * Name of the custom event "menu:new-document".
  */
 export const MenuNewDocument = "menu:new-document";
+
+/**
+ * Name of the custom event "nvim:exit".
+ */
+export const NvimExit = "nvim:exit";
 
 /**
  * Name of the custom event "project:changed".
@@ -22,4 +37,14 @@ export const ProjectChanged = "project:changed";
  * Name of the custom event "projects:changed".
  */
 export const ProjectsChanged = "projects:changed";
+
+/**
+ * Name of the custom event "pty:data".
+ */
+export const PtyData = "pty:data";
+
+/**
+ * Name of the custom event "ui:focus-tree".
+ */
+export const UiFocusTree = "ui:focus-tree";
 

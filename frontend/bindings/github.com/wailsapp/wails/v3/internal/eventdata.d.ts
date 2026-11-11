@@ -5,12 +5,21 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as main$0 from "../../../../../Pisar/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "document:active": main$0.DocumentActive;
+            "document:state": main$0.DocumentState;
             "menu:new-document": string;
+            "nvim:exit": string;
             "project:changed": string;
             "projects:changed": string;
+            "pty:data": string;
+            "ui:focus-tree": string;
         }
     }
 }

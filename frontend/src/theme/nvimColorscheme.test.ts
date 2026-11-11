@@ -50,6 +50,17 @@ describe('nvimColorscheme text', () => {
   })
 })
 
+describe('shared sample for the Go tests', () => {
+  // The Go side validates this text before Neovim executes it (colorscheme.go). Its tests read this
+  // file instead of running Node, so a generator change fails here until the sample is renewed with
+  // `npx vitest run -u src/theme/nvimColorscheme.test.ts`. In CI vitest never writes a snapshot: a
+  // missing or different file is a failure. The path is relative to this test file (vitest resolves
+  // it with path.resolve(dirname(testFile), path)): up to the repository root.
+  it('matches testdata/colorscheme/pisar.lua', async () => {
+    await expect(text).toMatchFileSnapshot('../../../testdata/colorscheme/pisar.lua')
+  })
+})
+
 describe('required groups', () => {
   // Owner decisions: group -> [fg, bg] tokens (undefined = not set).
   const required: [string, ColorToken | undefined, ColorToken | undefined][] = [

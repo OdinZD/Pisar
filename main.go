@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -28,6 +29,23 @@ func init() {
 	application.RegisterEvent[string](eventProjectsChanged)
 	application.RegisterEvent[string](eventProjectChanged)
 	application.RegisterEvent[string](eventMenuNewDocument)
+
+	// Editor events. The two document events carry a structure: the registered
+	// type must be exactly the one emitted (a value, not a pointer).
+	application.RegisterEvent[string](eventPtyData)
+	application.RegisterEvent[string](eventNvimExit)
+	application.RegisterEvent[DocumentActive](eventDocumentActive)
+	application.RegisterEvent[DocumentState](eventDocumentState)
+	application.RegisterEvent[string](eventFocusTree)
+}
+
+// initialFile is the document named on the command line, "" if none. An
+// argument that starts with "-" is a flag (macOS used to add -psn_...), not a file.
+func initialFile(args []string) string {
+	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+		return ""
+	}
+	return args[1]
 }
 
 func main() {
@@ -63,7 +81,7 @@ func run() error {
 		return err
 	}
 
-	// The emitter and the dialogs need the application, the application needs
+	// The emitters, the clipboard and the dialogs need the application, the application needs
 	// the service: they read app after it has been created, and nothing emits
 	// or asks before Run.
 	var app *application.App
@@ -82,13 +100,26 @@ func run() error {
 		return err
 	}
 	// On macOS Run does not return when the application quits, so cleanup runs
-	// from OnShutdown; the deferred call covers a failed start. shutdown is idempotent.
+	// from OnShutdown; the deferred calls cover a failed start. shutdown is idempotent.
 	defer svc.shutdown()
+
+	editor, err := newEditorService(editorServiceDeps{
+		Store:       store,
+		Emit:        func(name string, data any) { app.Event.Emit(name, data) },
+		Clipboard:   func(text string) bool { return app.Clipboard.SetText(text) },
+		Limits:      limits,
+		InitialFile: initialFile(os.Args),
+	})
+	if err != nil {
+		return err
+	}
+	defer editor.shutdown()
 
 	app = application.New(application.Options{
 		Name: text.AppName,
 		Services: []application.Service{
 			application.NewServiceWithOptions(svc, application.ServiceOptions{MarshalError: marshalError}),
+			application.NewServiceWithOptions(editor, application.ServiceOptions{MarshalError: marshalError}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -96,7 +127,10 @@ func run() error {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
-		OnShutdown: svc.shutdown,
+		OnShutdown: func() {
+			svc.shutdown()
+			editor.shutdown()
+		},
 	})
 	dlg.app = app
 

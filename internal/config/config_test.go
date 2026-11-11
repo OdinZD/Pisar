@@ -433,3 +433,49 @@ func TestTrashBinDefault(t *testing.T) {
 		t.Fatalf("TrashBin = %q", got)
 	}
 }
+
+func TestNvimPathsUnderHome(t *testing.T) {
+	home := t.TempDir()
+	n := mustOpen(t, home).Nvim()
+	base := filepath.Join(home, "nvim") + string(filepath.Separator)
+	for name, p := range map[string]string{
+		"ConfigHome": n.ConfigHome, "DataHome": n.DataHome, "StateHome": n.StateHome, "CacheHome": n.CacheHome,
+		"InitLua": n.InitLua, "ColorschemeFile": n.ColorschemeFile,
+	} {
+		if !strings.HasPrefix(p, base) {
+			t.Errorf("%s = %q is not under %q", name, p, base)
+		}
+	}
+	if n.Bin != "nvim" || n.AppName != "pisar" || n.Colorscheme != "pisar" || n.RunDirPrefix == "" {
+		t.Fatalf("unexpected names %+v", n)
+	}
+	// stdpath("config") is $XDG_CONFIG_HOME/$NVIM_APPNAME; init.lua and the colorscheme must be in it.
+	appCfg := filepath.Join(n.ConfigHome, n.AppName)
+	if n.InitLua != filepath.Join(appCfg, "init.lua") ||
+		n.ColorschemeFile != filepath.Join(appCfg, "colors", n.Colorscheme+".lua") {
+		t.Fatalf("init.lua or colorscheme outside stdpath(config): %+v", n)
+	}
+	// Four distinct base directories.
+	seen := map[string]bool{}
+	for _, p := range []string{n.ConfigHome, n.DataHome, n.StateHome, n.CacheHome} {
+		if seen[p] {
+			t.Fatalf("duplicate base directory %q", p)
+		}
+		seen[p] = true
+	}
+}
+
+func TestNvimPathsCreateNothing(t *testing.T) {
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	_ = s.Nvim()
+	if _, err := os.Lstat(filepath.Join(home, "nvim")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Nvim() must not create anything: %v", err)
+	}
+}
+
+func TestLimitsColorscheme(t *testing.T) {
+	if l := mustOpen(t, t.TempDir()).Limits(); l.MaxColorscheme != DefaultMaxColorscheme || l.MaxColorscheme <= 0 {
+		t.Fatalf("unexpected MaxColorscheme %d", l.MaxColorscheme)
+	}
+}
