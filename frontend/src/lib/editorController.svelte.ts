@@ -3,21 +3,28 @@
 // the Go service. Starting Neovim itself is done by Terminal.svelte (it needs the terminal's size);
 // it reports back through terminalStarted() / terminalFailed().
 import { Events } from '@wailsio/runtime'
-import { DocumentActive, DocumentState, MenuCopy, NvimExit } from '../../bindings/events'
+import { DocumentActive, DocumentExport, DocumentState, MenuCopy, NvimExit } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/editorservice'
 import { errorCode, type ErrorCode } from './apiError'
 import { performCopy } from './copyAction'
 import {
+  copyFinished,
+  copyStarted,
   documentActive,
+  documentExport,
   documentState,
   initialState,
   nvimExited,
+  openExecuting,
+  openSettled,
   requestOpen,
   requestStart,
   startFailed,
   startSucceeded,
   type ActiveDocument,
   type EditorState,
+  type ExportRecord,
+  type OpenRequest,
   type Phase,
   type Transition,
 } from './editorState'
@@ -41,6 +48,14 @@ export class EditorController {
   error = $derived<ErrorCode | null>(this.#state.error)
   active = $derived<ActiveDocument | null>(this.#state.active)
   modified = $derived<boolean>(this.#state.modified)
+  /** the last export step of the documents that have one, by path of the user's file */
+  exports = $derived<ReadonlyMap<string, ExportRecord>>(this.#state.exports)
+  /** a Word document is being opened, i.e. converted, right now */
+  opening = $derived<boolean>(this.#state.wordOpens.length > 0)
+  /** "Spremi kao kopiju" is running */
+  savingCopy = $derived<boolean>(this.#state.savingCopy)
+  /** the error of the last "Spremi kao kopiju", for the toolbar */
+  copyError = $derived<ErrorCode | null>(this.#state.copyError)
 
   /** Set by the editor pane: gives the terminal keyboard focus (a no-op while there is none). */
   focusTerminal: () => void = () => {}
@@ -64,6 +79,9 @@ export class EditorController {
       }),
       Events.On(DocumentState, (ev) => {
         this.#state = documentState(this.#state, ev.data)
+      }),
+      Events.On(DocumentExport, (ev) => {
+        this.#state = documentExport(this.#state, ev.data)
       }),
       Events.On(MenuCopy, () => void this.#copyFromMenu()),
     ]
@@ -101,6 +119,23 @@ export class EditorController {
     return done
   }
 
+  /**
+   * "Spremi kao kopiju" for the active Word document. The service opens a native dialog; closing it is
+   * not an error. A real failure goes to the toolbar. Afterwards the terminal gets the keyboard back.
+   */
+  async saveCopy(): Promise<void> {
+    if (this.#state.savingCopy) return
+    this.#state = copyStarted(this.#state)
+    try {
+      await service.SaveCopy()
+      this.#state = copyFinished(this.#state, null)
+    } catch (err) {
+      console.error('save copy failed', err)
+      this.#state = copyFinished(this.#state, errorCode(err))
+    }
+    this.focusTerminal()
+  }
+
   /** Called by Terminal.svelte when Start has returned successfully. */
   terminalStarted(): void {
     this.#apply(startSucceeded(this.#state))
@@ -130,15 +165,19 @@ export class EditorController {
       else if (reason === 'start-failed') this.#settle(request.id, codedError(t.state.error ?? 'internal', 'editor did not start'))
       else this.#settle(request.id, codedError('not-running', 'editor exited'))
     }
-    if (t.run) void this.#execute(t.run.id, t.run.projectId, t.run.rel)
+    if (t.run) void this.#execute(t.run)
   }
 
-  async #execute(id: number, projectId: string, rel: string): Promise<void> {
+  // A Word document is converted inside this call, which can take long: the state says so meanwhile.
+  async #execute(request: OpenRequest): Promise<void> {
+    this.#state = openExecuting(this.#state, request)
     try {
-      await service.OpenDocument(projectId, rel)
-      this.#settle(id)
+      await service.OpenDocument(request.projectId, request.rel)
+      this.#state = openSettled(this.#state, request.id)
+      this.#settle(request.id)
     } catch (err) {
-      this.#settle(id, err ?? new Error('open failed'))
+      this.#state = openSettled(this.#state, request.id)
+      this.#settle(request.id, err ?? new Error('open failed'))
     }
   }
 

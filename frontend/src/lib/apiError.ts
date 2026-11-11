@@ -36,6 +36,11 @@ function asCode(value: unknown): ErrorCode | undefined {
   return errorCodes.find((c) => c === value);
 }
 
+/** A code that arrived as a plain string (an event payload); 'internal' when this version does not know it. */
+export function knownErrorCode(value: string): ErrorCode {
+  return asCode(value) ?? 'internal';
+}
+
 function fromMessage(message: unknown): ErrorCode | undefined {
   if (typeof message !== 'string') return undefined;
   const i = message.indexOf(': ');

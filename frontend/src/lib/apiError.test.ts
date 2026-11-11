@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorCode } from './apiError';
+import { errorCode, errorCodes, knownErrorCode } from './apiError';
 
 // The shape Wails delivers: a RuntimeError (name "RuntimeError") with message = Go error text and
 // cause = parsed JSON from MarshalError (runtime.js, runtimeCallWithID).
@@ -38,5 +38,15 @@ describe('errorCode', () => {
     ['null cause', wailsError('nope', null), 'internal'],
   ])('%s', (_name, input, want) => {
     expect(errorCode(input)).toBe(want);
+  });
+});
+
+describe('knownErrorCode', () => {
+  it.each(errorCodes)('keeps %s', (code) => {
+    expect(knownErrorCode(code)).toBe(code);
+  });
+
+  it.each(['', 'later-code', 'constructor'])('turns %j into internal', (value) => {
+    expect(knownErrorCode(value)).toBe('internal');
   });
 });

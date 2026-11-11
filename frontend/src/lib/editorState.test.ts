@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  copyFinished,
+  copyStarted,
   documentActive,
+  documentExport,
   documentState,
+  isWordRel,
+  openExecuting,
+  openSettled,
   initialState,
   nvimExited,
   requestOpen,
@@ -15,8 +21,8 @@ import {
 } from './editorState'
 
 const req = (id: number, rel = `d${id}.md`): OpenRequest => ({ id, projectId: 'p', rel })
-const doc = (rel: string): ActiveDocument => ({ projectId: 'p', rel, path: `/x/${rel}`, name: rel })
-const empty: ActiveDocument = { projectId: '', rel: '', path: '', name: '' }
+const doc = (rel: string): ActiveDocument => ({ projectId: 'p', rel, path: `/x/${rel}`, name: rel, readOnly: [], imported: false, unexported: false })
+const empty: ActiveDocument = { projectId: '', rel: '', path: '', name: '', readOnly: [], imported: false, unexported: false }
 
 const inPhase = (phase: Phase): EditorState => ({
   ...initialState,
@@ -155,7 +161,7 @@ describe('active document', () => {
   })
 
   it('a document outside the projects is still active', () => {
-    const outside: ActiveDocument = { projectId: '', rel: '', path: '/tmp/x.md', name: 'x.md' }
+    const outside: ActiveDocument = { projectId: '', rel: '', path: '/tmp/x.md', name: 'x.md', readOnly: [], imported: false, unexported: false }
     expect(documentActive(initialState, outside).active).toEqual(outside)
   })
 
@@ -171,5 +177,147 @@ describe('active document', () => {
     const t = startFailed(s, 'internal').state
     expect(t.active).toBeNull()
     expect(t.modified).toBe(false)
+  })
+})
+
+describe('document:active details', () => {
+  it('reads readOnly null as an empty list and missing flags as false', () => {
+    const s = documentActive(initialState, { projectId: 'p', rel: 'a.docx', path: '/x/a.docx', name: 'a.docx', readOnly: null })
+    expect(s.active).toMatchObject({ readOnly: [], imported: false, unexported: false })
+  })
+
+  it('keeps reasons and flags, and copies the list', () => {
+    const reasons = ['comments', 'locked']
+    const s = documentActive(initialState, { ...doc('a.docx'), readOnly: reasons, imported: true, unexported: true })
+    expect(s.active).toMatchObject({ readOnly: ['comments', 'locked'], imported: true, unexported: true })
+    expect(s.active?.readOnly).not.toBe(reasons)
+  })
+
+  it('clears the error of the last SaveCopy', () => {
+    const s = copyFinished(copyStarted(initialState), 'conflict')
+    expect(documentActive(s, doc('b.docx')).copyError).toBeNull()
+  })
+})
+
+describe('document:export', () => {
+  const ev = (path: string, phase: string, code = '') => ({ path, phase, code })
+  const apply = (s: EditorState, ...events: ReturnType<typeof ev>[]) => events.reduce(documentExport, s)
+  const active = (rel: string, over: Partial<ActiveDocument> = {}) => documentActive(initialState, { ...doc(rel), ...over })
+
+  it('converting then saved leaves no record', () => {
+    const s = apply(initialState, ev('/x/a.docx', 'converting'))
+    expect(s.exports.get('/x/a.docx')).toEqual({ phase: 'converting', code: '' })
+    expect(apply(s, ev('/x/a.docx', 'saved')).exports.size).toBe(0)
+  })
+
+  it('converting then failed keeps the code', () => {
+    const s = apply(initialState, ev('/x/a.docx', 'converting'), ev('/x/a.docx', 'failed', 'conflict'))
+    expect([...s.exports]).toEqual([['/x/a.docx', { phase: 'failed', code: 'conflict' }]])
+  })
+
+  it('converting then canceled keeps a canceled record', () => {
+    const s = apply(initialState, ev('/x/a.docx', 'converting'), ev('/x/a.docx', 'canceled'))
+    expect([...s.exports]).toEqual([['/x/a.docx', { phase: 'canceled', code: '' }]])
+  })
+
+  it('reloaded drops the record of the path, failure included', () => {
+    const s = apply(initialState, ev('/x/a.docx', 'failed', 'conflict'), ev('/x/a.docx', 'reloaded'))
+    expect(s.exports.size).toBe(0)
+  })
+
+  it('a final event for one path drops the converting record of another (.doc saved as .docx)', () => {
+    const s = apply(initialState, ev('/x/Ime.doc', 'converting'), ev('/x/Ime.docx', 'saved'))
+    expect(s.exports.size).toBe(0)
+  })
+
+  it('a final event keeps the failures of other paths', () => {
+    const s = apply(initialState, ev('/x/b.docx', 'failed', 'conflict'), ev('/x/a.docx', 'converting'), ev('/x/a.docx', 'saved'))
+    expect([...s.exports]).toEqual([['/x/b.docx', { phase: 'failed', code: 'conflict' }]])
+  })
+
+  it('ignores a phase it does not know', () => {
+    const s = apply(initialState, ev('/x/a.docx', 'converting'))
+    expect(documentExport(s, ev('/x/a.docx', 'later-phase'))).toBe(s)
+  })
+
+  it('does not change the input', () => {
+    const before = apply(initialState, ev('/x/a.docx', 'converting'))
+    documentExport(before, ev('/x/a.docx', 'saved'))
+    expect(before.exports.size).toBe(1)
+  })
+
+  it('saved clears unexported of the active document with that path only', () => {
+    const s = active('a.docx', { unexported: true })
+    expect(documentExport(s, ev('/x/a.docx', 'saved')).active?.unexported).toBe(false)
+    expect(documentExport(s, ev('/x/other.docx', 'saved')).active?.unexported).toBe(true)
+    expect(documentExport(s, ev('/x/a.docx', 'failed', 'conflict')).active?.unexported).toBe(true)
+  })
+
+  it('an event for another document leaves the active one alone and waits for its document', () => {
+    const s = documentActive(apply(active('a.docx'), ev('/x/b.docx', 'failed', 'conflict')), doc('b.docx'))
+    expect(s.exports.get('/x/b.docx')).toEqual({ phase: 'failed', code: 'conflict' })
+    expect(s.active?.path).toBe('/x/b.docx')
+  })
+
+  it('nvim:exit clears the active document but keeps the export records', () => {
+    const s = apply(active('a.docx'), ev('/x/a.docx', 'failed', 'conflict'), ev('/x/b.docx', 'converting'))
+    const after = nvimExited(s).state
+    expect(after.active).toBeNull()
+    expect([...after.exports.keys()]).toEqual(['/x/a.docx', '/x/b.docx'])
+  })
+})
+
+describe('opening a Word document', () => {
+  it.each([
+    ['a.docx', true],
+    ['mapa/A.DOC', true],
+    ['a.md', false],
+    ['a.txt', false],
+    ['doc', false],
+    ['docx.md', false],
+    ['a.docx.md', false],
+  ])('isWordRel(%s) is %s', (rel, expected) => {
+    expect(isWordRel(rel)).toBe(expected)
+  })
+
+  it('a Word request marks the opening until it settles', () => {
+    const s = openExecuting(initialState, req(1, 'a.docx'))
+    expect(s.wordOpens).toEqual([1])
+    expect(openSettled(s, 1).wordOpens).toEqual([])
+  })
+
+  it('a Markdown request does not mark anything', () => {
+    expect(openExecuting(initialState, req(1, 'a.md'))).toBe(initialState)
+  })
+
+  it('stays marked while another Word request runs', () => {
+    const s = openExecuting(openExecuting(initialState, req(1, 'a.docx')), req(2, 'b.doc'))
+    expect(openSettled(s, 1).wordOpens).toEqual([2])
+  })
+
+  it('settling an unknown request changes nothing (also after nvim:exit)', () => {
+    const s = openExecuting(initialState, req(1, 'a.docx'))
+    expect(openSettled(s, 9)).toBe(s)
+    expect(openSettled(nvimExited(s).state, 1).wordOpens).toEqual([])
+  })
+})
+
+describe('SaveCopy', () => {
+  it('is in flight until it returns', () => {
+    const s = copyStarted(initialState)
+    expect(s.savingCopy).toBe(true)
+    expect(copyFinished(s, null)).toMatchObject({ savingCopy: false, copyError: null })
+  })
+
+  it('keeps the error of a failure', () => {
+    expect(copyFinished(copyStarted(initialState), 'read-only')).toMatchObject({ savingCopy: false, copyError: 'read-only' })
+  })
+
+  it('does not treat canceled as an error', () => {
+    expect(copyFinished(copyStarted(initialState), 'canceled').copyError).toBeNull()
+  })
+
+  it('a new attempt clears the old error', () => {
+    expect(copyStarted(copyFinished(copyStarted(initialState), 'conflict')).copyError).toBeNull()
   })
 })

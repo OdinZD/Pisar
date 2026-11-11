@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–6b gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 7 (frontend)
+- Sljedeći korak: faza 3, korak 9 (dimna provjera), pa korak 8 (čeka vlasnikove odluke i mapu s dokumentima)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, korak 6b)
+- Zadnja izmjena: 2026-11-12 (faza 3, korak 7)
 
 ## Priprema (2026-11-11)
 
@@ -854,7 +854,21 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         vidi dokument kao neizvezen); „Spremi kao kopiju” uzima `doc.md` s diska (bez teksta koji je
         utipkan, a nije zapisan); ako dijalog drži radnika dulje od `CommandTimeout` pri gašenju, radne
         kopije ostaju neočišćene; Neovim prikazuje ime `doc.md`, ne ime dokumenta.
-- [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci
+- [x] 7. Frontend: `.docx` i `.doc` se otvaraju iz stabla (`↵`, klik); grana „unsupported” i tekst
+      `openUnsupportedNotice` su uklonjeni. Alatna traka (`documentStatus` u `lib/activeDocument.ts`), po
+      prednosti: „Konverzija u tijeku…” → „Izmijenjeno” → greška izvoza (boja `danger`, tekst po kodu) →
+      „Izmjene još nisu u dokumentu” → „Samo za čitanje: <razlozi>” + gumb „Spremi kao kopiju” →
+      „Spremljeno”; uz to napomena za uvoz iz `.doc`-a. Dugi tekst se skraćuje s tri točke, cijeli je u
+      `title` i u DOM-u za čitač zaslona. Vitest: 512 testova.
+      - Stanje izvoza se prati po putanji; završni događaj briše sve zapise `converting` (slučaj
+        `.doc` → `.docx`); `saved` za aktivnu putanju briše i `unexported`.
+      - Izmijenjeni postojeći testovi (ponašanje promijenjeno planom): u `activeDocument.test.ts` „opens
+        only md and txt in this phase” (sada i docx, doc), „does not open docx and doc” (sada „opens docx
+        and doc like md”), „the unsupported notice text exists” (obrisan s tekstom); u `treeKeys.test.ts`
+        dva retka za `Enter` na Wordovom dokumentu sada očekuju `open`.
+      - Ograničenje: dokument samo za čitanje s izmijenjenim bufferom ne može nastati (buffer je
+        nepromjenjiv), pa gumb „Spremi kao kopiju” u praksi uvijek stoji. Izgled trake nije provjeren
+        okom (ide u ručnu provjeru).
 - [ ] 8. `docs/known-losses.md`
 - [ ] 9. Dimna provjera (`scripts/smoke.sh`)
 - [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak

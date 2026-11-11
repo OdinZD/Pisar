@@ -69,7 +69,20 @@
   "errorReadOnly": "Dokument je otvoren samo za čitanje i ne može se prepisati.",
   "errorConflict": "Dokument je promijenjen izvan Pisara. Izmjene su sačuvane u radnoj kopiji.",
   "errorDamagedWork": "Radna kopija dokumenta je oštećena pa je nije moguće oporaviti.",
-  "openUnsupportedNotice": "Otvaranje .docx i .doc dokumenata dolazi u sljedećoj fazi.",
   "documentSaved": "Spremljeno",
-  "documentModified": "Izmijenjeno"
+  "documentModified": "Izmijenjeno",
+  "documentConverting": "Konverzija u tijeku…",
+  "documentUnexported": "Izmjene još nisu u dokumentu",
+  "documentReadOnly": "Samo za čitanje",
+  "documentImported": "Uvezeno iz .doc-a: struktura je pojednostavljena, sprema se kao novi .docx",
+  "saveCopy": "Spremi kao kopiju",
+  "readOnlyComments": "dokument ima komentare",
+  "readOnlyTrackedChanges": "dokument ima praćene izmjene",
+  "readOnlyTextBoxes": "dokument ima tekstualne okvire",
+  "readOnlyTables": "dokument ima tablicu koju Markdown ne može prikazati",
+  "readOnlyHardLinks": "datoteka ima više imena (tvrde poveznice)",
+  "readOnlyNoPermission": "nemaš dozvolu pisanja",
+  "readOnlyLocked": "datoteka je zaključana",
+  "readOnlyNotRegular": "datoteka nije dostupna",
+  "readOnlyOther": "nije moguće spremiti"
 }

@@ -1,24 +1,37 @@
 <script lang="ts">
   import { strings } from '../strings'
-  import { toolbarInfo } from '../lib/activeDocument'
+  import { documentStatus, toolbarInfo } from '../lib/activeDocument'
   import type { EditorController } from '../lib/editorController.svelte'
   import type { TreeController } from '../lib/treeController.svelte'
 
   let { tree, editor }: { tree: TreeController; editor: EditorController } = $props()
 
-  const info = $derived(toolbarInfo(tree.projects, editor.active, editor.modified, strings.appName))
+  const conversion = $derived({ exports: editor.exports, opening: editor.opening, copyError: editor.copyError })
+  const info = $derived(toolbarInfo(tree.projects, editor.active, editor.modified, strings.appName, conversion))
+  const status = $derived(documentStatus(editor.active, editor.modified, conversion))
 </script>
 
 <header class="toolbar">
   <div class="where">
-    <span class="title">{info.title}</span>
+    <span class="title" title={info.title}>{info.title}</span>
     {#if info.path}
-      <span class="path">{info.path}</span>
+      <span class="path" title={info.path}>{info.path}</span>
     {/if}
   </div>
   <div class="actions">
-    <!-- Always in the page, so a screen reader announces the text when it changes. -->
-    <span class="state" class:modified={info.modified} aria-live="polite">{info.stateText ?? ''}</span>
+    <!-- Always in the page, so a screen reader announces the text when it changes. Long text is cut
+         with an ellipsis on screen only; the full text is in the DOM and in the tooltip. -->
+    <div class="status" class:filled={status !== null} aria-live="polite">
+      {#if status}
+        <span class="state {status.tone}" title={status.text}>{status.text}</span>
+        {#if status.note}
+          <span class="note" title={status.note}>{status.note}</span>
+        {/if}
+      {/if}
+    </div>
+    {#if status?.saveCopy}
+      <button type="button" disabled={editor.savingCopy} onclick={() => void editor.saveCopy()}>{strings.saveCopy}</button>
+    {/if}
     <button type="button" disabled={!tree.canCreate} onclick={() => tree.startCreate()}>{strings.menuNewDocument}</button>
   </div>
 </header>
@@ -39,10 +52,13 @@
     display: flex;
     align-items: baseline;
     gap: var(--space-md);
+    flex: 1 1 0;
     min-width: 0;
   }
   .title {
+    overflow: hidden;
     font-weight: var(--font-weight-semibold);
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .path {
@@ -51,21 +67,42 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The buttons keep their size; the status gives way (ellipsis) so the toolbar never grows. */
   .actions {
     display: flex;
     align-items: center;
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 65%;
   }
-  .state {
-    color: var(--text-muted);
-    white-space: nowrap;
+  .status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex: 0 1 auto;
+    min-width: 0;
   }
-  .state:not(:empty) {
+  .status.filled {
     margin-right: var(--space-md);
   }
-  /* Differs by weight and colour, not by the word alone. */
-  .state.modified {
+  button + button {
+    margin-left: var(--space-md);
+  }
+  .state,
+  .note {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Differs by weight, not by colour alone. */
+  .state.strong {
     color: var(--text);
+    font-weight: var(--font-weight-semibold);
+  }
+  .state.danger {
+    color: var(--danger);
     font-weight: var(--font-weight-semibold);
   }
   button {

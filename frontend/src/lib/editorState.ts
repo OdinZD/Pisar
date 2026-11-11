@@ -10,12 +10,52 @@ import type { ErrorCode } from './apiError'
 
 export type Phase = 'idle' | 'starting' | 'running' | 'failed'
 
-/** The payload of the document:active event. All fields empty means a buffer without a file. */
+/**
+ * The active document as the state keeps it. For a Word document `path`, `rel` and `name` are those
+ * of the user's .docx or .doc, never of the Markdown working copy Neovim edits.
+ */
 export interface ActiveDocument {
   projectId: string
   rel: string
   path: string
   name: string
+  /** codes of the reasons why the document must not be saved; empty when it may be */
+  readOnly: string[]
+  /** the document came from a .doc, so its first save makes a new .docx */
+  imported: boolean
+  /** the working copy has text that is not in the user's file yet */
+  unexported: boolean
+}
+
+/**
+ * The payload of the document:active event. All fields empty means a buffer without a file. The
+ * generated type allows `readOnly: null`; it means the same as an empty list.
+ */
+export interface DocumentActiveEvent {
+  projectId: string
+  rel: string
+  path: string
+  name: string
+  readOnly?: string[] | null
+  imported?: boolean
+  unexported?: boolean
+}
+
+/** The payload of the document:export event. */
+export interface DocumentExportEvent {
+  path: string
+  phase: string
+  code: string
+}
+
+/**
+ * The last export step of a document that is still of interest, by the path of the user's file. A
+ * finished export (`saved`, `reloaded`) leaves no record.
+ */
+export interface ExportRecord {
+  phase: 'converting' | 'failed' | 'canceled'
+  /** the error code of a `failed` export, otherwise "" */
+  code: string
 }
 
 /** The payload of the document:state event. */
@@ -40,6 +80,14 @@ export interface EditorState {
   active: ActiveDocument | null
   /** the modified flag of `active`; false while there is no active document */
   modified: boolean
+  /** export records by path of the user's file; kept across nvim:exit, an export can outlast Neovim */
+  exports: ReadonlyMap<string, ExportRecord>
+  /** ids of the open requests for a Word document that are executing right now */
+  wordOpens: readonly number[]
+  /** SaveCopy is in flight */
+  savingCopy: boolean
+  /** the error of the last SaveCopy; null when it succeeded, was canceled, or a newer document came */
+  copyError: ErrorCode | null
 }
 
 export type DropReason =
@@ -69,6 +117,10 @@ export const initialState: EditorState = {
   pendingOpen: null,
   active: null,
   modified: false,
+  exports: new Map(),
+  wordOpens: [],
+  savingCopy: false,
+  copyError: null,
 }
 
 const same = (state: EditorState): Transition => ({ state, run: null, dropped: [] })
@@ -99,7 +151,8 @@ export function startFailed(state: EditorState, code: ErrorCode): Transition {
 /** The nvim:exit event: back to the empty state from any phase. */
 export function nvimExited(state: EditorState): Transition {
   const dropped: DroppedRequest[] = state.pendingOpen ? [{ request: state.pendingOpen, reason: 'exited' }] : []
-  return { state: { ...initialState }, run: null, dropped }
+  // Export records stay: the export of a document can still be running (and fail) after Neovim is gone.
+  return { state: { ...initialState, exports: state.exports }, run: null, dropped }
 }
 
 /**
@@ -113,15 +166,84 @@ export function requestOpen(state: EditorState, request: OpenRequest): Transitio
   return { state: { ...starting, pendingOpen: request }, run: null, dropped }
 }
 
-const isEmptyDocument = (d: ActiveDocument) => d.projectId === '' && d.rel === '' && d.path === '' && d.name === ''
+const isEmptyDocument = (d: DocumentActiveEvent) => d.projectId === '' && d.rel === '' && d.path === '' && d.name === ''
 
-/** The document:active event. The old modified flag belongs to the old document, so it is cleared. */
-export function documentActive(state: EditorState, doc: ActiveDocument): EditorState {
-  return { ...state, active: isEmptyDocument(doc) ? null : { ...doc }, modified: false }
+/**
+ * The document:active event. The old modified flag belongs to the old document, so it is cleared;
+ * so is the error of the last SaveCopy. Export records are per path and stay.
+ */
+export function documentActive(state: EditorState, doc: DocumentActiveEvent): EditorState {
+  const active: ActiveDocument | null = isEmptyDocument(doc)
+    ? null
+    : {
+        projectId: doc.projectId,
+        rel: doc.rel,
+        path: doc.path,
+        name: doc.name,
+        readOnly: [...(doc.readOnly ?? [])],
+        imported: doc.imported ?? false,
+        unexported: doc.unexported ?? false,
+      }
+  return { ...state, active, modified: false, copyError: null }
 }
 
 /** The document:state event; it only counts for the path of the active document. */
 export function documentState(state: EditorState, change: DocumentModified): EditorState {
   if (state.active === null || state.active.path !== change.path) return state
   return { ...state, modified: change.modified }
+}
+
+/**
+ * The document:export event. Exports run one at a time, so every end of an export (anything but
+ * `converting`) also drops all `converting` records: after a .doc is saved as a new .docx the
+ * `converting` record sits under the old name and nothing else would ever remove it.
+ */
+export function documentExport(state: EditorState, ev: DocumentExportEvent): EditorState {
+  const next = new Map(state.exports)
+  switch (ev.phase) {
+    case 'converting':
+      next.set(ev.path, { phase: 'converting', code: '' })
+      return { ...state, exports: next }
+    case 'saved':
+    case 'reloaded':
+    case 'failed':
+    case 'canceled':
+      for (const [path, record] of next) if (record.phase === 'converting') next.delete(path)
+      break
+    default:
+      return state // a phase this version does not know
+  }
+  if (ev.phase === 'failed') next.set(ev.path, { phase: 'failed', code: ev.code })
+  else if (ev.phase === 'canceled') next.set(ev.path, { phase: 'canceled', code: '' })
+  else next.delete(ev.path)
+  // What was saved is in the user's file now; document:active does not come again after a plain save.
+  const saved = ev.phase === 'saved' && state.active !== null && state.active.path === ev.path && state.active.unexported
+  return { ...state, exports: next, active: saved && state.active ? { ...state.active, unexported: false } : state.active }
+}
+
+/** Word documents are the ones whose opening runs a conversion. */
+export function isWordRel(rel: string): boolean {
+  return /\.docx?$/i.test(rel)
+}
+
+/** An open request starts executing: for a Word document the toolbar says that the conversion runs. */
+export function openExecuting(state: EditorState, request: OpenRequest): EditorState {
+  if (!isWordRel(request.rel)) return state
+  return { ...state, wordOpens: [...state.wordOpens, request.id] }
+}
+
+/** The open request is settled, successfully or not. */
+export function openSettled(state: EditorState, id: number): EditorState {
+  if (!state.wordOpens.includes(id)) return state
+  return { ...state, wordOpens: state.wordOpens.filter((x) => x !== id) }
+}
+
+/** SaveCopy was called. */
+export function copyStarted(state: EditorState): EditorState {
+  return { ...state, savingCopy: true, copyError: null }
+}
+
+/** SaveCopy returned; `code` is null on success. Closing the dialog (`canceled`) is not an error. */
+export function copyFinished(state: EditorState, code: ErrorCode | null): EditorState {
+  return { ...state, savingCopy: false, copyError: code === 'canceled' ? null : code }
 }

@@ -1,7 +1,9 @@
 // Pure logic that connects the tree with the editor: what Enter or a click does to a row, which row
 // is the document Neovim has open, and what the toolbar says about it. No Svelte, Wails or DOM.
 import { strings } from '../strings'
-import type { ActiveDocument } from './editorState'
+import { errorCode, knownErrorCode, type ErrorCode } from './apiError'
+import { errorMessage } from './errorMessage'
+import type { ActiveDocument, ExportRecord } from './editorState'
 import {
   isExpanded,
   isItemRow,
@@ -13,8 +15,8 @@ import {
   type Row,
 } from './tree'
 
-/** Kinds Neovim can open in this phase. `docx` and `doc` need the converter, which comes later. */
-const openableKinds: ReadonlySet<string> = new Set(['md', 'txt'])
+/** Every kind the tree shows; Word documents are opened through their Markdown working copy. */
+const openableKinds: ReadonlySet<string> = new Set(['md', 'txt', 'docx', 'doc'])
 
 export function isOpenableKind(kind: string): boolean {
   return openableKinds.has(kind)
@@ -24,12 +26,19 @@ export function isOpenableKind(kind: string): boolean {
 export type ActivateAction =
   | { type: 'toggle' }
   | { type: 'open'; projectId: string; rel: string }
-  /** a document the editor cannot open yet; the service is not called */
-  | { type: 'unsupported' }
 
 export function activateAction(row: ItemRow): ActivateAction {
   if (row.type !== 'doc') return { type: 'toggle' }
-  return isOpenableKind(row.kind) ? { type: 'open', projectId: row.projectId, rel: row.rel } : { type: 'unsupported' }
+  return { type: 'open', projectId: row.projectId, rel: row.rel }
+}
+
+/**
+ * The notice under a row whose opening failed; null when there is nothing to tell. Closing the
+ * recovery dialog (`canceled`) is the user's own choice, not a failure.
+ */
+export function openFailureText(err: unknown): string | null {
+  const code = errorCode(err)
+  return code === 'canceled' ? null : errorMessage(code)
 }
 
 /**
@@ -75,8 +84,9 @@ export interface ToolbarInfo {
   title: string
   /** "Project / folder / subfolder", or the absolute folder of a file outside the projects; empty without a document */
   path: string
-  /** "Izmijenjeno" or "Spremljeno"; null while there is no active document */
+  /** what the toolbar says about the document (see documentStatus); null while there is nothing to say */
   stateText: string | null
+  /** the buffer has unsaved changes */
   modified: boolean
 }
 
@@ -92,19 +102,106 @@ function dirname(path: string): string {
   return i === 0 ? '/' : path.slice(0, i)
 }
 
+/** What the editor controller knows about conversions, besides the active document and its modified flag. */
+export interface ConversionState {
+  exports: ReadonlyMap<string, ExportRecord>
+  /** a Word document is being opened (converted) right now */
+  opening: boolean
+  /** the error of the last "Spremi kao kopiju" */
+  copyError: ErrorCode | null
+}
+
+export const noConversion: ConversionState = { exports: new Map(), opening: false, copyError: null }
+
+/** Reason codes of document:active that have their own text; anything else is shown as readOnlyOther. */
+const readOnlyReasons: Record<string, string> = {
+  comments: strings.readOnlyComments,
+  'tracked-changes': strings.readOnlyTrackedChanges,
+  'text-boxes': strings.readOnlyTextBoxes,
+  tables: strings.readOnlyTables,
+  'hard-links': strings.readOnlyHardLinks,
+  'no-permission': strings.readOnlyNoPermission,
+  locked: strings.readOnlyLocked,
+  'not-regular': strings.readOnlyNotRegular,
+}
+
+/** The text of one reason code. The raw code is never shown: it is not for the user. */
+export function readOnlyReasonText(code: string): string {
+  return Object.hasOwn(readOnlyReasons, code) ? readOnlyReasons[code] : strings.readOnlyOther
+}
+
+/** "Samo za čitanje: razlog, razlog"; codes that map to the same text are told once. */
+export function readOnlyText(codes: readonly string[]): string {
+  const reasons = [...new Set(codes.map(readOnlyReasonText))]
+  return `${strings.documentReadOnly}: ${reasons.join(', ')}`
+}
+
+export type StatusKind = 'converting' | 'modified' | 'failed' | 'unexported' | 'read-only' | 'saved'
+
+/** How a status looks: muted is the quiet default, strong is heavier (not only another colour), danger is red and heavy. */
+export type StatusTone = 'muted' | 'strong' | 'danger'
+
+export interface DocumentStatus {
+  kind: StatusKind
+  text: string
+  tone: StatusTone
+  /** a second line next to the state, or null */
+  note: string | null
+  /** show the "Spremi kao kopiju" button */
+  saveCopy: boolean
+}
+
+const tones: Record<StatusKind, StatusTone> = {
+  converting: 'muted',
+  modified: 'strong',
+  failed: 'danger',
+  unexported: 'strong',
+  'read-only': 'muted',
+  saved: 'muted',
+}
+
+/**
+ * What the toolbar says about the document, by priority: a running conversion, unsaved changes
+ * (an old export failure is no longer the topic, the next save will tell), a failed export or
+ * SaveCopy, changes that are not in the document yet, read-only, saved. Null means nothing to say:
+ * no document and no conversion in progress.
+ */
+export function documentStatus(active: ActiveDocument | null, modified: boolean, conversion: ConversionState): DocumentStatus | null {
+  const record = active === null ? undefined : conversion.exports.get(active.path)
+  const make = (kind: StatusKind, text: string, noteAllowed = true): DocumentStatus => ({
+    kind,
+    text,
+    tone: tones[kind],
+    note: noteAllowed && active?.imported ? strings.documentImported : null,
+    saveCopy: kind === 'read-only',
+  })
+
+  if (conversion.opening || record?.phase === 'converting') return make('converting', strings.documentConverting)
+  if (active === null) return null
+  if (modified) return make('modified', strings.documentModified)
+  const failure = conversion.copyError ?? (record?.phase === 'failed' ? knownErrorCode(record.code) : null)
+  if (failure !== null) return make('failed', errorMessage(failure), false)
+  if (record?.phase === 'canceled' || active.unexported) return make('unexported', strings.documentUnexported)
+  if (active.readOnly.length > 0) return make('read-only', readOnlyText(active.readOnly), false)
+  return make('saved', strings.documentSaved)
+}
+
 /** Toolbar content for the document Neovim has open. */
 export function toolbarInfo(
   projects: readonly ProjectRef[],
   active: ActiveDocument | null,
   modified: boolean,
   appName: string,
+  conversion: ConversionState = noConversion,
 ): ToolbarInfo {
-  if (active === null) return { title: appName, path: '', stateText: null, modified: false }
-  const stateText = modified ? strings.documentModified : strings.documentSaved
+  const status = documentStatus(active, modified, conversion)
+  const stateText = status?.text ?? null
+  if (active === null) return { title: appName, path: '', stateText, modified: false }
+  const isModified = status?.kind === 'modified'
   const name = active.name !== '' ? active.name : active.rel.split('/').pop() ?? ''
   const title = stripExtension(name)
-  if (active.projectId === '') return { title, path: dirname(active.path), stateText, modified }
+  if (active.projectId === '') return { title, path: dirname(active.path), stateText, modified: isModified }
   const project = projects.find((p) => p.id === active.projectId)
   const folders = active.rel.split('/').slice(0, -1)
-  return { title, path: [project?.name ?? '', ...folders].filter((s) => s !== '').join(' / '), stateText, modified }
+  return { title, path: [project?.name ?? '', ...folders].filter((s) => s !== '').join(' / '), stateText, modified: isModified }
 }

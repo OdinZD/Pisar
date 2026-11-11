@@ -4,8 +4,7 @@ import { Events } from '@wailsio/runtime'
 import { MenuNewDocument, NvimExit, ProjectChanged, ProjectsChanged, UiFocusTree } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/projectservice'
 import type { ProjectInfo } from '../../bindings/Pisar/models'
-import { strings } from '../strings'
-import { activateAction, activeRowKey, revealExpansion, selectionForActive, type ActivateAction } from './activeDocument'
+import { activateAction, activeRowKey, openFailureText, revealExpansion, selectionForActive, type ActivateAction } from './activeDocument'
 import { errorCode } from './apiError'
 import type { ActiveDocument, Phase } from './editorState'
 import { errorMessage } from './errorMessage'
@@ -196,7 +195,6 @@ export class TreeController {
         break
       case 'toggle':
       case 'open':
-      case 'unsupported':
         this.#activate(action)
         break
       case 'new-document':
@@ -250,11 +248,6 @@ export class TreeController {
       case 'open':
         void this.#open(action.projectId, action.rel)
         break
-      case 'unsupported':
-        if (this.selectedKey !== null) {
-          this.overlay = { ...this.overlay, notice: { key: this.selectedKey, text: strings.openUnsupportedNotice, tone: 'muted' } }
-        }
-        break
     }
   }
 
@@ -264,8 +257,10 @@ export class TreeController {
       await this.#editor.open(projectId, rel)
     } catch (err) {
       // An older attempt that was replaced has nothing to report: the newer one decides.
-      if (seq === this.#openSeq) {
-        this.overlay = { ...this.overlay, notice: { key: rowKey(projectId, rel), text: errorMessage(errorCode(err)) } }
+      // Closing the recovery dialog of a Word document is not a failure and leaves no notice.
+      const text = openFailureText(err)
+      if (seq === this.#openSeq && text !== null) {
+        this.overlay = { ...this.overlay, notice: { key: rowKey(projectId, rel), text } }
       }
       return
     }
