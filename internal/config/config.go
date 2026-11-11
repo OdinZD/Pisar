@@ -55,6 +55,18 @@ const (
 	// DefaultMaxBackups is how many backups of one document are kept; older ones
 	// are rotated out.
 	DefaultMaxBackups = 10
+	// The two .docx numbers bound the inspection of one archive that may come
+	// from anywhere (see internal/convert). Both are far above anything a real
+	// document needs and only exist to stop a hostile archive:
+	//   - DefaultMaxDocxEntries: a .docx has a few dozen entries; one with many
+	//     images has a few hundred. 10 000 leaves room and still caps the
+	//     central directory that has to be walked.
+	//   - DefaultMaxDocxPartBytes: word/document.xml of a whole book is tens of
+	//     MiB uncompressed. 256 MiB is several times that and still finishes in
+	//     seconds, so a decompression bomb is refused instead of filling memory
+	//     or the disk.
+	DefaultMaxDocxEntries   = 10000
+	DefaultMaxDocxPartBytes = 256 << 20
 	// DefaultQuitDialogNames is how many document names the quit dialog lists
 	// before it says "…and N more".
 	DefaultQuitDialogNames = 5
@@ -133,13 +145,15 @@ type Project struct {
 // Limits are the built-in limits of the application. They are defined in this
 // package only; other packages receive them, they do not invent their own.
 type Limits struct {
-	WatchDebounce   time.Duration // quiet time after a disk change before the tree is refreshed
-	WatchMaxDelay   time.Duration // longest a refresh may be postponed while changes keep coming
-	MaxTreeNodes    int           // a project tree larger than this is refused
-	CommandTimeout  time.Duration // short external commands (trash)
-	ConvertTimeout  time.Duration // one call of pandoc or textutil; longer than CommandTimeout, see DefaultConvertTimeout
-	MaxBackups      int           // backups kept per document
-	QuitDialogNames int           // document names listed in the quit dialog
+	WatchDebounce    time.Duration // quiet time after a disk change before the tree is refreshed
+	WatchMaxDelay    time.Duration // longest a refresh may be postponed while changes keep coming
+	MaxTreeNodes     int           // a project tree larger than this is refused
+	CommandTimeout   time.Duration // short external commands (trash)
+	ConvertTimeout   time.Duration // one call of pandoc or textutil; longer than CommandTimeout, see DefaultConvertTimeout
+	MaxBackups       int           // backups kept per document
+	MaxDocxEntries   int           // archive entries a .docx may have before it is refused
+	MaxDocxPartBytes int64         // uncompressed bytes read from one XML part of a .docx before it is refused
+	QuitDialogNames  int           // document names listed in the quit dialog
 
 	NvimStartTimeout time.Duration // longest wait until Neovim is up and init.lua has run
 	NvimStopTimeout  time.Duration // longest wait per shutdown stage of Neovim
@@ -287,13 +301,15 @@ func (s *Store) Home() string { return s.home }
 // Limits returns the built-in limits.
 func (s *Store) Limits() Limits {
 	return Limits{
-		WatchDebounce:   DefaultWatchDebounce,
-		WatchMaxDelay:   DefaultWatchMaxDelay,
-		MaxTreeNodes:    DefaultMaxTreeNodes,
-		CommandTimeout:  DefaultCommandTimeout,
-		ConvertTimeout:  DefaultConvertTimeout,
-		MaxBackups:      DefaultMaxBackups,
-		QuitDialogNames: DefaultQuitDialogNames,
+		WatchDebounce:    DefaultWatchDebounce,
+		WatchMaxDelay:    DefaultWatchMaxDelay,
+		MaxTreeNodes:     DefaultMaxTreeNodes,
+		CommandTimeout:   DefaultCommandTimeout,
+		ConvertTimeout:   DefaultConvertTimeout,
+		MaxBackups:       DefaultMaxBackups,
+		MaxDocxEntries:   DefaultMaxDocxEntries,
+		MaxDocxPartBytes: DefaultMaxDocxPartBytes,
+		QuitDialogNames:  DefaultQuitDialogNames,
 
 		NvimStartTimeout: DefaultNvimStartTimeout,
 		NvimStopTimeout:  DefaultNvimStopTimeout,

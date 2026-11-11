@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, korak 1 gotov). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–2 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 2 (`internal/convert`: pregled dokumenta)
+- Sljedeći korak: faza 3, korak 3 (`internal/convert`: pretvorbe i golden testovi)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 3, korak 1)
+- Zadnja izmjena: 2026-11-11 (faza 3, korak 2)
 
 ## Priprema (2026-11-11)
 
@@ -694,7 +694,13 @@ Effort high. Preduvjet: `pandoc` instaliran (3.13 u `/opt/homebrew/bin`). Plan f
 
 ### Odstupanja od dizajna (odobrena planom faze)
 
-- 4.3, korak 5: referentni dokument nije izvornik nego njegova kopija bez `word/media/` u radnoj mapi.
+- 4.3, korak 5: referentni dokument nije izvornik nego njegova kopija u radnoj mapi. **Ispravak plana
+  (vlasnik odobrio 2026-11-11, pitanje tijekom koraka 2):** iz kopije se uklanjaju samo slike TIJELA
+  dokumenta i njihove veze u `word/_rels/document.xml.rels`; slike zaglavlja i podnožja ostaju.
+  Izmjereno na dokumentu s logom u zaglavlju: s kopijom bez ijedne slike (kako je pisalo u planu)
+  logo nestaje, a u spremljenom dokumentu ostaje veza na sliku koje nema (i u `basic.docx`). S užom
+  varijantom: logo bajt-identičan, jedna slika u tijelu, tri spremanja bajt-identična, nema visećih veza.
+  Dodaje se probni dokument `header-image.docx`.
 - 4.2: format je `markdown-smart` s pipe tablicama; grid tablice samo kad dokument ima složene ćelije.
 - §5: kad `pandoc` nije instaliran, u ovoj fazi je to poruka o grešci pri otvaranju; zaslon i provjera
   pri pokretanju su u fazi 6.
@@ -735,7 +741,19 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         kao natuknice „•”.
       - Ispravak glavne sesije (5 redaka): `valid_docx` je imao `unzip -Z1 | grep -qx` pod `pipefail`, pa je
         provjera povremeno padala; popis sada ide u datoteku. 25 uzastopnih pokretanja bez pada.
-- [ ] 2. `internal/convert`: pregled dokumenta (komentari, praćene izmjene, tekstualni okviri)
+- [x] 2. `internal/convert`: pregled dokumenta. `Inspect(ctx, path, InspectLimits) ([]Loss, error)`,
+      `Loss` = `comments` / `tracked-changes` / `text-boxes`, greške `ErrNotDocx`, `ErrTooLarge`. Strujno
+      čita sve XML dijelove izravno u `word/` (i zaglavlja, podnožja, fusnote), uspoređuje prostor imena
+      + lokalno ime (prefiks ne mora biti `w`; i strogi OOXML prostor imena). Praćene izmjene su `ins`,
+      `del`, `moveFrom`, `moveTo` i zapisi promjene oblikovanja (`rPrChange`, `pPrChange`, …).
+      Limiti u `config`: `MaxDocxEntries` (10 000), `MaxDocxPartBytes` (256 MiB); dubina XML-a najviše
+      1024 (konstanta u paketu, zaštita memorije). Pokrivenost 93,0 %; fuzz 60 s bez pada.
+      - Fuzzer je našao dva pada (pomak unosa iznad MaxInt64; greške `encoding/xml` koje nisu sintaksne);
+        popravljena su, unosi ostaju u `internal/convert/testdata/fuzz/` kao regresijski testovi.
+      - Ograničenja: XML dio u kodiranju koje nije UTF-8 daje `ErrNotDocx` (namjerno, da gubitak ne prođe
+        neopaženo); nema limita ukupnog rada preko svih dijelova, pa pozivatelj mora dati `ctx` s rokom.
+      - `coder` nije učitao skillove `samber/cc-skills-golang` (nije naveo razlog); u sljedećim briefovima
+        to izričito tražim.
 - [ ] 3. `internal/convert`: pretvorbe `.docx → .md`, `.md → .docx`, `.doc → .docx`; golden testovi
 - [ ] 4. `internal/docsafe`: atomski zapis, backup s rotacijom, snimka izvornika i konflikt
 - [ ] 5. `internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”

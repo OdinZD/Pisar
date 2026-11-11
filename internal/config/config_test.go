@@ -561,3 +561,18 @@ func TestLimitsConvert(t *testing.T) {
 		t.Fatalf("ConvertTimeout %v must exceed CommandTimeout %v", l.ConvertTimeout, l.CommandTimeout)
 	}
 }
+
+func TestLimitsDocx(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.MaxDocxEntries != DefaultMaxDocxEntries || l.MaxDocxPartBytes != DefaultMaxDocxPartBytes {
+		t.Fatalf("unexpected docx limits %+v", l)
+	}
+	if l.MaxDocxEntries <= 0 || l.MaxDocxPartBytes <= 0 {
+		t.Fatalf("docx limits must be positive: %+v", l)
+	}
+	// A part must be allowed to be bigger than the archive has entries; a
+	// swapped pair of values would still pass the checks above.
+	if l.MaxDocxPartBytes < 1<<20 {
+		t.Fatalf("MaxDocxPartBytes %d is too small for a long document", l.MaxDocxPartBytes)
+	}
+}
