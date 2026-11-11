@@ -4,10 +4,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
+- Trenutna faza: 1 — Kostur, projekti i stablo (koraci 1–9 gotovi 2026-11-11; čeka vlasnikov ručni pogled). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 9 — `plan-reviewer`, zatim vlasnikov ručni pogled (popis u odjeljku faze 1)
-- Zadnja izmjena: 2026-11-11 (faza 1, koraci 1–8 gotovi; korak 9: pregled u tijeku)
+- Sljedeći korak: vlasnik prolazi popis „Ručni pogled” u odjeljku faze 1; zatim plan faze 2 (effort medium)
+- Zadnja izmjena: 2026-11-11 (faza 1, koraci 1–9 gotovi; `plan-reviewer` PASS u krugu 3 od 3)
 
 ## Priprema (2026-11-11)
 
@@ -274,9 +274,9 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       - Dok traje jedna radnja servisa (i dok je otvoren nativni dijalog), ostale radnje čekaju.
       - Komponente i `treeController` nemaju testove (vitest radi bez DOM-a; `jsdom` nije odobren).
         Izgled, fokus i tipke provjerava vlasnik ručno
-- [ ] 9. Kraj faze: `scripts/smoke.sh` (napisan i prolazi), kriteriji s dokazima i popis za ručni pogled
-      (dolje); `plan-reviewer`: krug 1 FAIL (6 manjih odstupanja, ispravljena), krug 2 FAIL (jedna netočna
-      brojka pokrivenosti u ovom dokumentu, ispravljena), krug 3 u tijeku; zatim sažetak i STOP.
+- [x] 9. Kraj faze: `scripts/smoke.sh` prolazi, kriteriji s dokazima i popis za ručni pogled (dolje);
+      `plan-reviewer`: krug 1 FAIL (6 manjih odstupanja), krug 2 FAIL (jedna netočna brojka pokrivenosti
+      u ovom dokumentu), krug 3 PASS; sažetak predan, STOP.
       - `scripts/smoke.sh` i dijagnostiku `PISAR_LOG=debug` (ispis poziva servisa na stderr; tri mjesta,
         petnaestak redaka) napisala je glavna sesija, da se frontend i osvježavanje mogu dokazati bez
         klikanja.
@@ -358,12 +358,19 @@ folderima, povlačenje, kontekstni meni, hrvatski meni umjesto Wailsovih uloga, 
 
 ### Kriteriji prihvaćanja
 
-- [ ] struktura repozitorija iz `CLAUDE.md`, `task dev/build/test/lint`
-- [ ] dodavanje i uklanjanje projekta (odabir foldera); konfiguracija preživljava ponovno pokretanje
-- [ ] stablo prikazuje samo podržane vrste, s oznakom vrste; skrivene datoteke i folderi su izostavljeni
-- [ ] nova datoteka, preimenovanje, brisanje u Trash
-- [ ] stablo se osvježava kad se datoteke promijene izvana
-- [ ] `theme/tokens.ts` postoji i iz njega izlaze CSS varijable
+Dokazi su u odjeljku „Dokazi po kriterijima” gore. Dva kriterija ostaju neoznačena dok vlasnik ne
+provjeri dio koji traži klikanje (dijalog za folder, stvarno Smeće); sva njihova logika je pokrivena
+testovima.
+
+- [x] struktura repozitorija iz `CLAUDE.md`, `task dev/build/test/lint` — dokaz 1
+- [ ] dodavanje i uklanjanje projekta (odabir foldera); konfiguracija preživljava ponovno pokretanje —
+      dokaz 2; odabir foldera kroz nativni dijalog čeka ručni pogled (stavka 1)
+- [x] stablo prikazuje samo podržane vrste, s oznakom vrste; skrivene datoteke i folderi su izostavljeni
+      — dokaz 3 (izgled stabla je u ručnom pogledu, stavka 2)
+- [ ] nova datoteka, preimenovanje, brisanje u Trash — dokaz 4; pravi `trash` i tipke `a` / `r` / `d` u
+      prozoru čekaju ručni pogled (stavke 4–6)
+- [x] stablo se osvježava kad se datoteke promijene izvana — dokaz 5 (dimna provjera, od diska do frontenda)
+- [x] `theme/tokens.ts` postoji i iz njega izlaze CSS varijable — dokaz 6
 
 ## Faza 2 — `.md` i `.txt`
 
