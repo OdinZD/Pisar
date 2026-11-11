@@ -1,14 +1,15 @@
 // Reactive state of the project tree and the service calls behind it. All decisions are made by the
 // pure functions in tree.ts / treeKeys.ts; this class only holds state and talks to the Go service.
 import { Events } from '@wailsio/runtime'
-import { MenuNewDocument, ProjectChanged, ProjectsChanged } from '../../bindings/events'
+import { MenuNewDocument, NvimExit, ProjectChanged, ProjectsChanged, UiFocusTree } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/projectservice'
 import type { ProjectInfo } from '../../bindings/Pisar/models'
 import { strings } from '../strings'
 import { activateAction, activeRowKey, revealExpansion, selectionForActive, type ActivateAction } from './activeDocument'
 import { errorCode } from './apiError'
-import type { ActiveDocument } from './editorState'
+import type { ActiveDocument, Phase } from './editorState'
 import { errorMessage } from './errorMessage'
+import { shouldFocusTreeAfterExit, type TerminalFocus } from './focus'
 import { createLatestTracker } from './latest'
 import {
   buildRows,
@@ -32,8 +33,10 @@ const PROJECTS_KEY = '\u0000projects'
 
 /** The part of the editor the tree needs; EditorController satisfies it. */
 export interface EditorPort {
+  readonly phase: Phase
   open(projectId: string, rel: string): Promise<void>
   focusTerminal(): void
+  terminalFocus(): TerminalFocus
 }
 
 export class TreeController {
@@ -71,6 +74,12 @@ export class TreeController {
       Events.On(ProjectsChanged, () => void this.loadProjects()),
       Events.On(ProjectChanged, (ev) => void this.loadTree(String(ev.data))),
       Events.On(MenuNewDocument, () => this.startCreate()),
+      // The user pressed <leader>e in Neovim.
+      Events.On(UiFocusTree, () => this.focusTree()),
+      // The terminal is about to disappear; the keyboard must land somewhere sensible.
+      Events.On(NvimExit, () => {
+        if (shouldFocusTreeAfterExit(document.activeElement, this.#editor.terminalFocus())) this.focusTree()
+      }),
     ]
     // A folder that came back or vanished while the app was in the background shows up here.
     const onFocus = () => void this.loadProjects()
@@ -177,7 +186,7 @@ export class TreeController {
       else if (ev.key === 'Escape') this.cancelRemove()
       return true // nothing else moves while the question is open
     }
-    const action = keyToAction(ev, this.selectedRow)
+    const action = keyToAction(ev, this.selectedRow, { confirming: this.overlay.confirmRemove !== undefined })
     if (!action) return false
     this.#clearNotices()
     switch (action.type) {
@@ -201,6 +210,10 @@ export class TreeController {
         break
       case 'remove-project':
         if (this.selectedRow?.type === 'project') this.overlay = { confirmRemove: this.selectedRow.projectId }
+        break
+      case 'focus-editor':
+        // Without a running Neovim there is no terminal to give the keyboard to; the key does nothing.
+        if (this.#editor.phase === 'running') this.#editor.focusTerminal()
         break
     }
     return true

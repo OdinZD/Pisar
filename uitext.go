@@ -17,20 +17,36 @@ var stringsJSON []byte
 // uiText holds the texts the Go side uses. Keys the frontend adds later are
 // ignored here on purpose: the file is shared.
 type uiText struct {
-	AppName              string `json:"appName"`
-	MenuFile             string `json:"menuFile"`
-	MenuNewDocument      string `json:"menuNewDocument"`
-	MenuAddProject       string `json:"menuAddProject"`
-	ChooseFolderTitle    string `json:"chooseFolderTitle"`
-	TrashTitle           string `json:"trashTitle"`
-	TrashMessage         string `json:"trashMessage"` // placeholder {name}
-	TrashConfirm         string `json:"trashConfirm"`
-	Cancel               string `json:"cancel"`
-	OK                   string `json:"ok"`
-	ConfigRecoveredTitle string `json:"configRecoveredTitle"`
-	ConfigRecovered      string `json:"configRecovered"` // placeholder {path}
-	ConfigNewerTitle     string `json:"configNewerTitle"`
-	ConfigNewer          string `json:"configNewer"`
+	AppName               string `json:"appName"`
+	MenuFile              string `json:"menuFile"`
+	MenuNewDocument       string `json:"menuNewDocument"`
+	MenuAddProject        string `json:"menuAddProject"`
+	MenuEdit              string `json:"menuEdit"`
+	MenuSave              string `json:"menuSave"`
+	MenuCopy              string `json:"menuCopy"`
+	MenuPaste             string `json:"menuPaste"`
+	QuitTitle             string `json:"quitTitle"`
+	QuitMessage           string `json:"quitMessage"` // placeholder {names}
+	QuitMore              string `json:"quitMore"`    // placeholder {count}
+	QuitUnnamed           string `json:"quitUnnamed"`
+	QuitSave              string `json:"quitSave"`
+	QuitDiscard           string `json:"quitDiscard"`
+	QuitSaveFailedTitle   string `json:"quitSaveFailedTitle"`
+	QuitSaveFailed        string `json:"quitSaveFailed"` // placeholder {reason}
+	QuitUnresponsiveTitle string `json:"quitUnresponsiveTitle"`
+	QuitUnresponsive      string `json:"quitUnresponsive"`
+	QuitAnyway            string `json:"quitAnyway"`
+	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
+	ChooseFolderTitle     string `json:"chooseFolderTitle"`
+	TrashTitle            string `json:"trashTitle"`
+	TrashMessage          string `json:"trashMessage"` // placeholder {name}
+	TrashConfirm          string `json:"trashConfirm"`
+	Cancel                string `json:"cancel"`
+	OK                    string `json:"ok"`
+	ConfigRecoveredTitle  string `json:"configRecoveredTitle"`
+	ConfigRecovered       string `json:"configRecovered"` // placeholder {path}
+	ConfigNewerTitle      string `json:"configNewerTitle"`
+	ConfigNewer           string `json:"configNewer"`
 }
 
 // parseUIText decodes the texts and reports every key that is missing or empty,

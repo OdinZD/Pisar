@@ -32,14 +32,21 @@ describe('keyToAction', () => {
     ['d', doc, { type: 'trash' }],
     ['d', project, { type: 'remove-project' }],
     ['d', folder, null],
+    ['Escape', doc, { type: 'focus-editor' }],
+    ['Escape', null, { type: 'focus-editor' }],
     ['x', doc, null],
     ['J', doc, null],
   ] as const)('%s on %j', (key, row, expected) => {
     expect(keyToAction(press(key), row)).toEqual(expected)
   })
 
+  it('Escape does nothing while the remove question is open', () => {
+    expect(keyToAction(press('Escape'), project, { confirming: true })).toBeNull()
+    expect(keyToAction(press('Escape'), project, { confirming: false })).toEqual({ type: 'focus-editor' })
+  })
+
   it.each(['metaKey', 'ctrlKey', 'altKey'] as const)('ignores %s', (mod) => {
-    for (const key of ['j', 'k', 'a', 'r', 'd', 'Enter', 'ArrowDown']) {
+    for (const key of ['j', 'k', 'a', 'r', 'd', 'Enter', 'ArrowDown', 'Escape']) {
       expect(keyToAction(press(key, { [mod]: true }), doc)).toBeNull()
     }
   })

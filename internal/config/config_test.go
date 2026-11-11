@@ -70,6 +70,16 @@ func TestLimits(t *testing.T) {
 	}
 }
 
+func TestLimitsQuitDialog(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := store.Limits().QuitDialogNames; n < 1 {
+		t.Errorf("QuitDialogNames = %d, want at least 1", n)
+	}
+}
+
 func TestLimitsNvim(t *testing.T) {
 	l := mustOpen(t, t.TempDir()).Limits()
 	if l.NvimStartTimeout != DefaultNvimStartTimeout || l.NvimStopTimeout != DefaultNvimStopTimeout {

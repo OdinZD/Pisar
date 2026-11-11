@@ -3,9 +3,10 @@
 // the Go service. Starting Neovim itself is done by Terminal.svelte (it needs the terminal's size);
 // it reports back through terminalStarted() / terminalFailed().
 import { Events } from '@wailsio/runtime'
-import { DocumentActive, DocumentState, NvimExit } from '../../bindings/events'
+import { DocumentActive, DocumentState, MenuCopy, NvimExit } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/editorservice'
 import { errorCode, type ErrorCode } from './apiError'
+import { performCopy } from './copyAction'
 import {
   documentActive,
   documentState,
@@ -20,6 +21,7 @@ import {
   type Phase,
   type Transition,
 } from './editorState'
+import { describeFocus, noTerminalFocus, type TerminalFocus } from './focus'
 
 interface Waiter {
   resolve: () => void
@@ -43,6 +45,9 @@ export class EditorController {
   /** Set by the editor pane: gives the terminal keyboard focus (a no-op while there is none). */
   focusTerminal: () => void = () => {}
 
+  /** Set by the editor pane: whether the terminal has the focus and what it has selected with the mouse. */
+  terminalFocus: () => TerminalFocus = () => noTerminalFocus
+
   #nextId = 0
   // Promises handed out by open() that wait for an answer, by request id.
   #waiters = new Map<number, Waiter>()
@@ -60,6 +65,7 @@ export class EditorController {
       Events.On(DocumentState, (ev) => {
         this.#state = documentState(this.#state, ev.data)
       }),
+      Events.On(MenuCopy, () => void this.#copyFromMenu()),
     ]
     // The application was started with a document: Go opens it after the first successful Start,
     // so the editor only has to run.
@@ -104,6 +110,17 @@ export class EditorController {
   terminalFailed(err: unknown): void {
     console.error('starting the editor failed', err)
     this.#apply(startFailed(this.#state, errorCode(err)))
+  }
+
+  // The Copy menu item only tells us it was chosen; what to copy depends on where the focus is. The
+  // menu does not move the DOM focus, so document.activeElement is still the element the user was in.
+  async #copyFromMenu(): Promise<void> {
+    const focus = describeFocus(document.activeElement, this.terminalFocus())
+    try {
+      await performCopy(focus, { copy: () => service.Copy(), copyText: (text) => service.CopyText(text) })
+    } catch (err) {
+      console.error('copy failed', err)
+    }
   }
 
   #apply(t: Transition): void {

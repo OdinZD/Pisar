@@ -19,6 +19,11 @@ export const DocumentActive = "document:active";
 export const DocumentState = "document:state";
 
 /**
+ * Name of the custom event "menu:copy".
+ */
+export const MenuCopy = "menu:copy";
+
+/**
  * Name of the custom event "menu:new-document".
  */
 export const MenuNewDocument = "menu:new-document";

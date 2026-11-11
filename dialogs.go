@@ -49,3 +49,53 @@ func (d *wailsDialogs) ConfirmTrash(name string) (bool, error) {
 	dlg.SetDefaultButton(cancel).SetCancelButton(cancel).Show()
 	return <-answer, nil
 }
+
+// askButtons shows a question with the given buttons and blocks until one is
+// pressed; it returns the index of that button. defaultIdx is the Return
+// button, cancelIdx the Escape one (they may be the same button, as for a
+// choice where a stray key must do nothing). A callback runs on the main
+// thread, so it only sends, without ever waiting for us (MessageDialog.Show
+// itself does not block, see above).
+func (d *wailsDialogs) askButtons(dlg *application.MessageDialog, labels []string, defaultIdx, cancelIdx int) int {
+	answer := make(chan int, 1)
+	buttons := make([]*application.Button, len(labels))
+	for i, label := range labels {
+		buttons[i] = dlg.AddButton(label)
+		buttons[i].OnClick(func() {
+			select {
+			case answer <- i:
+			default:
+			}
+		})
+	}
+	dlg.SetDefaultButton(buttons[defaultIdx]).SetCancelButton(buttons[cancelIdx]).Show()
+	return <-answer
+}
+
+// AskUnsaved is the quitDialogs question about unsaved changes. Save is the
+// default button; Escape means Cancel.
+func (d *wailsDialogs) AskUnsaved(message string) quitChoice {
+	dlg := d.app.Dialog.Question().SetTitle(d.text.QuitTitle).SetMessage(message)
+	switch d.askButtons(dlg, []string{d.text.QuitSave, d.text.QuitDiscard, d.text.Cancel}, 0, 2) {
+	case 0:
+		return quitChoiceSave
+	case 1:
+		return quitChoiceDiscard
+	default:
+		return quitChoiceCancel
+	}
+}
+
+// AskUnresponsive asks whether to close although the editor does not answer.
+// Cancel is the default and the Escape button: closing loses work.
+func (d *wailsDialogs) AskUnresponsive() bool {
+	dlg := d.app.Dialog.Warning().SetTitle(d.text.QuitUnresponsiveTitle).SetMessage(d.text.QuitUnresponsive)
+	return d.askButtons(dlg, []string{d.text.QuitAnyway, d.text.Cancel}, 1, 1) == 0
+}
+
+// ShowSaveError tells the user that saving before the quit failed, and waits
+// for the dialog to be dismissed so that nothing else is asked over it.
+func (d *wailsDialogs) ShowSaveError(message string) {
+	dlg := d.app.Dialog.Error().SetTitle(d.text.QuitSaveFailedTitle).SetMessage(message)
+	d.askButtons(dlg, []string{d.text.OK}, 0, 0)
+}

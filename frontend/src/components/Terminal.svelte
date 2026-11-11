@@ -7,6 +7,7 @@
 
   import { PtyData } from '../../bindings/events'
   import { Resize, Start, Write } from '../../bindings/Pisar/editorservice'
+  import { noTerminalFocus, type TerminalFocus } from '../lib/focus'
   import { createSerialSender } from '../lib/serialSender'
   import { fontStack } from '../theme/cssVars'
   import { nvimColorscheme } from '../theme/nvimColorscheme'
@@ -23,6 +24,19 @@
   /** Gives the terminal keyboard focus. */
   export function focus(): void {
     term?.focus()
+  }
+
+  /**
+   * Whether the terminal's input has the keyboard focus, and the text selected in it with the mouse
+   * (xterm.js' own selection, not Neovim's visual mode). Used by the Copy menu item.
+   */
+  export function focusState(): TerminalFocus {
+    const t = term
+    if (!t) return noTerminalFocus
+    return {
+      focused: t.textarea !== undefined && t.textarea === document.activeElement,
+      selection: t.hasSelection() ? t.getSelection() : '',
+    }
   }
 
   onMount(() => {
@@ -64,6 +78,9 @@
         // symbols and accents). With true xterm.js would turn Option into Meta and send ESC
         // prefixes instead of the character.
         macOptionIsMeta: false,
+        // Neovim turns on mouse reporting, and then a drag goes to Neovim instead of selecting text.
+        // With this, Option+drag selects in the terminal anyway (xterm.js: SelectionService.shouldForceSelection).
+        macOptionClickForcesSelection: true,
         cursorBlink: false,
       })
       term = t

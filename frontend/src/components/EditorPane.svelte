@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EditorController } from '../lib/editorController.svelte'
   import { errorMessage } from '../lib/errorMessage'
+  import { noTerminalFocus } from '../lib/focus'
   import { strings } from '../strings'
   import EmptyState from './EmptyState.svelte'
   import Terminal from './Terminal.svelte'
@@ -11,6 +12,7 @@
 
   $effect(() => {
     editor.focusTerminal = () => terminal?.focus()
+    editor.terminalFocus = () => terminal?.focusState() ?? noTerminalFocus
   })
 </script>
 

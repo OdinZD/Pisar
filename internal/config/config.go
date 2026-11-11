@@ -48,6 +48,9 @@ const (
 	DefaultWatchMaxDelay  = 2 * time.Second
 	DefaultMaxTreeNodes   = 20000
 	DefaultCommandTimeout = 10 * time.Second
+	// DefaultQuitDialogNames is how many document names the quit dialog lists
+	// before it says "…and N more".
+	DefaultQuitDialogNames = 5
 
 	// DefaultNvimStartTimeout bounds the wait until Neovim has started and
 	// run init.lua. DefaultNvimStopTimeout applies to each stage of its
@@ -106,10 +109,11 @@ type Project struct {
 // Limits are the built-in limits of the application. They are defined in this
 // package only; other packages receive them, they do not invent their own.
 type Limits struct {
-	WatchDebounce  time.Duration // quiet time after a disk change before the tree is refreshed
-	WatchMaxDelay  time.Duration // longest a refresh may be postponed while changes keep coming
-	MaxTreeNodes   int           // a project tree larger than this is refused
-	CommandTimeout time.Duration // external commands (trash, later pandoc/textutil)
+	WatchDebounce   time.Duration // quiet time after a disk change before the tree is refreshed
+	WatchMaxDelay   time.Duration // longest a refresh may be postponed while changes keep coming
+	MaxTreeNodes    int           // a project tree larger than this is refused
+	CommandTimeout  time.Duration // external commands (trash, later pandoc/textutil)
+	QuitDialogNames int           // document names listed in the quit dialog
 
 	NvimStartTimeout time.Duration // longest wait until Neovim is up and init.lua has run
 	NvimStopTimeout  time.Duration // longest wait per shutdown stage of Neovim
@@ -257,10 +261,11 @@ func (s *Store) Home() string { return s.home }
 // Limits returns the built-in limits.
 func (s *Store) Limits() Limits {
 	return Limits{
-		WatchDebounce:  DefaultWatchDebounce,
-		WatchMaxDelay:  DefaultWatchMaxDelay,
-		MaxTreeNodes:   DefaultMaxTreeNodes,
-		CommandTimeout: DefaultCommandTimeout,
+		WatchDebounce:   DefaultWatchDebounce,
+		WatchMaxDelay:   DefaultWatchMaxDelay,
+		MaxTreeNodes:    DefaultMaxTreeNodes,
+		CommandTimeout:  DefaultCommandTimeout,
+		QuitDialogNames: DefaultQuitDialogNames,
 
 		NvimStartTimeout: DefaultNvimStartTimeout,
 		NvimStopTimeout:  DefaultNvimStopTimeout,

@@ -23,6 +23,34 @@ func TestLoadUIText(t *testing.T) {
 	}
 }
 
+// The new menu and quit texts exist, and the templates keep their placeholders.
+func TestUITextMenuAndQuit(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, v := range map[string]string{
+		"menuEdit": text.MenuEdit, "menuSave": text.MenuSave, "menuCopy": text.MenuCopy, "menuPaste": text.MenuPaste,
+		"quitTitle": text.QuitTitle, "quitUnnamed": text.QuitUnnamed, "quitSave": text.QuitSave,
+		"quitDiscard": text.QuitDiscard, "quitSaveFailedTitle": text.QuitSaveFailedTitle,
+		"quitUnresponsiveTitle": text.QuitUnresponsiveTitle, "quitUnresponsive": text.QuitUnresponsive,
+		"quitAnyway": text.QuitAnyway, "errorUnnamedBuffer": text.ErrorUnnamedBuffer,
+	} {
+		if strings.TrimSpace(v) == "" {
+			t.Errorf("%s is empty", name)
+		}
+	}
+	for _, c := range []struct{ name, tmpl, ph string }{
+		{"quitMessage", text.QuitMessage, "names"},
+		{"quitMore", text.QuitMore, "count"},
+		{"quitSaveFailed", text.QuitSaveFailed, "reason"},
+	} {
+		if !strings.Contains(c.tmpl, "{"+c.ph+"}") {
+			t.Errorf("%s has no {%s} placeholder", c.name, c.ph)
+		}
+	}
+}
+
 func TestParseUIText(t *testing.T) {
 	full, err := loadUIText()
 	if err != nil {

@@ -1548,3 +1548,18 @@ func TestBothUnsaved(t *testing.T) {
 		t.Fatalf("modified = %+v, %v; the changes must stay in the buffer", mod, err)
 	}
 }
+
+func TestEdRunning(t *testing.T) {
+	e := newEd(t) // never started
+	if e.svc.running() {
+		t.Error("running before Start")
+	}
+	e = startEd(t)
+	if !e.svc.running() {
+		t.Error("not running after Start")
+	}
+	e.svc.shutdown()
+	if e.svc.running() {
+		t.Error("running after shutdown")
+	}
+}

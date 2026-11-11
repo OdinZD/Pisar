@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, koraci 7 i 8 (meni, prečaci, fokus; dijalog pri gašenju)
+- Sljedeći korak: faza 2, korak 9 (dimne provjere prave aplikacije)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 6b gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, koraci 7 i 8 gotovi)
 
 ## Priprema (2026-11-11)
 
@@ -510,8 +510,25 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         logira, stablo se osvježi (disk je istina).
       - Poznato: usporedba putanja je osjetljiva na veličinu slova; promjene iz Findera (izvan
         aplikacije) nisu pokrivene ovim korakom
-- [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu
-- [ ] 8. Gašenje: dijalog Spremi / Odbaci / Odustani
+- [x] 7. Meni, prečaci i fokus (rađeno u jednom briefu i jednom commitu s korakom 8, jer diraju iste
+      datoteke): „Datoteka” → „Spremi” `⌘S` (Go → RPC, bez JavaScripta); vlastiti meni „Uređivanje” s
+      „Kopiraj” `⌘C` (događaj `menu:copy`; frontend odlučuje po fokusu: terminal → vizualni odabir u
+      Neovimu, inače odabir xterm.js-a; polje za unos → označeni tekst) i „Zalijepi” `⌘V` (uloga
+      sustava); bez `⌘Z` / `⌘X` / `⌘A`. `␣e` fokusira stablo, `Esc` u stablu vraća fokus terminalu dok
+      Neovim radi, nakon `nvim:exit` fokus ide u stablo. Logika u `lib/copyAction.ts` i `lib/focus.ts`.
+      - Dodano izvan briefa: `macOptionClickForcesSelection` u terminalu, jer se bez njega odabir
+        mišem ne može forsirati dok Neovim prati miš (`⌥` + povlačenje).
+      - Nije potvrđeno bez tipkovnice: da WKWebView bez stavki menija stvarno ne reagira na `⌘Z` /
+        `⌘X` / `⌘A`; ide na popis **[R]**.
+- [x] 8. Gašenje (`quit.go`): `⌘Q` i crveni gumb idu kroz isti `quitGate`. Zahtjev se prvo odbije, Neovim
+      se u pozadini pita za izmijenjene buffere (ne na UI niti); bez izmjena aplikacija se gasi, s
+      izmjenama dijalog Spremi / Odbaci / Odustani s popisom naziva (najviše 5, zatim „…i još N”);
+      neuspjelo spremanje ne gasi aplikaciju i pokaže razlog; ako Neovim ne odgovori, zaseban dijalog
+      „Uređivač ne odgovara…”. 11 slučajeva u `quit_test.go`; Go testovi u `main`: 78; vitest 388.
+      - Glavna sesija je nakon pregleda premjestila broj naziva u dijalogu u `internal/config`
+        (`QuitDialogNames`).
+      - Nije potvrđeno bez klikanja: sam dijalog, raspored gumba i `Esc` kao „Odustani” (Wails koristi
+        `Esc` samo za gumb koji nije zadani; isto vrijedi za potvrdu Smeća iz faze 1)
 - [ ] 9. Dimne provjere prave aplikacije: `scripts/smoke.sh`, `scripts/shutdown.sh`
 - [ ] 10. Kraj faze: `git rm -r spike`, kriteriji s dokazima, popis **[R]**, `plan-reviewer`, sažetak, STOP
 

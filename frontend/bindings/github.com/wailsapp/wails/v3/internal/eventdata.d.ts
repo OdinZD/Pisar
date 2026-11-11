@@ -14,6 +14,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "document:active": main$0.DocumentActive;
             "document:state": main$0.DocumentState;
+            "menu:copy": string;
             "menu:new-document": string;
             "nvim:exit": string;
             "project:changed": string;

@@ -29,6 +29,7 @@ func init() {
 	application.RegisterEvent[string](eventProjectsChanged)
 	application.RegisterEvent[string](eventProjectChanged)
 	application.RegisterEvent[string](eventMenuNewDocument)
+	application.RegisterEvent[string](eventMenuCopy)
 
 	// Editor events. The two document events carry a structure: the registered
 	// type must be exactly the one emitted (a value, not a pointer).
@@ -119,6 +120,18 @@ func run() error {
 	// from OnShutdown; the deferred calls cover a failed start. shutdown is idempotent.
 	defer svc.shutdown()
 
+	// Cmd+Q, the Quit menu item and the red close button all ask the gate
+	// (see quitGate). quit is App.Quit; Wails allows it from any goroutine
+	// (it runs the native call on the main thread).
+	gate := &quitGate{
+		editor:  editor,
+		dialogs: dlg,
+		text:    text,
+		timeout: limits.CommandTimeout,
+		names:   limits.QuitDialogNames,
+		quit:    func() { app.Quit() },
+	}
+
 	app = application.New(application.Options{
 		Name: text.AppName,
 		Services: []application.Service{
@@ -131,6 +144,8 @@ func run() error {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		// Called on the main thread by AppKit; request never blocks.
+		ShouldQuit: gate.request,
 		OnShutdown: func() {
 			svc.shutdown()
 			editor.shutdown()
@@ -140,7 +155,8 @@ func run() error {
 
 	svc.syncWatchers() // watch every project whose folder exists
 
-	app.Menu.Set(newMenu(app, text,
+	actions := &menuActions{editor: editor, emit: emit, timeout: limits.CommandTimeout}
+	app.Menu.Set(newMenu(app, text, actions,
 		func() { app.Event.Emit(eventMenuNewDocument, "") },
 		func() {
 			if _, err := svc.AddProject(context.Background()); err != nil {
@@ -151,7 +167,7 @@ func run() error {
 
 	// BackgroundColour is white and lives outside tokens.ts on purpose: omitting it leaves RGBA{}
 	// (alpha 0), so the NSWindow background is clear and may flash see-through before the webview paints.
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            text.AppName,
 		Width:            config.WindowWidth,
 		Height:           config.WindowHeight,
@@ -162,6 +178,15 @@ func run() error {
 			TitleBar: application.MacTitleBarDefault,
 		},
 		URL: "/",
+	})
+
+	// The red close button asks like Cmd+Q does. Cancel keeps the window; when
+	// the gate lets the request through, the window closes and the application
+	// ends because the last window was closed.
+	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if !gate.request() {
+			e.Cancel()
+		}
 	})
 
 	if saved := store.Recovered(); saved != "" {

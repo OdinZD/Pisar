@@ -491,6 +491,10 @@ func (e *EditorService) CopyText(text string) error {
 	return nil
 }
 
+// running reports whether Neovim is running. Unexported: the menu and the quit
+// logic ask it, the frontend has the phase it learns from events.
+func (e *EditorService) running() bool { return e.session.Running() }
+
 // modified returns the buffers with unsaved changes, for the dialog that
 // appears when the application quits. Unexported: not part of the frontend API.
 func (e *EditorService) modified(ctx context.Context) ([]nvim.Buffer, error) {

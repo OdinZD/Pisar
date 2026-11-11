@@ -8,6 +8,7 @@ export type TreeAction =
   | { type: 'rename' }
   | { type: 'trash' }
   | { type: 'remove-project' }
+  | { type: 'focus-editor' }
 
 export interface KeyLike {
   key: string
@@ -19,11 +20,15 @@ export interface KeyLike {
 /**
  * Maps a key press to a tree action for the currently selected row (null = nothing selected).
  * null means the tree does not handle the key. Modified keys are never handled: ⌘/Ctrl/⌥ belong
- * to the application and the system.
+ * to the application and the system. Escape hands the keyboard to the editor (the controller
+ * only does so when Neovim runs).
  */
-export function keyToAction(ev: KeyLike, row: ItemRow | null): TreeAction | null {
+export function keyToAction(ev: KeyLike, row: ItemRow | null, state: { confirming: boolean } = { confirming: false }): TreeAction | null {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return null
   switch (ev.key) {
+    case 'Escape':
+      // While the question is open Escape answers it (the controller handles that); it must not also leave the tree.
+      return state.confirming ? null : { type: 'focus-editor' }
     case 'j':
     case 'ArrowDown':
       return { type: 'move', delta: 1 }
