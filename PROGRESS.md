@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan faze u izradi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, u tijeku korak 1). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 3 i vlasnikovo „kreni” (preduvjet: instaliran `pandoc`)
+- Sljedeći korak: faza 3, korak 1 (konfiguracija i probni dokumenti)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2 prihvaćena)
+- Zadnja izmjena: 2026-11-11 (plan faze 3 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -660,7 +660,85 @@ radi; agent to nije provjeravao.
 
 ## Faza 3 — `.docx` i `.doc`
 
-Effort high. Preduvjet: `pandoc` instaliran.
+Effort high. Preduvjet: `pandoc` instaliran (3.13 u `/opt/homebrew/bin`). Plan faze odobren 2026-11-11.
+
+### Odluke vlasnika (2026-11-11)
+
+- Uvoz `.doc` ostaje, uz jasno upozorenje da je uvoz pojednostavio strukturu; gubici idu u
+  `docs/known-losses.md`.
+- Probni dokumenti: generirani skup u repozitoriju (`testdata/docx/`) + vlasnikovi pravi Wordovi
+  dokumenti za ručno mjerenje gubitaka. Vlasnikovi dokumenti ne ulaze u repozitorij; mapa se dogovara
+  prije koraka 8.
+
+### Ovisnosti (odobrene)
+
+- Go: `golang.org/x/sys` postaje izravna ovisnost (ista verzija koja je već neizravna, v0.48.0), za
+  prijenos xattr-a pri atomskom zapisu.
+- Vanjski alati: `pandoc`, `textutil` (oba iz stacka). Nema novih npm ovisnosti.
+
+### Izmjereno prije plana (pandoc 3.13, `textutil`)
+
+- `--reference-doc=<izvornik>` pri svakom spremanju prenosi i slike izvornika (1 → 2 → 3 → 4). S
+  referentnim dokumentom bez `word/media/` tri su spremanja dala bajt-identičan `.docx` s jednom slikom.
+- Zadani `markdown` mijenja `”` u `"` i `—` u `---`; s `-smart` znakovi ostaju doslovni.
+- Zadane (multiline) tablice mijenjaju tekst pri svakom krugu. Pipe tablice su stabilne; tablica sa
+  složenim ćelijama u tom obliku postaje sirovi HTML koji se pri md → docx gubi. Grid tablicama se
+  širine stupaca promijene jednom pa miruju. `gfm` gubi slike.
+- `--extract-media=.` daje `./media/rIdN.png`; ime slike se mijenja pri svakom ponovnom čitanju
+  (`rId13` → `rId26`).
+- Obično čitanje tiho odbacuje komentare i obrisani tekst praćenih izmjena. `word/comments.xml`
+  postoji i bez komentara, pa otkrivanje gleda elemente (`w:comment`, `w:ins`, `w:del`,
+  `w:txbxContent`). pandoc zna zapisati komentare i praćene izmjene (za probne dokumente).
+- `textutil -convert docx` zadrži tekst, a izgubi naslove, liste, tablice, poveznice i fusnote; vraća
+  0 i kad ne uspije.
+
+### Odstupanja od dizajna (odobrena planom faze)
+
+- 4.3, korak 5: referentni dokument nije izvornik nego njegova kopija bez `word/media/` u radnoj mapi.
+- 4.2: format je `markdown-smart` s pipe tablicama; grid tablice samo kad dokument ima složene ćelije.
+- §5: kad `pandoc` nije instaliran, u ovoj fazi je to poruka o grešci pri otvaranju; zaslon i provjera
+  pri pokretanju su u fazi 6.
+
+### Kako radi
+
+- Otvaranje: pregled arhive → referentni dokument bez slika → pandoc u `<home>/work/<id>/` (`doc.md`,
+  `media/`, `reference.docx`, `meta.json` s veličinom, vremenom i hashom izvornika) → Neovim otvara
+  `doc.md`. Stablo i alatna traka pokazuju izvorni dokument.
+- Samo za čitanje: nađeni gubici, datoteka bez dozvole pisanja ili s više tvrdih linkova. Traka kaže
+  razlog i nudi „Spremi kao kopiju”.
+- Spremanje: konflikt (Prepiši / Učitaj ponovno / Odustani) → backup u `<home>/backups/` pri prvom
+  prepisivanju u sesiji (zadnjih 10 po dokumentu) → pandoc u privremenu datoteku u istom folderu →
+  provjera arhive → `fsync` + atomski `rename` s dozvolama i xattr-ima. „Učitaj ponovno” prije zamjene
+  ostavlja dotadašnju radnu kopiju kao `doc.prev.md`.
+- `.doc`: `textutil` → privremeni `.docx` u radnoj mapi → dalje kao `.docx`; prvo spremanje stvara
+  `Ime.docx` pored izvornika (ako postoji, pita za ime). Izvorni `.doc` se ne dira.
+- Oporavak: spremljena, a neizvezena radna kopija pri otvaranju nudi Oporavi / Odbaci.
+
+### Pravila za sve briefove
+
+Kao u fazi 2 (bez tipki i klikova preko `osascript`-a, bez sistemskog clipboarda, testovi samo u
+`t.TempDir()`, pravi Pisarov home se ne dira, pravi `trash` se ne poziva), uz: Word se ne pokreće
+skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u privremenu mapu.
+
+### Koraci
+
+- [ ] 1. Konfiguracija (putanje `work/` i `backups/`, imena alata, ograničenja) i probni dokumenti
+      (`scripts/make-fixtures.sh`, `testdata/docx/`)
+- [ ] 2. `internal/convert`: pregled dokumenta (komentari, praćene izmjene, tekstualni okviri)
+- [ ] 3. `internal/convert`: pretvorbe `.docx → .md`, `.md → .docx`, `.doc → .docx`; golden testovi
+- [ ] 4. `internal/docsafe`: atomski zapis, backup s rotacijom, snimka izvornika i konflikt
+- [ ] 5. `internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”
+- [ ] 6. Editor (Go): otvaranje kroz radnu kopiju, samo za čitanje, tok spremanja, dijalozi
+- [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci
+- [ ] 8. `docs/known-losses.md`
+- [ ] 9. Dimna provjera (`scripts/smoke.sh`)
+- [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
+
+### Izvan opsega
+
+Novi `.docx` iz aplikacije, uređivanje komentara i praćenih izmjena, pregled, tražilica, PDF izvoz,
+postavke za prozu i pravopis, politika za Neovimovo swap pitanje, zaslon „nedostaje `pandoc`”,
+pakiranje, automatsko pokretanje Worda.
 
 ### Kriteriji prihvaćanja
 
