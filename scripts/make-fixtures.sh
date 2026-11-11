@@ -96,6 +96,45 @@ insert_textbox() {
   (cd "$dir" && unzip -Z1 "$1" | zip -X -D -q "$2" -@)
 }
 
+# insert_header <in.docx> <out.docx>: pandoc cannot write a page header either.
+# src/header1.xml (a header with the image src/logo.png) is added as
+# word/header1.xml with its relationships and picture, registered in
+# [Content_Types].xml and in word/_rels/document.xml.rels, and referenced
+# from the first w:sectPr. Packed like insert_textbox: original entry order,
+# the new entries last, fixed entry times.
+insert_header() {
+  local dir="$TMP/header"
+  mkdir "$dir"
+  unzip -q "$1" -d "$dir"
+  xmllint --noout "$SRC/header1.xml" "$SRC/header1.xml.rels"
+  cp "$SRC/header1.xml" "$dir/word/header1.xml"
+  cp "$SRC/header1.xml.rels" "$dir/word/_rels/header1.xml.rels"
+  cp "$SRC/logo.png" "$dir/word/media/logo.png"
+  perl -0pi -e '
+    $n = s{</Types>}{<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml" /><Override PartName="/word/media/logo.png" ContentType="image/png" /></Types>};
+    END { exit($n ? 0 : 1) }
+  ' "$dir/[Content_Types].xml"
+  perl -0pi -e '
+    $n = s{</Relationships>}{<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Id="rIdHdr1" Target="header1.xml" /></Relationships>};
+    END { exit($n ? 0 : 1) }
+  ' "$dir/word/_rels/document.xml.rels"
+  # headerReference must be the first child of w:sectPr. The lookahead keeps
+  # w:sectPrChange out of it.
+  perl -0pi -e '
+    $n = s{(<w:sectPr(?=[\s>])[^>]*>)}{$1<w:headerReference w:type="default" r:id="rIdHdr1" />};
+    END { exit($n ? 0 : 1) }
+  ' "$dir/word/document.xml"
+  xmllint --noout "$dir/[Content_Types].xml" "$dir/word/_rels/document.xml.rels" "$dir/word/document.xml"
+  find "$dir" -exec touch -t 202601010000 {} +
+  (
+    cd "$dir"
+    {
+      unzip -Z1 "$1"
+      printf '%s\n' word/header1.xml word/_rels/header1.xml.rels word/media/logo.png
+    } | zip -X -D -q "$2" -@
+  )
+}
+
 echo "== generating"
 for name in basic complex-table comments tracked-changes textbox legacy; do
   md2docx "$name"
@@ -110,8 +149,13 @@ mv "$BUILD/textbox.docx" "$BUILD/textbox-plain.docx"
 insert_textbox "$BUILD/textbox-plain.docx" "$BUILD/textbox.docx"
 rm -f "$BUILD/textbox-plain.docx" "$BUILD/legacy.docx"
 
+md2docx header-image
+mv "$BUILD/header-image.docx" "$BUILD/header-image-plain.docx"
+insert_header "$BUILD/header-image-plain.docx" "$BUILD/header-image.docx"
+rm -f "$BUILD/header-image-plain.docx"
+
 mkdir -p "$OUT"
-for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx legacy.doc; do
+for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx header-image.docx legacy.doc; do
   [[ -s "$BUILD/$f" ]] || {
     echo "no output: $f" >&2
     exit 1
@@ -162,7 +206,7 @@ cells_text() {
     grep -Fq '<w:numPr>' "$x" && grep -Fq '<w:tbl>' "$x"
 }
 
-for f in basic complex-table comments tracked-changes textbox; do
+for f in basic complex-table comments tracked-changes textbox header-image; do
   check "$f.docx is a valid archive with word/document.xml" valid_docx "$OUT/$f.docx"
 done
 
@@ -185,6 +229,20 @@ check "tracked-changes.docx: <w:ins  in word/document.xml" has "$OUT/tracked-cha
 check "tracked-changes.docx: <w:del  in word/document.xml" has "$OUT/tracked-changes.docx" word/document.xml '<w:del '
 check "textbox.docx: w:txbxContent in word/document.xml" has "$OUT/textbox.docx" word/document.xml 'w:txbxContent'
 
+H="$OUT/header-image.docx"
+# The body keeps its own image (pandoc names it rIdN.png); the logo is the other one.
+body_media_count() { [[ $(unzip -Z1 "$1" | grep '^word/media/[^/]' | grep -vc '^word/media/logo\.png$') -eq 1 ]]; }
+logo_identical() { member "$1" word/media/logo.png "$TMP/logo.png" && cmp -s "$TMP/logo.png" "$SRC/logo.png"; }
+wellformed() { member "$1" "$2" "$TMP/member.xml" && xmllint --noout "$TMP/member.xml"; }
+logo_differs_from_body() { ! cmp -s "$SRC/logo.png" "$SRC/pixel.png"; }
+check "header-image.docx: word/header1.xml exists and is well formed" wellformed "$H" word/header1.xml
+check "header-image.docx: header relationships are well formed" wellformed "$H" word/_rels/header1.xml.rels
+check "header-image.docx: word/document.xml has a headerReference" has "$H" word/document.xml '<w:headerReference'
+check "header-image.docx: document.xml.rels has the header relationship" has "$H" word/_rels/document.xml.rels 'relationships/header'
+check "header-image.docx: [Content_Types].xml has the header override" has "$H" '\[Content_Types\].xml' '/word/header1.xml'
+check "header-image.docx: word/media/logo.png is identical to src/logo.png" logo_identical "$H"
+check "header-image.docx: exactly one other image, in the body" body_media_count "$H"
+check "header-image.docx: logo and body image differ" logo_differs_from_body
 check "legacy.doc exists and is not empty" nonempty "$OUT/legacy.doc"
 check "legacy.doc is a Composite Document File" is_cdf "$OUT/legacy.doc"
 
