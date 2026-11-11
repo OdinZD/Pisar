@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 4 (`internal/docsafe`)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 3 gotov)
+- Sljedeći korak: faza 1, korak 5 (`internal/project` — praćenje promjena)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 4 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -212,8 +212,15 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       `Resolve` (relativna putanja → putanja unutar projekta; odbija `..`, linkove prema van i viseće
       linkove); 20 testova, pokrivenost 92 %. APFS na ovom stroju normalizira Unicode imena, pa je
       test NFC/NFD preskočen
-- [ ] 4. `internal/docsafe`: `CreateFile`, `Rename` (bez prepisivanja, i promjena samo veličine slova),
-      `Trash` (`/usr/bin/trash`), provjera korijena i imena
+- [x] 4. `internal/docsafe`: `CreateFile` (isključivo stvaranje, `.md` ako nema `.md`/`.txt`), `Rename`
+      (tvrdi link pa brisanje starog imena; promjena samo veličine slova; ekstenzija ostaje), `Trash`
+      (`trash -s <putanja>`, zatim provjera da datoteke više nema); 23 testa, pokrivenost 88 %.
+      - Pravi `trash` se u testovima ne poziva; `TestRealTrash` radi samo uz `PISAR_TEST_REAL_TRASH=1`.
+      - Dvotočka u imenu je zabranjena (Finder je prikazuje kao `/`) — odluka glavne sesije.
+      - Preimenovanje na drugi tvrdi link iste datoteke vraća `ErrExists` (ispravak glavne sesije
+        nakon pregleda, s testom `TestRenameOntoHardLink`).
+      - Na volumenu bez tvrdih linkova ostaje „provjeri pa preimenuj” s malim prozorom utrke; ta
+        staza nema test
 - [ ] 5. `internal/project` — praćenje: FSEvents po projektu, debounce, izvor iza sučelja
 - [ ] 6. `ProjectService` i meni: servis prema ugovoru, dijalog za folder, potvrda brisanja, događaji
 - [ ] 7. Tema: `theme/tokens.ts`, CSS varijable, test kontrasta, fontovi Inter i JetBrains Mono, `strings.ts`
