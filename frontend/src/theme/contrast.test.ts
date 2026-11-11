@@ -29,6 +29,7 @@ const pairs: [ColorToken, ColorToken[]][] = [
   ['accent', ['bg.editor', 'bg.app', 'bg.chrome', 'bg.cursorline', 'bg.selected']],
   ['syntax.list', ['bg.editor', 'bg.cursorline']],
   ['syntax.code', ['bg.editor', 'bg.cursorline']],
+  ['danger', ['bg.editor', 'bg.chrome', 'bg.app', 'bg.cursorline']],
 ]
 
 describe('text contrast of the colour tokens', () => {

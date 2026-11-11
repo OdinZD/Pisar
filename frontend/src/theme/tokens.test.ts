@@ -15,7 +15,7 @@ function designColors(): Record<string, string> {
 describe('colour tokens', () => {
   it('match the table in DESIGN.md (names and values)', () => {
     const fromDesign = designColors()
-    expect(Object.keys(fromDesign).length).toBe(16)
+    expect(Object.keys(fromDesign).length).toBe(17)
     const fromCode = Object.fromEntries(Object.entries(colors).map(([k, v]) => [k, v.toUpperCase()]))
     expect(fromCode).toEqual(fromDesign)
   })

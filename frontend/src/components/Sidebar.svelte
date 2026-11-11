@@ -118,7 +118,7 @@
     color: var(--text-muted);
   }
   .message.error {
-    color: var(--text);
+    color: var(--danger);
   }
   .empty {
     padding-left: var(--space-md);

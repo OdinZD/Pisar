@@ -45,6 +45,7 @@ Jedini izvor je `frontend/src/theme/tokens.ts`. Imena su semantička, da se tamn
 | `accent.text` | `#FFFFFF` | tekst na akcentu |
 | `syntax.list` | `#B45309` | oznake lista |
 | `syntax.code` | `#0F6B3C` | kod u retku |
+| `danger` | `#B42318` | poruke o grešci |
 
 Kontrast teksta prema podlozi mora biti najmanje 4.5:1. Ako promijeniš boju, provjeri omjer.
 

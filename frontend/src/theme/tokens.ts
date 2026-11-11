@@ -20,6 +20,7 @@ export const colors = {
   'accent.text': '#FFFFFF',
   'syntax.list': '#B45309',
   'syntax.code': '#0F6B3C',
+  danger: '#B42318',
 } as const
 export type ColorToken = keyof typeof colors
 

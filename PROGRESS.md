@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 3 (tema za terminal i Neovim)
+- Sljedeći korak: faza 2, korak 4 (`EditorService`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 2 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 3 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -441,7 +441,17 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
       - Bez procesa `Modified` i `Current` vraćaju prazno bez greške (treba sloju za gašenje).
       - `Exited()` je zajamčeno zadnji poziv za proces koji je sam završio.
       - `Close` se ne smije zvati iz metode `Emitter`-a (čeka da poziv završi)
-- [ ] 3. Tema za terminal i Neovim: token `danger`, `terminalTheme.ts`, `nvimColorscheme.ts`
+- [x] 3. Tema za terminal i Neovim: token `danger` (`#B42318`; jedan novi redak u `DESIGN.md`, kontrast
+      5,65–6,57 na podlogama), `theme/terminalTheme.ts` (xterm.js tema + 16 ANSI boja iz tokena),
+      `theme/nvimColorscheme.ts` (colorscheme `pisar`: sučelje, sintaksa, Markdown klasično i
+      treesitter); 298 vitest testova. U pravom Neovimu 0.12 učitava se bez greške, `Normal`,
+      `CursorLineNr`, `ErrorMsg`, `Visual` i Markdown naslov imaju boje tokena (ručna provjera agenta).
+      - Odluke koje plan nije odredio: `Visual` i `Search` izričito postavljaju boju teksta (inače
+        `syntax.list` na `bg.selected` ima samo 4,03:1); `Search` je podcrtan da se razlikuje od
+        odabira; magenta = `accent`, cijan = `syntax.code` (nema tih tokena); `Delimiter` je
+        `text.muted`; `Diff*` koriste `bg.chrome` i `bg.selected`; poruke o grešci u stablu su `danger`.
+      - Jedina iznimka kontrasta: `WinSeparator` (crta između prozora, nije tekst).
+      - Nije pokriveno: LSP i `Diagnostic*` grupe (Pisar ih ne koristi), `g:terminal_color_*`
 - [ ] 4. `EditorService`: servis prema ugovoru, zapis colorschemea, preslikavanje putanja u projekt
 - [ ] 5. Terminal u frontendu: `Terminal.svelte`, serijsko slanje, kalibracija visine retka
 - [ ] 6. Otvaranje i praćenje: `↵` / klik, poruka za `.docx`, aktivni dokument u stablu, stanje u traci
