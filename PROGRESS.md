@@ -69,7 +69,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - [x] 7. Gašenje aplikacije: `OnShutdown` zove `Close`; `bash spike/scripts/shutdown.sh` gradi, pokreće i
       gasi aplikaciju sa SIGTERM, SIGINT, SIGHUP i SIGKILL te provjerava da nema Neovima
 - [x] 8. Popis za ručnu provjeru **[R]** predan vlasniku: `docs/spike-report.md`, odjeljak 3
-- [x] 9. `docs/spike-report.md`, kriteriji s dokazima (dolje), `plan-reviewer`, sažetak, STOP
+- [ ] 9. `docs/spike-report.md` (napisan), kriteriji s dokazima (dolje), `plan-reviewer`: krug 1 FAIL
+      (5 odstupanja u dokumentaciji, ispravljena), krug 2 u tijeku; zatim sažetak i STOP
 
 ### Nalazi tijekom faze (ulaze u `docs/spike-report.md`)
 
@@ -121,6 +122,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - Gašenje: nakon SIGKILL ili SIGHUP aplikacije oba Neovim procesa nestaju sama (PTY se zatvori), ali
   ostaje privremena mapa `pisar-spike-*` s `init.lua`. Zaglavljeni server uz SIGKILL aplikacije ostao
   bi živ; uredno gašenje taj slučaj rješava.
+- Neovimovo stanje aplikacije je izvan `spike/`: `~/.local/state/pisar-spike/` (log, shada, swap) i
+  `~/.local/share/pisar-spike/`. Obrisati ih zajedno sa `spike/`; u fazi 1 postaviti `XDG_*`.
+- Ulazni put tipke (keydown → `Write` → PTY) nije vremenski mjeren; bench mjeri samo izlaz.
 - Trag za dijagnostiku: `PISAR_SPIKE_TRACE=<datoteka>` bilježi pozive i SVE tipke; samo za spike,
   ne prenositi u aplikaciju. Renderer: `PISAR_SPIKE_RENDERER=webgl|dom`.
 

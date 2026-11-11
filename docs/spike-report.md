@@ -29,13 +29,15 @@ Dodatno, izvan kriterija, a provjereno automatski:
   paketa, 13 frontend testova, golangci-lint 0 nalaza, svelte-check 0 grešaka).
 - Font JetBrains Mono učitan je prije otvaranja terminala; ćelija je 7.80×21 px (DOM) i 7.50×21 px
   (WebGL); mreža koju izračuna xterm.js jednaka je onoj koju Neovim prijavi (`smoke.sh`).
-- Tipke stižu redoslijedom kojim su poslane (serijsko slanje, vidi 4.4).
+- Tipke stižu redoslijedom kojim su poslane (serijsko slanje, vidi 4.3).
 - Izlaz PTY-ja nikad se ne reže usred UTF-8 znaka (testovi rezanja na svakoj granici bajta).
 
 ## 2. Mjerenje
 
 `task -d spike bench` — bez tipkovnice: Go sam šalje `Ctrl-d` kroz PTY kroz datoteku od 5000 redaka
-(`task -d spike sample`). Prozor 1100×700. Tri pokretanja dala su gotovo iste brojke.
+(`task -d spike sample`). Prozor 1100×700. Tablica je iz zadnjeg pokretanja (`spike/bin/bench-*.json`,
+izvan gita); dva ranija pokretanja u koraku 6 dala su gotovo iste brojke, ali njihove datoteke nisu
+sačuvane.
 
 - `repeat`: `Ctrl-d` svaka 33 ms do dna (345 pritisaka, 11,4 s) — približno držana tipka.
 - `flood`: `Ctrl-d` do dna pa `Ctrl-u` do vrha bez ikakve stanke (720 pritisaka, oko 5 s).
@@ -49,7 +51,7 @@ Dodatno, izvan kriterija, a provjereno automatski:
 
 Što to znači:
 
-- **Nema vidljivog zastoja:** nijedan kadar nije kasnio više od jednog osvježenja zaslona (60 Hz).
+- **Nema zastoja u iscrtavanju:** nijedan kadar nije kasnio više od jednog osvježenja zaslona (60 Hz).
 - **Nema gubitka ni preslagivanja:** u svim fazama broj i duljina događaja jednaki su na Go i JS strani.
 - **Nema razbijenog prikaza:** tekst redaka u xterm.js-u na kraju faze jednak je recima koje Neovim
   prikazuje.
@@ -58,10 +60,16 @@ Dodatno, izvan kriterija, a provjereno automatski:
 - **DOM renderer je dovoljan.** WebGL je brži u obradi (p95 ispod 1 ms naspram 7 ms), ali razlika se
   ne vidi u kadrovima. WebGL usto zaokružuje širinu ćelije na fizičke piksele (7.50 umjesto 7.80 px).
 
-Ograničenja mjerenja: sat u WKWebViewu zaokružen je na oko 1 ms, pa su vrijednosti ispod 1 ms na
-granici razlučivosti (pojavljuju se i blago negativne razlike). Mjereno je na jednom stroju, s
-praznom Neovim konfiguracijom i običnim tekstom; treesitter, provjera pravopisa i dugi prelomljeni
-reci nisu bili uključeni.
+Ograničenja mjerenja:
+
+- **Ulazni put nije mjeren.** `Ctrl-d` u PTY upisuje Go, pa put prave tipke (keydown → xterm.js →
+  serijsko slanje → Wails poziv `Write` → PTY) nije vremenski izmjeren. Izmjereno je samo od
+  emitiranja izlaza u Go-u do kraja obrade u xterm.js-u. Zaključak „nema zastoja” zato vrijedi za
+  izlaz i iscrtavanje; kašnjenje same tipke pokazuje tek ručna provjera 7 u odjeljku 3.
+- Sat u WKWebViewu zaokružen je na oko 1 ms, pa su vrijednosti ispod 1 ms na granici razlučivosti
+  (pojavljuju se i blago negativne razlike).
+- Mjereno je na jednom stroju, s praznom Neovim konfiguracijom i običnim tekstom; treesitter,
+  provjera pravopisa i dugi prelomljeni reci nisu bili uključeni.
 
 ## 3. Ručna provjera [R] — za vlasnika
 
@@ -81,6 +89,9 @@ spike/bin/spike spike/bin/sample-5000.md
 | 5 | promjena veličine prozora | povlači rub prozora, i na vrlo malu veličinu | Neovim se preslaže; statusna linija je uvijek na dnu; nema odsječenih redaka |
 | 6 | font i poravnanje | pogledaj tekst i razdjelnik nakon `:vsplit` | JetBrains Mono; okomita crta je ravna; kursor leži točno na znaku |
 | 7 | držanje `Ctrl-d` kroz 5000 redaka | drži `Ctrl-d` do dna, `Ctrl-u` do vrha; ponovi nakon Prikaz → Renderer: WebGL | bez zastoja, bez zaostalih ili pomaknutih redaka |
+
+Napomena uz 4: `⌘S` namjerno ide kroz meni aplikacije (stavka „Spremi” → Go → RPC), bez JavaScripta.
+Kriterij „ne presreće ga Wails meni” ovdje znači da ga ne proguta neka druga stavka menija.
 
 Vrijedi usput pogledati: `⌘Z`, `⌘X`, `⌘A` ne rade ništa; nakon `:q` pojavi se poruka i Enter ponovno
 pokreće Neovim; `⌘S` na bufferu bez imena pokaže E32 u Neovimu.
@@ -120,6 +131,12 @@ Ako želiš zapis onoga što aplikacija prima: `PISAR_SPIKE_TRACE=/tmp/trag.log 
   bude ubijena sa SIGKILL, server ostaje živ: nema tko ga ugasiti. Uredno gašenje taj slučaj rješava
   (`TestHung`).
 - **Ostaci nakon pada.** Nakon SIGKILL ili SIGHUP ostaje privremena mapa `pisar-spike-*` s `init.lua`.
+- **Neovimovo stanje živi izvan `spike/`.** Uz `NVIM_APPNAME=pisar-spike` Neovim piše u
+  `~/.local/state/pisar-spike/` (`nvim.log`, `shada/`, `swap/`) i stvara `~/.local/share/pisar-spike/`.
+  Te mape ostaju i nakon urednog gašenja, a u `swap/` završavaju swap datoteke dokumenata koje
+  otvoriš. Pretpostavka iz plana „brisanjem `spike/` nestaje sve” zato ne vrijedi: uz `spike/` treba
+  obrisati i te dvije mape. Trenutačno sadrže samo `nvim.log` i `shada/main.shada` (28 KB); nisam ih
+  brisao. Testovi ih ne diraju (rade pod `pisar-test` unutar `t.TempDir()`).
 - **`⌥` kao Meta nije dostupan** (namjerno): `<M-…>` mapiranja u Neovimu ne rade.
 - **Tipke s `⌘` ne mogu doći do Neovima**; sve što treba `⌘` ide kroz meni aplikacije.
 - **Miš izvan SGR načina** (`onBinary`) išao bi kroz string i bio bi pokvaren. Neovim traži SGR, pa se
@@ -137,6 +154,14 @@ Ako želiš zapis onoga što aplikacija prima: `PISAR_SPIKE_TRACE=/tmp/trag.log 
   bio registriran (odobrio vlasnik). Od koraka 3 radi `coder`.
 - Skriptu `spike/scripts/shutdown.sh` i test `TestLateReplies` napisala je glavna sesija (provjere, ne
   produkcijski kod).
+- Tekst sučelja je na dva mjesta, a `CLAUDE.md` traži jedno: poruke terminala u
+  `spike/frontend/src/strings.ts`, a stavke menija i naslov prozora u Go-u (`spike/menu.go`,
+  `spike/main.go`), jer meni gradi Go i ne može čitati TypeScript datoteku. U fazi 1 treba odlučiti
+  gdje je jedini izvor (npr. Go, a frontend ga dobiva preko servisa).
+- Bijela boja je zapisana na tri mjesta (`terminalTheme.ts`, `app.css`, `main.go`); nestaje s
+  `theme/tokens.ts`.
+- Trag tipki (`PISAR_SPIKE_TRACE`) i bench način nisu bili u planu; dodani su da se spike može
+  provjeriti bez tipkovnice.
 - U koraku 4 agent je bez naloga slao tipke aplikaciji preko `osascript`-a. Od koraka 5 to je u
   briefovima izričito zabranjeno, kao i svaki dodir sistemskog clipboarda.
 
@@ -153,6 +178,8 @@ Promijeniti:
 
 - `init.lua` i socket držati u `~/Library/Application Support/Pisar/` (ili počistiti stare privremene
   mape pri pokretanju), da pad ne ostavlja tragove.
+- Neovimu postaviti `XDG_STATE_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` i `XDG_CACHE_HOME` unutar
+  `~/Library/Application Support/Pisar/`, da swap, shada i log ne završavaju u `~/.local/`.
 - Boje terminala i font izvesti iz `theme/tokens.ts`.
 - Vlastiti meni na hrvatskom umjesto Wailsovih uloga.
 - Prije gašenja pitati za nespremljene izmjene (spike gasi s `qa!`).
