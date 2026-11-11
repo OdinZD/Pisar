@@ -954,6 +954,84 @@ func TestEdInitialOutside(t *testing.T) {
 	}
 }
 
+// initialLoose makes newEd build the service with the file name in the folder
+// of the test projects, which exists but is not a project itself.
+func initialLoose(name string) func(*editorServiceDeps) {
+	return func(d *editorServiceDeps) {
+		d.InitialFile = filepath.Join(filepath.Dir(d.Store.Home()), "p", name)
+	}
+}
+
+// What is not a .md or .txt file must never reach Neovim from the command line:
+// its bytes would be written back by :w outside internal/docsafe.
+func TestEdInitialRefused(t *testing.T) {
+	needNvim(t)
+	for _, name := range []string{"x.docx", "x.DOC", "slika.png", "README", "dir", "dir.md"} {
+		t.Run(name, func(t *testing.T) {
+			isFolder := strings.HasPrefix(name, "dir")
+			e := newEd(t, initialLoose(name), func(d *editorServiceDeps) {
+				// The folder must exist when the service is made: that is
+				// when the command-line document is judged.
+				if isFolder {
+					if err := os.Mkdir(d.InitialFile, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+			file := filepath.Join(e.projects, name)
+			if !isFolder {
+				write(t, file, "not for Neovim")
+			}
+			if e.svc.HasInitialDocument() {
+				t.Fatal("HasInitialDocument = true right after creating the service")
+			}
+			if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+				t.Fatal(err)
+			}
+			// Nothing may arrive late either: give an open call time to show up.
+			time.Sleep(300 * time.Millisecond)
+			for _, ev := range e.rec.since(0) {
+				if d, ok := ev.data.(DocumentActive); ev.name == eventDocumentActive && (!ok || d.Path != "") {
+					t.Errorf("a document became active: %v", ev)
+				}
+			}
+			cur, err := e.svc.session.Current(context.Background())
+			if err != nil || cur != (nvim.Buffer{}) {
+				t.Errorf("Current = %+v, %v; want an unnamed buffer", cur, err)
+			}
+			if !isFolder {
+				if got, err := os.ReadFile(file); err != nil || string(got) != "not for Neovim" {
+					t.Errorf("the file changed: %q, %v", got, err)
+				}
+			}
+		})
+	}
+}
+
+// A .md or .txt name is accepted in any case, also for a file that does not exist yet.
+func TestEdInitialAccepted(t *testing.T) {
+	needNvim(t)
+	for _, c := range []struct {
+		name   string
+		create bool
+	}{{"biljeske.md", true}, {"Popis.TXT", true}, {"nova.md", false}} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEd(t, initialLoose(c.name))
+			file := filepath.Join(e.projects, c.name)
+			if c.create {
+				write(t, file, "x")
+			}
+			if !e.svc.HasInitialDocument() {
+				t.Fatal("HasInitialDocument = false before Start")
+			}
+			if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+				t.Fatal(err)
+			}
+			e.rec.waitActive(t, 0, c.name, func(d DocumentActive) bool { return d.Name == c.name && sameFile(d.Path, file) })
+		})
+	}
+}
+
 func TestEdInitialNone(t *testing.T) {
 	e := newEd(t)
 	if e.svc.HasInitialDocument() {

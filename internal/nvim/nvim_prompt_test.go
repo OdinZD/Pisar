@@ -470,6 +470,9 @@ func TestSwap(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			share, file := swapGone(t)
 			p, out := newProc(t, func(o *Options) { share(o); o.Rows = tc.rows })
+			// A modified buffer in the background: SaveAll has something to write,
+			// which it must not do while the question stands.
+			modFile := p.openModified(t, t.TempDir(), "mod.md")
 
 			// The question is not silenced: the call waits for the user's answer.
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -496,17 +499,30 @@ func TestSwap(t *testing.T) {
 				"Current":  func(c context.Context) error { _, err := p.Current(c); return err },
 				"Modified": func(c context.Context) error { _, err := p.Modified(c); return err },
 				"Save":     p.Save,
+				"SaveAll":  p.SaveAll,
 			} {
 				cctx, ccancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 				start := time.Now()
 				err := call(cctx)
 				ccancel()
-				if name == "Save" && tc.rows >= 60 && (err == nil || !strings.Contains(err.Error(), "waiting for an answer")) {
-					t.Errorf("Save while asked = %v, want a refusal", err)
+				if (name == "Save" || name == "SaveAll") && tc.rows >= 60 {
+					if err == nil || !strings.Contains(err.Error(), "waiting for an answer") {
+						t.Errorf("%s while asked = %v, want a refusal", name, err)
+					} else {
+						t.Logf("%s while asked: %v", name, err)
+					}
 				}
 				if took := time.Since(start); took > time.Second {
 					t.Errorf("%s took %v for a 300 ms context", name, took)
 				}
+			}
+
+			// Nothing was written, byte for byte, whichever the screen.
+			if data, err := os.ReadFile(file); err != nil || string(data) != "x\n" {
+				t.Errorf("file while asked = %q, %v; want it untouched", data, err)
+			}
+			if data, err := os.ReadFile(modFile); err != nil || string(data) != "old\n" {
+				t.Errorf("modified buffer's file while asked = %q, %v; want it untouched", data, err)
 			}
 
 			// The user answers "edit anyway" through the terminal.
@@ -526,6 +542,19 @@ func TestSwap(t *testing.T) {
 			}
 			if data, err := os.ReadFile(file); err != nil || string(data) != "x\n" {
 				t.Errorf("file = %q, %v; want it untouched", data, err)
+			}
+			// SaveAll works again: it writes the background buffer and leaves the
+			// file that was asked about alone (its buffer is not modified).
+			saveCtx, saveCancel := context.WithTimeout(context.Background(), testAnswer)
+			defer saveCancel()
+			if err := p.SaveAll(saveCtx); err != nil {
+				t.Errorf("SaveAll after the answer: %v", err)
+			}
+			if data, err := os.ReadFile(modFile); err != nil || string(data) != "nová linija\n" {
+				t.Errorf("modified buffer's file after SaveAll = %q, %v; want its text", data, err)
+			}
+			if data, err := os.ReadFile(file); err != nil || string(data) != "x\n" {
+				t.Errorf("file after SaveAll = %q, %v; want it untouched", data, err)
 			}
 			// Later calls work. (Not the same file again: Neovim keeps the old swap
 			// file, so it would ask again.)
@@ -597,6 +626,21 @@ func TestSaveAsk(t *testing.T) {
 		t.Fatalf("Save = %v, want it to wrap context.DeadlineExceeded", err)
 	}
 	eventually(t, "the question on the terminal", func() bool { return out.has("Do you really want to write to it") })
+	// SaveAll has to come back within its context too, and is refused like Save
+	// is: the question is Neovim's own protection of a file that changed on disk.
+	allCtx, allCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	allStart := time.Now()
+	err := p.SaveAll(allCtx)
+	allCancel()
+	if err == nil || !strings.Contains(err.Error(), "waiting for an answer") {
+		t.Errorf("SaveAll while the question stands = %v, want a refusal", err)
+	}
+	if took := time.Since(allStart); took > time.Second {
+		t.Errorf("SaveAll took %v for a 500 ms context", took)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "other\n" {
+		t.Errorf("file while asked = %q, %v; want the other writer's text, untouched", data, err)
+	}
 	if _, err := p.Write([]byte("n")); err != nil {
 		t.Fatal(err)
 	}

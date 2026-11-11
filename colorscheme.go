@@ -15,7 +15,8 @@ import (
 // it, so Go accepts only the shape frontend/src/theme/nvimColorscheme.ts really
 // produces and refuses everything else. The test data testdata/colorscheme/pisar.lua
 // is that generator's real output (kept current by a vitest file snapshot), and
-// colorscheme_test.go runs the check on it.
+// TestEdSampleAccepted and TestEdBadScheme in editorservice_test.go run the
+// check on it and on text that must be refused.
 //
 // Every non-empty line has to match, in full, one of:
 //   - a header line, byte for byte (headerLines);

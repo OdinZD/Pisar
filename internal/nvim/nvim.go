@@ -748,6 +748,26 @@ const messageLua = `
 		vim.cmd.redraw()
 	end`
 
+// promptGuardLua defines refuseDuringPrompt(), which Save and SaveAll call
+// before they write anything. While a prompt is up (mode() starts with "r":
+// hit-enter, "-- More --", or a question like the swap file one) the current
+// buffer may be a half-loaded one: with the swap file question open, :write
+// wrote that empty buffer over the real file (measured with Neovim 0.12; the
+// question is asked inside :edit, after the buffer exists but before it has its
+// text). Refusing is the only safe answer, and the text is the same for both.
+//
+// Measured for SaveAll too (Neovim 0.12, swap question open, mode "r?"): the
+// half-loaded buffer is not 'modified' (one empty line, modified = false), so
+// SaveAll would not have written it. It did write every other modified buffer
+// in the middle of the question, though, and a question can end in a state
+// nobody has looked at, so SaveAll is refused all the same.
+const promptGuardLua = `
+	local function refuseDuringPrompt()
+		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
+			error("Neovim is waiting for an answer to a prompt; nothing was written", 0)
+		end
+	end`
+
 // Save writes the current buffer to its file (what ⌘S calls). It works in any
 // mode and leaves the mode alone. When the write fails (E32 for an unnamed
 // buffer, for instance) the error is returned with its full text and a version
@@ -757,16 +777,8 @@ func (p *Process) Save(ctx context.Context) error {
 	// The success message ("name" 3L, 20B written) is shortened by Neovim itself
 	// ('shortmess' t, which init.lua pins); only errors need show. The error is
 	// re-raised without a position prefix so Go sees the original text.
-	//
-	// While a prompt is up (mode() starts with "r": hit-enter, "-- More --", or
-	// a question like the swap file one) the current buffer may be a half-loaded
-	// one: with the swap file question open, :write wrote that empty buffer over
-	// the real file (measured with Neovim 0.12; the question is asked inside
-	// :edit, after the buffer exists but before it has its text). Refuse instead.
-	return p.execLua(ctx, "save", nil, messageLua+`
-		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
-			error("Neovim is waiting for an answer to a prompt; nothing was written", 0)
-		end
+	return p.execLua(ctx, "save", nil, messageLua+promptGuardLua+`
+		refuseDuringPrompt()
 		local ok, err = pcall(vim.cmd.write)
 		if ok then
 			vim.cmd.redraw()
@@ -781,7 +793,8 @@ func (p *Process) Save(ctx context.Context) error {
 // buffer without a file cannot be written: the others are still saved and the
 // returned error satisfies errors.Is(err, ErrUnnamedBuffer). Write failures
 // (a read-only file, for instance) are returned too, and every problem is
-// shown in Neovim like Save does.
+// shown in Neovim like Save does. While a prompt is up nothing is written and
+// the error is Save's (see promptGuardLua).
 func (p *Process) SaveAll(ctx context.Context) error {
 	var res struct {
 		Unnamed int
@@ -791,7 +804,8 @@ func (p *Process) SaveAll(ctx context.Context) error {
 	// one buffer at a time with nvim_buf_call needs no BufEnter, and keeps each
 	// failure separate. Each problem is shown with show (see messageLua), one
 	// at a time; the full texts go to Go in the returned error.
-	err := p.execLua(ctx, "save all", &res, messageLua+`
+	err := p.execLua(ctx, "save all", &res, messageLua+promptGuardLua+`
+		refuseDuringPrompt()
 		local errs, unnamed = {}, 0
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if vim.bo[b].buflisted and vim.bo[b].buftype == "" and vim.bo[b].modified then

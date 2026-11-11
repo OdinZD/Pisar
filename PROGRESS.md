@@ -413,6 +413,26 @@ EditorService.CopyText(text string) error                      // odabir iz xter
 Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `document:active`
 (`{projectId, rel, path, name}`) · `document:state` (`{path, modified}`) · `ui:focus-tree` · `menu:copy`.
 
+Odstupanja od ugovora u planu (izvedeno stanje):
+
+- Dodana je vezana metoda `EditorService.HasInitialDocument() bool` (izvan plana): kaže frontendu da je
+  na naredbenom retku zadan dokument, pa editor treba pokrenuti odmah. Dokument zatim otvara Go
+  nakon prvog uspješnog `Start`.
+- Plan kaže „pokretanje na prvi `OpenDocument`”. Izvedeno je drugačije: Neovim pokreće FRONTEND pozivom
+  `Start` (terminal mora prvo izmjeriti veličinu mreže), a `OpenDocument` bez pokrenutog Neovima vraća
+  `not-running`. Za korisnika je isto: prvo otvaranje dokumenta pokreće editor (`lib/editorState.ts`
+  pamti zahtjev i izvršava ga nakon uspješnog pokretanja).
+- `document:active` i `document:state` su tipizirane strukture, ne JSON stringovi.
+- Metode servisa primaju `context.Context` kao prvi argument (Wails ga izostavlja iz bindinga).
+- Kodovi grešaka dodani u fazi 2: `not-running`, `nvim-missing`, `unnamed-buffer`, `unsaved-changes`.
+
+Datoteke nastale ili mijenjane izvan tablice „Datoteke” u planu: `colorscheme.go`, `menu_test.go`,
+`testdata/colorscheme/pisar.lua`; `components/EditorPane.svelte`, `EmptyState.svelte`;
+`lib/activeDocument.ts`, `editorState.ts`, `copyAction.ts`, `focus.ts`, `apiError.ts`, `errorMessage.ts`
+(s testovima); `theme/cssVars.ts`, `theme/fonts.ts`, token `bold` u `tokens.ts`,
+`assets/fonts/JetBrainsMono-Bold.woff2`; `internal/term` i `internal/nvim` su dobili i metode za korak
+6b. Ništa s popisa „ne diram” nije dirano; `DESIGN.md` ima točno jedan novi redak (`danger`).
+
 ### Koraci
 
 - [x] 1. `internal/nvim`: prijenos iz spikea (gašenje oba procesa, odgovori na upite terminala i ostalo
@@ -524,19 +544,29 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
       se u pozadini pita za izmijenjene buffere (ne na UI niti); bez izmjena aplikacija se gasi, s
       izmjenama dijalog Spremi / Odbaci / Odustani s popisom naziva (najviše 5, zatim „…i još N”);
       neuspjelo spremanje ne gasi aplikaciju i pokaže razlog; ako Neovim ne odgovori, zaseban dijalog
-      „Uređivač ne odgovara…”. 11 slučajeva u `quit_test.go`; Go testovi u `main`: 78; vitest 388.
+      „Uređivač ne odgovara…”. 13 testova u `quit_test.go`; Go testovi u `main`: 78; vitest 388.
       - Glavna sesija je nakon pregleda premjestila broj naziva u dijalogu u `internal/config`
         (`QuitDialogNames`).
       - Nije potvrđeno bez klikanja: sam dijalog, raspored gumba i `Esc` kao „Odustani” (Wails koristi
         `Esc` samo za gumb koji nije zadani; isto vrijedi za potvrdu Smeća iz faze 1)
 - [x] 9. Dimne provjere prave aplikacije (napisala glavna sesija; bez tipki i klikova, Neovim se vodi
-      preko svog socketa): `scripts/smoke.sh` (25 provjera: stablo, pokretanje editora s dokumentom
+      preko svog socketa): `scripts/smoke.sh` (24 provjere: stablo, pokretanje editora s dokumentom
       s naredbenog retka, veličina mreže, colorscheme i boje `Normal`, stanje Neovima pod `<home>`,
       promjena buffera, izmjena i zapis, `␣e`, gašenje bez ostataka) i `scripts/shutdown.sh` (SIGTERM,
       SIGINT, SIGHUP, SIGKILL; nakon rušenja sljedeće pokretanje čisti zaostale mape socketa).
 - [ ] 10. Kraj faze: `spike/` uklonjen (`git rm -r spike`, commit `0ec6386`; preostali generirani ostaci
-      na disku obrisani), kriteriji s dokazima i popis **[R]** (dolje); `plan-reviewer`: krug 1 u
-      tijeku; zatim sažetak i STOP
+      na disku obrisani), kriteriji s dokazima i popis **[R]** (dolje); `plan-reviewer`: krug 1 FAIL
+      (8 odstupanja: 3 u kodu, 5 u ovom dokumentu; ispravljena), krug 2 u tijeku; zatim sažetak i STOP.
+      - Ispravci u kodu nakon kruga 1 (`coder` na `high`): dokument s naredbenog retka se prihvaća samo
+        ako je `.md` ili `.txt` (inače se zanemaruje uz zapis u log; zajednička provjera
+        `neovimMayEdit` s `OpenDocument`; testovi `TestEdInitialRefused`, `TestEdInitialAccepted`);
+        `SaveAll` odbija pisati dok je u Neovimu otvoren prompt, kao `Save` (izmjereno: napola učitan
+        buffer nije `modified`, ali bi se bez zaštite usred pitanja zapisao DRUGI izmijenjeni buffer);
+        ispravljen komentar u `colorscheme.go`.
+      - Poznato nakon tih ispravaka: kad „Spremi” pri gašenju ne uspije jer je u Neovimu otvoren
+        prompt, dijalog pokaže sirovi tekst greške s Lua tragom (ružno, ali točno); provjera vrste
+        početnog dokumenta gleda samo ime, pa simbolički link `x.md` na `.docx` zadan na naredbenom
+        retku prolazi (otvaranje iz stabla odbija linkove); `Wipe` ima vlastitu kopiju provjere prompta
 
 ### Dokazi po kriterijima (2026-11-11)
 
@@ -545,10 +575,11 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda i nakon uk
 - `task test` → exit 0 (Go paketi `ok`; vitest `Test Files 19 passed`, `Tests 388 passed`);
   `task test:race` → exit 0; `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0.
-- Go testovi (`go test -list`): `Pisar` 78, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
+- Go testovi (`go test -list`): `Pisar` 80, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
   `term` 33; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD`. Pokrivenost
-  (`go test -count=1 -cover ./...`): `Pisar` 77,5 %, `config` 83,9 %, `docsafe` 87,1 %, `nvim` 87,0 %,
-  `project` 94,5 %, `term` 93,3 %.
+  (`go test -count=1 -cover ./...`, nakon ispravaka iz kruga 1): `Pisar` 77,8 %, `config` 83,9 %,
+  `docsafe` 87,1 %, `nvim` oko 87 %, `project` 94,5 %, `term` 93,3 %. Pokrivenost paketa `nvim` se
+  između pokretanja mijenja za do jedan postotni bod (grane ovise o tome koja faza gašenja pobijedi).
 - `bash scripts/smoke.sh` → `smoke: all checks passed`; `bash scripts/shutdown.sh` →
   `shutdown: all checks passed`. `test ! -e spike` → exit 0. `pgrep -fl 'nvim|bin/pisar'` → ništa.
   `~/Library/Application Support/Pisar`, `~/.local/state/pisar`, `~/.config/pisar` ne postoje.
@@ -565,7 +596,7 @@ Uz svaki kriterij iz odjeljka „Kriteriji prihvaćanja” ispod:
 3. „Izmijenjeno” / „Spremljeno”: Go `TestEdSave`, `TestEdActiveState`, `internal/nvim` `TestModEvents`,
    `TestOrder`; vitest `editorState.test.ts`, `activeDocument.test.ts` (tekst stanja); `smoke.sh`:
    izmjena → `modified=true`, zapis → `modified=false` i tekst na disku. Prikaz u traci: **[R]** stavka 3.
-4. Potvrda pri gašenju: `quit_test.go` (11 slučajeva: bez izmjena, Spremi, greška spremanja, Odbaci,
+4. Potvrda pri gašenju: `quit_test.go` (13 testova: editor ne radi, bez izmjena, Spremi, greška spremanja, Odbaci,
    Odustani, Neovim ne odgovara, drugi zahtjev dok je dijalog otvoren, popis naziva). Sam dijalog:
    **[R]** stavka 6.
 5. Tema i colorscheme iz tokena: vitest `terminalTheme.test.ts`, `nvimColorscheme.test.ts`

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -143,7 +142,15 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 			_ = os.RemoveAll(runDir)
 			return nil, fmt.Errorf("editor service: resolve %q: %w", d.InitialFile, err)
 		}
-		e.initial = abs
+		// Decided here, not in Start: a document that is refused must leave
+		// HasInitialDocument false, so the frontend does not take the
+		// "open the editor straight away" path for it.
+		if reason := initialRefusal(abs); reason != "" {
+			// Only the name, never the content.
+			slog.Warn("editor: ignoring the document on the command line", "file", filepath.Base(abs), "reason", reason)
+		} else {
+			e.initial = abs
+		}
 	}
 	e.session, err = term.NewSession(term.Config{
 		Nvim: nvim.Options{
@@ -387,6 +394,29 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	return nil
 }
 
+// neovimMayEdit reports whether Neovim may be handed the file called name. Only
+// .md and .txt qualify: Neovim writes them itself on :w, which CLAUDE.md allows
+// for those two kinds only. The bytes of a .docx or .doc must never reach it,
+// because ⌘S would then write them outside internal/docsafe. This is the one
+// copy of that rule; OpenDocument and the command-line document both use it.
+func neovimMayEdit(name string) bool {
+	kind, _ := project.KindOf(filepath.Base(name))
+	return kind == project.KindMD || kind == project.KindTXT
+}
+
+// initialRefusal says why the document named on the command line is not
+// opened, or "" when it is accepted. A file that does not exist yet is fine
+// (Neovim opens a new buffer with that name); a folder is not a document.
+func initialRefusal(abs string) string {
+	if !neovimMayEdit(abs) {
+		return "not a .md or .txt file"
+	}
+	if isDir(abs) {
+		return "is a folder"
+	}
+	return ""
+}
+
 // HasInitialDocument reports whether a document was named on the command line
 // and has not been opened yet (it is opened by the first successful Start).
 func (e *EditorService) HasInitialDocument() bool {
@@ -435,8 +465,9 @@ func (e *EditorService) OpenDocument(ctx context.Context, projectID, rel string)
 	if err := requireDocument(root, rel); err != nil {
 		return failEditor("open document", err)
 	}
-	// Converting .docx and .doc comes in a later phase; Neovim must never be handed their bytes.
-	if kind, _ := project.KindOf(path.Base(rel)); kind == project.KindDOCX || kind == project.KindDOC {
+	// requireDocument has accepted the extension, so what neovimMayEdit refuses
+	// here is .docx and .doc, whose conversion comes in a later phase.
+	if !neovimMayEdit(rel) {
 		return failEditor("open document", fmt.Errorf("%w: %q", docsafe.ErrUnsupportedKind, rel))
 	}
 	abs, err := project.Resolve(root, rel)
