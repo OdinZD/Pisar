@@ -54,6 +54,20 @@ const (
 	// shutdown (RPC quit, SIGTERM, SIGKILL), not to the whole of it.
 	DefaultNvimStartTimeout = 10 * time.Second
 	DefaultNvimStopTimeout  = 3 * time.Second
+
+	// The two terminal numbers trade the latency of a typed key's echo against
+	// the number of events the webview has to handle while the screen scrolls.
+	// Both were measured in the phase 0 spike:
+	//   - DefaultTermFlushInterval: 8 ms is half a 60 Hz frame, so an echo waits
+	//     at most about one frame in the worst case and normally far less, while
+	//     a full-screen scroll (Neovim emits output continuously) costs at most
+	//     125 events per second instead of one per PTY read.
+	//   - DefaultTermMaxChunk: 16 KiB is a few full 200x60 screens of escape
+	//     sequences. A burst bigger than this is cut and sent at once rather
+	//     than waiting for the timer, so one event (JSON-encoded, then parsed by
+	//     xterm.js in one write call) stays small enough not to stall the UI.
+	DefaultTermFlushInterval = 8 * time.Millisecond
+	DefaultTermMaxChunk      = 16 << 10
 )
 
 // DefaultTrashBin is the macOS tool that moves a file to the Trash. This is
@@ -77,6 +91,9 @@ type Limits struct {
 
 	NvimStartTimeout time.Duration // longest wait until Neovim is up and init.lua has run
 	NvimStopTimeout  time.Duration // longest wait per shutdown stage of Neovim
+
+	TermFlushInterval time.Duration // longest a pending byte of terminal output waits before it is sent
+	TermMaxChunk      int           // pending terminal output bytes that force an immediate send
 }
 
 var (
@@ -223,6 +240,9 @@ func (s *Store) Limits() Limits {
 
 		NvimStartTimeout: DefaultNvimStartTimeout,
 		NvimStopTimeout:  DefaultNvimStopTimeout,
+
+		TermFlushInterval: DefaultTermFlushInterval,
+		TermMaxChunk:      DefaultTermMaxChunk,
 	}
 }
 

@@ -80,6 +80,16 @@ func TestLimitsNvim(t *testing.T) {
 	}
 }
 
+func TestLimitsTerm(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.TermFlushInterval != DefaultTermFlushInterval || l.TermMaxChunk != DefaultTermMaxChunk {
+		t.Fatalf("unexpected terminal limits %+v", l)
+	}
+	if l.TermFlushInterval <= 0 || l.TermMaxChunk <= 0 {
+		t.Fatalf("terminal limits must be positive: %+v", l)
+	}
+}
+
 func TestLimitsWatchMaxDelay(t *testing.T) {
 	l := mustOpen(t, t.TempDir()).Limits()
 	if l.WatchMaxDelay != DefaultWatchMaxDelay {

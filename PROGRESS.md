@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 2 (`internal/term`)
+- Sljedeći korak: faza 2, korak 3 (tema za terminal i Neovim)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, korak 1 gotov)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 2 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -434,7 +434,13 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         `OpenFile` se vraća s istekom konteksta, ostali pozivi ne traju dulje od svog konteksta,
         `Close` završava i ne ostavlja procese. Za politiku oporavka (kasnija faza): u terminalu od
         24 retka pitanje počinje s „-- More --”, a tipka `q` ondje ugasi cijeli Neovim.
-- [ ] 2. `internal/term`: sesija i grupiranje izlaza; prosljeđivanje novih događaja
+- [x] 2. `internal/term`: `Session` i grupiranje izlaza preneseni iz spikea; `Emitter` je sada sučelje s
+      tipiziranim metodama (`Data`, `Saved`, `Active`, `Modified`, `FocusTree`, `Exited`); nove metode
+      `Running`, `Current`, `Modified`, `SaveAll`; 32 testa, pokrivenost 93,7 %. Ograničenja grupiranja
+      su u `internal/config` (`TermFlushInterval` 8 ms, `TermMaxChunk` 16 KiB).
+      - Bez procesa `Modified` i `Current` vraćaju prazno bez greške (treba sloju za gašenje).
+      - `Exited()` je zajamčeno zadnji poziv za proces koji je sam završio.
+      - `Close` se ne smije zvati iz metode `Emitter`-a (čeka da poziv završi)
 - [ ] 3. Tema za terminal i Neovim: token `danger`, `terminalTheme.ts`, `nvimColorscheme.ts`
 - [ ] 4. `EditorService`: servis prema ugovoru, zapis colorschemea, preslikavanje putanja u projekt
 - [ ] 5. Terminal u frontendu: `Terminal.svelte`, serijsko slanje, kalibracija visine retka
