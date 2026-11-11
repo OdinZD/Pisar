@@ -7,10 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 9 (dimne provjere prave aplikacije)
+- Sljedeći korak: faza 2, korak 10 — `plan-reviewer`, zatim vlasnikova ručna provjera **[R]** (popis u odjeljku faze 2)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, koraci 7 i 8 gotovi)
+- Zadnja izmjena: 2026-11-11 (faza 2, koraci 1–9 gotovi, `spike/` uklonjen; korak 10: pregled u tijeku)
 
 ## Priprema (2026-11-11)
 
@@ -529,8 +529,74 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
         (`QuitDialogNames`).
       - Nije potvrđeno bez klikanja: sam dijalog, raspored gumba i `Esc` kao „Odustani” (Wails koristi
         `Esc` samo za gumb koji nije zadani; isto vrijedi za potvrdu Smeća iz faze 1)
-- [ ] 9. Dimne provjere prave aplikacije: `scripts/smoke.sh`, `scripts/shutdown.sh`
-- [ ] 10. Kraj faze: `git rm -r spike`, kriteriji s dokazima, popis **[R]**, `plan-reviewer`, sažetak, STOP
+- [x] 9. Dimne provjere prave aplikacije (napisala glavna sesija; bez tipki i klikova, Neovim se vodi
+      preko svog socketa): `scripts/smoke.sh` (25 provjera: stablo, pokretanje editora s dokumentom
+      s naredbenog retka, veličina mreže, colorscheme i boje `Normal`, stanje Neovima pod `<home>`,
+      promjena buffera, izmjena i zapis, `␣e`, gašenje bez ostataka) i `scripts/shutdown.sh` (SIGTERM,
+      SIGINT, SIGHUP, SIGKILL; nakon rušenja sljedeće pokretanje čisti zaostale mape socketa).
+- [ ] 10. Kraj faze: `spike/` uklonjen (`git rm -r spike`, commit `0ec6386`; preostali generirani ostaci
+      na disku obrisani), kriteriji s dokazima i popis **[R]** (dolje); `plan-reviewer`: krug 1 u
+      tijeku; zatim sažetak i STOP
+
+### Dokazi po kriterijima (2026-11-11)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda i nakon uklanjanja `spike/`.
+
+- `task test` → exit 0 (Go paketi `ok`; vitest `Test Files 19 passed`, `Tests 388 passed`);
+  `task test:race` → exit 0; `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
+  `task build` → exit 0.
+- Go testovi (`go test -list`): `Pisar` 78, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
+  `term` 33; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD`. Pokrivenost
+  (`go test -count=1 -cover ./...`): `Pisar` 77,5 %, `config` 83,9 %, `docsafe` 87,1 %, `nvim` 87,0 %,
+  `project` 94,5 %, `term` 93,3 %.
+- `bash scripts/smoke.sh` → `smoke: all checks passed`; `bash scripts/shutdown.sh` →
+  `shutdown: all checks passed`. `test ! -e spike` → exit 0. `pgrep -fl 'nvim|bin/pisar'` → ništa.
+  `~/Library/Application Support/Pisar`, `~/.local/state/pisar`, `~/.config/pisar` ne postoje.
+
+Uz svaki kriterij iz odjeljka „Kriteriji prihvaćanja” ispod:
+
+1. Otvaranje iz stabla: Go `TestEdOpen`, `TestEdOpenErrors`, `TestEdOpenNotRunning` (pravi Neovim;
+   `.docx` → `unsupported-kind`); vitest `treeKeys.test.ts` i `activeDocument.test.ts` (`↵` i klik →
+   radnja otvaranja); `smoke.sh`: Neovim javlja `poglavlje.md`. Sam klik i `↵` u prozoru: **[R]** stavka 1.
+2. Aktivni dokument kad se buffer promijeni iz Neovima: Go `TestEdSwitch`, `TestEdNestedOpen`,
+   `TestEdLocate`, `TestEdActiveState`; vitest `activeDocument.test.ts` (označavanje, širenje do
+   dokumenta, odabir); `smoke.sh`: `:edit` poslan Neovimu → `document:active` s novim `rel`. Boja reda
+   u stablu: **[R]** stavka 2.
+3. „Izmijenjeno” / „Spremljeno”: Go `TestEdSave`, `TestEdActiveState`, `internal/nvim` `TestModEvents`,
+   `TestOrder`; vitest `editorState.test.ts`, `activeDocument.test.ts` (tekst stanja); `smoke.sh`:
+   izmjena → `modified=true`, zapis → `modified=false` i tekst na disku. Prikaz u traci: **[R]** stavka 3.
+4. Potvrda pri gašenju: `quit_test.go` (11 slučajeva: bez izmjena, Spremi, greška spremanja, Odbaci,
+   Odustani, Neovim ne odgovara, drugi zahtjev dok je dijalog otvoren, popis naziva). Sam dijalog:
+   **[R]** stavka 6.
+5. Tema i colorscheme iz tokena: vitest `terminalTheme.test.ts`, `nvimColorscheme.test.ts`
+   (svaka boja je token; kontrast ≥ 4.5:1), čuvari boja; Go `TestEdScheme`, `TestEdSampleAccepted`,
+   `TestEdBadScheme` (pravi Neovim učita `testdata/colorscheme/pisar.lua`; nevaljan tekst se odbija);
+   `smoke.sh`: `g:colors_name` je `pisar`, `Normal` je `1D2125` na `FFFFFF`.
+6. **[R]** fokus — ne označavam; popis dolje.
+
+### Ručna provjera [R] — za vlasnika
+
+Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-proba bin/pisar`, dodaj projekt
+koji ima `.md`, `.txt` i `.docx` (ili pokreni `bin/pisar <dokument.md>`).
+
+| # | Što napraviti | Što treba vidjeti |
+|---|---|---|
+| 1 | klik na `.md`; `j`/`k` do `.txt` pa `↵`; klik i `↵` na `.docx` | dokument se otvori u Neovimu i odmah se može tipkati; za `.docx` prigušena poruka ispod reda, Neovim se ne mijenja |
+| 2 | u Neovimu `:e <drugi.md>` i `:bnext` | akcent u stablu prijeđe na taj red; skupljen folder se raširi |
+| 3 | `ihello<Esc>`, zatim `:w` | traka: „Izmijenjeno” (podebljano), pa „Spremljeno”; naziv bez ekstenzije i „Projekt / folder” |
+| 4 | **[R] kriterij:** s fokusom u terminalu tipkaj `j`, `k`, `a`, `r`, `d`; s fokusom u stablu iste tipke | stablo se ne miče dok tipkaš u terminalu; Neovim ne dobiva ništa dok si u stablu |
+| 5 | `␣e` u Neovimu; `Esc` u stablu; klik u terminal i u stablo; `:q` | fokus prelazi kako piše; nakon `:q` prazno stanje i fokus u stablu |
+| 6 | izmjena pa `⌘Q`, i isto crvenim gumbom; sva tri izbora; bez izmjena | dijalog s nazivom dokumenta; „Spremi” sprema i gasi, „Odbaci” gasi, „Odustani” ostaje; bez izmjena gasi odmah |
+| 7 | `⌘S` u normal, insert i visual modu te s fokusom u stablu | sprema, mod ostaje isti |
+| 8 | `v` + odabir + `⌘C`; odabir mišem uz `⌥` + `⌘C`; `⌘V` u insert modu (više redaka) | tekst je u clipboardu odnosno zalijepljen bez stepenastog uvlačenja |
+| 9 | `⌘Z`, `⌘X`, `⌘A` u terminalu | ne događa se ništa |
+| 10 | `r` na OTVORENOM dokumentu bez izmjena; isto s nespremljenim izmjenama; `d` isto | bez izmjena: Neovim nastavlja na novom imenu; s izmjenama: poruka „Spremi ga (⌘S)…”, ništa se ne mijenja |
+| 11 | izgled terminala | svijetla podloga, JetBrains Mono, naslovi u akcentu, oznake lista narančaste, kod zelen, broj trenutačnog retka taman, redak oko 21 px; povlačenje ruba prozora preslaguje Neovim |
+| 12 | `⌘C` / `⌘V` u polju za preimenovanje | rade; `⌘Z` i `⌘A` u polju više ne rade (odluka uz plan) |
+
+Kriterij **[R]** iz plana je stavka 4; ostale stavke su ono što se inače ne da provjeriti bez tipkovnice.
+
+Ostaci faze 0 izvan repozitorija (nisam ih brisao): `rm -r ~/.local/state/pisar-spike ~/.local/share/pisar-spike`.
 
 ### Izvan opsega
 
