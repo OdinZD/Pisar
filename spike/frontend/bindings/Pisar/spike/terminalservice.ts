@@ -23,6 +23,15 @@ export function OpenFile(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * Renderer reports which xterm.js renderer to start with: "dom" or "webgl".
+ * It comes from the environment variable PISAR_SPIKE_RENDERER (default "dom";
+ * any other value is treated as "dom").
+ */
+export function Renderer(): $CancellablePromise<string> {
+    return $Call.ByID(2482623542);
+}
+
+/**
  * Resize tells Neovim the terminal size changed.
  */
 export function Resize(cols: number, rows: number): $CancellablePromise<void> {
@@ -49,6 +58,13 @@ export function Start(cols: number, rows: number): $CancellablePromise<void> {
  */
 export function Stats(): $CancellablePromise<term$0.Stats> {
     return $Call.ByID(3858683684);
+}
+
+/**
+ * Trace appends one line from the frontend to the trace file. No-op when tracing is off.
+ */
+export function Trace(msg: string): $CancellablePromise<void> {
+    return $Call.ByID(3182046950, msg);
 }
 
 /**

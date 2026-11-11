@@ -1,6 +1,10 @@
 -- Minimal configuration shipped with Pisar. Only what the Go side relies on.
 vim.g.mapleader = " "
 
+-- The application is light. Set it explicitly instead of relying on Neovim's
+-- background detection, which asks the terminal and can guess wrong.
+vim.o.background = "light"
+
 -- The Go side stores its RPC channel id in g:pisar_channel after connecting.
 -- Notifying that channel directly (instead of rpcnotify(0, ...)) needs no
 -- nvim_subscribe() call, which is not part of the documented API in 0.12.

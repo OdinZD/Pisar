@@ -651,6 +651,12 @@ func TestLateReplies(t *testing.T) {
 		"\x1b[?1;2c",                       // primary device attributes
 		"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", // OSC 11: background colour
 		"\x1b[?2026;2$y",                   // DECRPM: synchronized output
+		// What xterm.js 6.0.0 really sent at startup with no key pressed
+		// (captured from the trace of scripts/smoke.sh), in its three writes.
+		"\x1b[?69;0$y",
+		"\x1b[?2026;2$y\x1b[?2027;0$y\x1b[?2031;0$y\x1b[?2048;0$y\x1bP1$r0m\x1b\\\x1b[?1;2c" +
+			"\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[0n\x1b[?1;2c",
+		"\x1b[I", // focus in
 	} {
 		if _, err := p.Write([]byte(reply)); err != nil {
 			t.Fatal(err)

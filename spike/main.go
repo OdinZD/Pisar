@@ -72,6 +72,19 @@ func run() error {
 		},
 	}, func(name, data string) { wails.Event.Emit(name, data) })
 
+	tr, err := newTracer(os.Getenv(envTrace))
+	if err != nil {
+		// Diagnostics are optional; the application runs without them.
+		log.Printf("tracing disabled: %v", err)
+	}
+
+	// A first command-line argument is a file to open once Neovim runs.
+	var initialFile string
+	if len(os.Args) > 1 {
+		initialFile = os.Args[1]
+	}
+	service := NewTerminalService(session, initialFile, os.Getenv(envRenderer), tr)
+
 	// On macOS Run does not return when the application quits, so cleanup
 	// runs from OnShutdown; the deferred call covers a failed start. Once
 	// makes the second call a no-op.
@@ -83,6 +96,10 @@ func run() error {
 			if err := session.Close(ctx); err != nil {
 				log.Printf("close session: %v", err)
 			}
+			// After Close, so the counters in the last trace line are final.
+			if err := service.closeTrace(); err != nil {
+				log.Printf("%v", err)
+			}
 			if err := os.RemoveAll(dir); err != nil {
 				log.Printf("remove %s: %v", dir, err)
 			}
@@ -90,17 +107,11 @@ func run() error {
 	}
 	defer cleanup()
 
-	// A first command-line argument is a file to open once Neovim runs.
-	var initialFile string
-	if len(os.Args) > 1 {
-		initialFile = os.Args[1]
-	}
-
 	wails = application.New(application.Options{
 		Name:        "Pisar spike",
 		Description: "Neovim in a terminal, driven from Go",
 		Services: []application.Service{
-			application.NewService(NewTerminalService(session, initialFile)),
+			application.NewService(service),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

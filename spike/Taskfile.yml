@@ -31,10 +31,20 @@ tasks:
 
   # Go packages embed frontend/dist, so every Go check needs the frontend built first.
   test:
-    summary: Runs all Go tests
+    summary: Runs all Go tests and the frontend unit tests
     deps: [common:build:frontend]
     cmds:
       - go test ./...
+      - task: test:frontend
+
+  # Node 22 runs TypeScript itself (type stripping) and has a built-in test
+  # runner, so this needs no extra dependency. The tests are .mts so that the
+  # type check, which has no Node typings, leaves them alone.
+  test:frontend:
+    summary: Runs the frontend unit tests with Node's test runner
+    dir: frontend
+    cmds:
+      - node --test "src/**/*.test.mts"
 
   test:race:
     summary: Runs all Go tests with the race detector

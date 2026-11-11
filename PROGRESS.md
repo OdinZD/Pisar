@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 4 (terminal u Svelteu: xterm.js, font, promjena veličine)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 3 gotov)
+- Sljedeći korak: faza 0, korak 5 (tipke, clipboard, meni)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 4 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -58,8 +58,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
       gašenje; 14 integracijskih testova s pravim `nvim`-om, čisto i s `-race`
 - [x] 3. Most PTY ↔ frontend: `spike/internal/term` (`Session`, grupiranje 8 ms / 16 KiB, bez rezanja
       usred UTF-8 znaka, brojači) i `TerminalService`; gašenje kroz `OnShutdown`
-- [ ] 4. Terminal (Svelte): xterm.js + fit, prekidač DOM / WebGL, JetBrains Mono učitan prije
-      otvaranja terminala, promjena veličine → fit → `Resize`
+- [x] 4. Terminal (Svelte): `@xterm/xterm` 6.0.0 + fit 0.11.0 + WebGL 0.19.0, JetBrains Mono v2.304 učitan
+      prije otvaranja terminala, promjena veličine → fit → `Resize`, serijsko slanje tipki;
+      `bash spike/scripts/smoke.sh` prolazi (dom i webgl)
 - [ ] 5. Tipke i clipboard: `⌘S` → Go → RPC, `⌘C` / `⌘V`, `"+y` / `"+p`, `Ctrl-` tipke i `Esc`,
       `⌥` slaže znakove
 - [ ] 6. Mjerenje: datoteka od 5000 redaka, propusnost i kašnjenje pri držanju `Ctrl-d`, oba renderera
@@ -82,7 +83,17 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - `coder` je registriran od koraka 3 (agent se pojavio u sesiji nakon koraka 2).
 - Wails v3.1.0: metoda servisa smije primiti `context.Context` kao prvi argument (generator ga
   izostavlja iz bindinga); `kill` (SIGTERM) aplikaciji pokreće `OnShutdown`.
-- `npm install` u predlošku javlja nalaze `npm audit`; pregledati prije faze 1.
+- `npm audit`: 2 niska nalaza, oba `deepmerge` kroz `@sveltejs/vite-plugin-svelte` (alat za build, bez
+  dostupnog popravka).
+- Wails v3.1.0 svaki poziv vezane metode obrađuje u vlastitoj goroutini, pa redoslijed poziva nije
+  zajamčen. Frontend zato šalje tipke serijski (`serialSender.ts`): jedan `Write` u letu, ostalo se spaja.
+- xterm.js `lineHeight` množi izmjerenu visinu znaka, ne veličinu fonta: 21/13 daje redak od 27 px.
+  `calibrateLineHeight()` mjeri prirodnu visinu i računa faktor za točno 21 px. Ćelija je 7.80×21 (DOM)
+  i 7.50×21 (WebGL zaokružuje širinu na fizičke piksele), pa je mreža 141×33 odnosno 146×33.
+- xterm.js 6.0.0 pri pokretanju sam šalje Neovimu odgovore na upite terminala, uključujući DSR i DA1
+  po drugi put (uz Go). Ti stvarni odgovori su u `TestLateReplies` i ne ulaze u buffer.
+- Trag za dijagnostiku: `PISAR_SPIKE_TRACE=<datoteka>` bilježi pozive i SVE tipke; samo za spike,
+  ne prenositi u aplikaciju. Renderer: `PISAR_SPIKE_RENDERER=webgl|dom`.
 
 ### API-ji koje treba potvrditi prije upotrebe
 
