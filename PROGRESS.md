@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–4 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–5 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 5 (`internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”)
+- Sljedeći korak: faza 3, korak 6a (logika Wordovih dokumenata bez Neovima)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 3, korak 4)
+- Zadnja izmjena: 2026-11-11 (faza 3, korak 5)
 
 ## Priprema (2026-11-11)
 
@@ -800,8 +800,25 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         puknuti), BSD zastavice osim zaključanosti. Između druge provjere konflikta i `rename`-a ostaje
         mali prozor koji bi zatvorilo samo zaključavanje.
       - `golang.org/x/sys` v0.48.0 je sada izravna ovisnost (odobreno planom); `go.sum` nepromijenjen.
-- [ ] 5. `internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”
-- [ ] 6. Editor (Go): otvaranje kroz radnu kopiju, samo za čitanje, tok spremanja, dijalozi
+- [x] 5. `internal/docsafe`: radne kopije i nova datoteka. `WorkMeta` (`Origin`, `Target`, `Snapshot`, `Dirty`,
+      `Opened`), `WorkCopy`, `CreateWork`, `FindWork` (po `Origin` ili `Target`; prljava kopija ima
+      prednost), `SaveWorkMeta` (atomski), `DiscardWork`, `SweepWork` (pri pokretanju briše čiste,
+      vraća prljave), `CreateNew(ctx, src, dst)` (nova datoteka, nikad prepisivanje: privremena datoteka
+      + `fsync` + tvrdi link na ciljno ime → `ErrExists` ako postoji). `Options.WorkDir`. Pokrivenost 85,1 %.
+      - Mapa je `<work>/<16 hex znakova>`, slučajna (ne izvodi se iz putanje jer se dokument može
+        preimenovati dok je otvoren). Brisati se smije samo prava mapa (ne link) koja je izravno dijete
+        `work/` i ima takvo ime; sve drugo je `ErrNotWork`.
+      - Mapa s oštećenim ili nedostajućim `meta.json` se nikad ne briše (može držati jedini primjerak
+        teksta); samo se zapiše u log.
+      - Ubacivanje greške: 6 faza za `meta.json` (stari ostaje čitljiv), 9 faza za `CreateNew` (ciljna
+        datoteka ne postoji ili je potpuna; nema zaostalih datoteka).
+      - Ograničenje: prljave radne kopije koje korisnik nikad ne oporavi ostaju u `work/` (nema čišćenja
+        po starosti). Rezervni put bez tvrdih linkova testiran je samo zamjenom `os.Link`-a.
+- **Korak 6 je podijeljen** (kao 6/6b u fazi 2), zbog veličine:
+- [ ] 6a. Logika Wordovih dokumenata bez Neovima (`worddocs.go`): otvaranje kroz radnu kopiju, oporavak,
+      izvoz (konflikt, backup, prvo spremanje `.doc`-a), „Spremi kao kopiju”, dijalozi, kodovi grešaka
+- [ ] 6b. Uvezivanje u `EditorService`: bufferi samo za čitanje, preslikavanje radne kopije u izvornik,
+      izvoz nakon `:w`, gašenje, preimenovanje i Smeće, dokument s naredbenog retka
 - [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci
 - [ ] 8. `docs/known-losses.md`
 - [ ] 9. Dimna provjera (`scripts/smoke.sh`)

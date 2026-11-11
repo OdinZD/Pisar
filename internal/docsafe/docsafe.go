@@ -38,6 +38,9 @@ type Options struct {
 	BackupsDir string           // Pisar's own backup folder; must not be inside the user's documents
 	MaxBackups int              // newest backups kept per document; >= 1
 	Now        func() time.Time // nil means time.Now; names the backups
+
+	// Needed only by the working-copy functions (work.go).
+	WorkDir string // Pisar's own folder of working copies; must not be inside the user's documents
 }
 
 var (
@@ -59,14 +62,21 @@ type Ops struct {
 	backupsDir string
 	maxBackups int
 	now        func() time.Time
+	workDir    string
 
-	// mu serializes Replace calls: they share written and may target one file.
+	// mu serializes Replace calls (they may target one file) and guards written.
 	mu sync.Mutex
 	// written holds, per absolute path, the snapshot of what this Ops itself
 	// last wrote there. A file that still matches it needs no new backup.
 	written map[string]Snapshot
 	// fail is the test-only fault injection point (see replace.go); nil in production.
 	fail func(stage string) error
+	// link is the test-only stand-in for os.Link in CreateNew; nil means os.Link.
+	link func(oldname, newname string) error
+
+	// workMu serializes the working-copy functions: they list and remove
+	// folders, so a concurrent create or discard must not interleave.
+	workMu sync.Mutex
 }
 
 // New validates opts and returns Ops.
@@ -87,7 +97,7 @@ func New(opts Options) (*Ops, error) {
 	}
 	return &Ops{
 		trashBin: opts.TrashBin, timeout: opts.Timeout, run: run,
-		backupsDir: opts.BackupsDir, maxBackups: opts.MaxBackups, now: now,
+		backupsDir: opts.BackupsDir, maxBackups: opts.MaxBackups, now: now, workDir: opts.WorkDir,
 	}, nil
 }
 
