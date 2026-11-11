@@ -489,3 +489,75 @@ func TestLimitsColorscheme(t *testing.T) {
 		t.Fatalf("unexpected MaxColorscheme %d", l.MaxColorscheme)
 	}
 }
+
+func TestConverterTools(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	for _, tc := range []struct{ name, got, want string }{
+		{"pandoc", s.PandocBin(), "pandoc"},
+		{"textutil", s.TextutilBin(), "/usr/bin/textutil"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Fatalf("got %q, want %q", tc.got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDocumentDirsUnderHome(t *testing.T) {
+	envHome := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		home func(t *testing.T) string
+	}{
+		{"explicit home", func(t *testing.T) string { return t.TempDir() }},
+		{"PISAR_HOME", func(t *testing.T) string {
+			t.Setenv(EnvHome, envHome)
+			h, err := DefaultHome()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return h
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := tc.home(t)
+			s := mustOpen(t, home)
+			for _, d := range []struct{ name, got, want string }{
+				{"WorkDir", s.WorkDir(), filepath.Join(home, "work")},
+				{"BackupsDir", s.BackupsDir(), filepath.Join(home, "backups")},
+			} {
+				if !filepath.IsAbs(d.got) || d.got != d.want {
+					t.Errorf("%s = %q, want %q", d.name, d.got, d.want)
+				}
+			}
+			if s.WorkDir() == s.BackupsDir() {
+				t.Fatal("work and backups must be different folders")
+			}
+		})
+	}
+}
+
+func TestDocumentDirsCreateNothing(t *testing.T) {
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	_, _ = s.WorkDir(), s.BackupsDir()
+	for _, name := range []string{"work", "backups"} {
+		if _, err := os.Lstat(filepath.Join(home, name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s must not be created: %v", name, err)
+		}
+	}
+}
+
+func TestLimitsConvert(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.ConvertTimeout != DefaultConvertTimeout || l.MaxBackups != DefaultMaxBackups {
+		t.Fatalf("unexpected convert limits %+v", l)
+	}
+	if l.ConvertTimeout <= 0 || l.MaxBackups <= 0 {
+		t.Fatalf("convert limits must be positive: %+v", l)
+	}
+	if l.ConvertTimeout <= l.CommandTimeout {
+		t.Fatalf("ConvertTimeout %v must exceed CommandTimeout %v", l.ConvertTimeout, l.CommandTimeout)
+	}
+}

@@ -48,6 +48,13 @@ const (
 	DefaultWatchMaxDelay  = 2 * time.Second
 	DefaultMaxTreeNodes   = 20000
 	DefaultCommandTimeout = 10 * time.Second
+	// DefaultConvertTimeout bounds one call of pandoc or textutil. It is longer
+	// than DefaultCommandTimeout because a large document with many images takes
+	// far longer to convert than trash takes to move a file.
+	DefaultConvertTimeout = 60 * time.Second
+	// DefaultMaxBackups is how many backups of one document are kept; older ones
+	// are rotated out.
+	DefaultMaxBackups = 10
 	// DefaultQuitDialogNames is how many document names the quit dialog lists
 	// before it says "…and N more".
 	DefaultQuitDialogNames = 5
@@ -99,6 +106,23 @@ const (
 // the only place its path is written down.
 const DefaultTrashBin = "/usr/bin/trash"
 
+// External converters. As with NvimBin and DefaultTrashBin, these are the only
+// places the names are written down.
+const (
+	// PandocBin is looked up in PATH (exec.LookPath), like NvimBin.
+	PandocBin = "pandoc"
+	// DefaultTextutilBin is part of macOS, so its absolute path is fixed.
+	DefaultTextutilBin = "/usr/bin/textutil"
+)
+
+// Folders under the home. Both hold data Pisar owns, never the user's documents.
+const (
+	// workDirName holds one working copy per open Word document.
+	workDirName = "work"
+	// backupsDirName holds the backups taken before a .docx is overwritten.
+	backupsDirName = "backups"
+)
+
 // Project is one registered folder.
 type Project struct {
 	ID   string `json:"id"`   // stable, random; independent of the path
@@ -112,7 +136,9 @@ type Limits struct {
 	WatchDebounce   time.Duration // quiet time after a disk change before the tree is refreshed
 	WatchMaxDelay   time.Duration // longest a refresh may be postponed while changes keep coming
 	MaxTreeNodes    int           // a project tree larger than this is refused
-	CommandTimeout  time.Duration // external commands (trash, later pandoc/textutil)
+	CommandTimeout  time.Duration // short external commands (trash)
+	ConvertTimeout  time.Duration // one call of pandoc or textutil; longer than CommandTimeout, see DefaultConvertTimeout
+	MaxBackups      int           // backups kept per document
 	QuitDialogNames int           // document names listed in the quit dialog
 
 	NvimStartTimeout time.Duration // longest wait until Neovim is up and init.lua has run
@@ -265,6 +291,8 @@ func (s *Store) Limits() Limits {
 		WatchMaxDelay:   DefaultWatchMaxDelay,
 		MaxTreeNodes:    DefaultMaxTreeNodes,
 		CommandTimeout:  DefaultCommandTimeout,
+		ConvertTimeout:  DefaultConvertTimeout,
+		MaxBackups:      DefaultMaxBackups,
 		QuitDialogNames: DefaultQuitDialogNames,
 
 		NvimStartTimeout: DefaultNvimStartTimeout,
@@ -320,6 +348,18 @@ func (s *Store) Nvim() NvimPaths {
 // TrashBin returns the path of the tool that moves files to the Trash. It is a
 // method of its own rather than a Limits field because it is a path, not a limit.
 func (s *Store) TrashBin() string { return DefaultTrashBin }
+
+// PandocBin returns the pandoc binary name, resolved with exec.LookPath.
+func (s *Store) PandocBin() string { return PandocBin }
+
+// TextutilBin returns the path of macOS textutil, which converts .doc to .docx.
+func (s *Store) TextutilBin() string { return DefaultTextutilBin }
+
+// WorkDir returns the folder that holds the working copies. It creates nothing.
+func (s *Store) WorkDir() string { return filepath.Join(s.home, workDirName) }
+
+// BackupsDir returns the folder that holds the backups. It creates nothing.
+func (s *Store) BackupsDir() string { return filepath.Join(s.home, backupsDirName) }
 
 // Recovered returns the path the damaged file was moved to by Open, or "".
 func (s *Store) Recovered() string { return s.recovered }
