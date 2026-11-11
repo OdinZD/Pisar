@@ -964,6 +964,35 @@ func initialLoose(name string) func(*editorServiceDeps) {
 
 // What is not a .md or .txt file must never reach Neovim from the command line:
 // its bytes would be written back by :w outside internal/docsafe.
+// A link named like a document may point at a .docx; Neovim's :w would write
+// through it, outside docsafe. The command-line document must be a real file.
+func TestEdInitialSymlink(t *testing.T) {
+	needNvim(t)
+	var target string
+	e := newEd(t, initialLoose("link.md"), func(d *editorServiceDeps) {
+		target = filepath.Join(filepath.Dir(d.InitialFile), "real.docx")
+		write(t, target, "docx bytes")
+		if err := os.Symlink(target, d.InitialFile); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if e.svc.HasInitialDocument() {
+		t.Fatal("HasInitialDocument = true for a link")
+	}
+	if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	for _, ev := range e.rec.since(0) {
+		if d, ok := ev.data.(DocumentActive); ev.name == eventDocumentActive && (!ok || d.Path != "") {
+			t.Errorf("a document became active: %v", ev)
+		}
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != "docx bytes" {
+		t.Errorf("the link's target changed: %q, %v", got, err)
+	}
+}
+
 func TestEdInitialRefused(t *testing.T) {
 	needNvim(t)
 	for _, name := range []string{"x.docx", "x.DOC", "slika.png", "README", "dir", "dir.md"} {

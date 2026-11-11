@@ -431,7 +431,9 @@ Datoteke nastale ili mijenjane izvan tablice „Datoteke” u planu: `colorschem
 `lib/activeDocument.ts`, `editorState.ts`, `copyAction.ts`, `focus.ts`, `apiError.ts`, `errorMessage.ts`
 (s testovima); `theme/cssVars.ts`, `theme/fonts.ts`, token `bold` u `tokens.ts`,
 `assets/fonts/JetBrainsMono-Bold.woff2`; `internal/term` i `internal/nvim` su dobili i metode za korak
-6b. Ništa s popisa „ne diram” nije dirano; `DESIGN.md` ima točno jedan novi redak (`danger`).
+6b. S popisa „ne diram” dirano je samo ono što je vlasnik izričito tražio: effort u `PROMPT.md`,
+`.claude/agents/coder.md` i jedan redak plana (commitovi `3aafaaf`, `2229409`; vidi „Effort” u
+zaglavlju). `internal/docsafe` i `CLAUDE.md` su netaknuti; `DESIGN.md` ima točno jedan novi redak (`danger`).
 
 ### Koraci
 
@@ -556,7 +558,9 @@ Datoteke nastale ili mijenjane izvan tablice „Datoteke” u planu: `colorschem
       SIGINT, SIGHUP, SIGKILL; nakon rušenja sljedeće pokretanje čisti zaostale mape socketa).
 - [ ] 10. Kraj faze: `spike/` uklonjen (`git rm -r spike`, commit `0ec6386`; preostali generirani ostaci
       na disku obrisani), kriteriji s dokazima i popis **[R]** (dolje); `plan-reviewer`: krug 1 FAIL
-      (8 odstupanja: 3 u kodu, 5 u ovom dokumentu; ispravljena), krug 2 u tijeku; zatim sažetak i STOP.
+      (8 odstupanja: 3 u kodu, 5 u ovom dokumentu; ispravljena), krug 2 FAIL (simbolički link kao
+      početni dokument; jedna netočna rečenica u ovom dokumentu; ispravljeno), krug 3 u tijeku; zatim
+      sažetak i STOP.
       - Ispravci u kodu nakon kruga 1 (`coder` na `high`): dokument s naredbenog retka se prihvaća samo
         ako je `.md` ili `.txt` (inače se zanemaruje uz zapis u log; zajednička provjera
         `neovimMayEdit` s `OpenDocument`; testovi `TestEdInitialRefused`, `TestEdInitialAccepted`);
@@ -564,9 +568,11 @@ Datoteke nastale ili mijenjane izvan tablice „Datoteke” u planu: `colorschem
         buffer nije `modified`, ali bi se bez zaštite usred pitanja zapisao DRUGI izmijenjeni buffer);
         ispravljen komentar u `colorscheme.go`.
       - Poznato nakon tih ispravaka: kad „Spremi” pri gašenju ne uspije jer je u Neovimu otvoren
-        prompt, dijalog pokaže sirovi tekst greške s Lua tragom (ružno, ali točno); provjera vrste
-        početnog dokumenta gleda samo ime, pa simbolički link `x.md` na `.docx` zadan na naredbenom
-        retku prolazi (otvaranje iz stabla odbija linkove); `Wipe` ima vlastitu kopiju provjere prompta
+        prompt, dijalog pokaže sirovi tekst greške s Lua tragom (ružno, ali točno); `Wipe` ima vlastitu
+        kopiju provjere prompta.
+      - Ispravak nakon kruga 2 (glavna sesija, desetak redaka + test `TestEdInitialSymlink`): početni
+        dokument mora biti obična datoteka (`Lstat`) ili još ne postojati; simbolički link `x.md` na
+        `.docx` se odbija, jer bi Neovimov `:w` pisao kroz link u `.docx` mimo `internal/docsafe`
 
 ### Dokazi po kriterijima (2026-11-11)
 
@@ -575,9 +581,9 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda i nakon uk
 - `task test` → exit 0 (Go paketi `ok`; vitest `Test Files 19 passed`, `Tests 388 passed`);
   `task test:race` → exit 0; `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0.
-- Go testovi (`go test -list`): `Pisar` 80, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
+- Go testovi (`go test -list`): `Pisar` 81, `config` 22, `docsafe` 18, `nvim` 51, `project` 36,
   `term` 33; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD`. Pokrivenost
-  (`go test -count=1 -cover ./...`, nakon ispravaka iz kruga 1): `Pisar` 77,8 %, `config` 83,9 %,
+  (`go test -count=1 -cover ./...`, nakon ispravaka iz kruga 2): `Pisar` 77,6 %, `config` 83,9 %,
   `docsafe` 87,1 %, `nvim` 87,3–88,3 %, `project` 94,5 %, `term` 93,3 %. Pokrivenost paketa `nvim` se
   mijenja između pokretanja (tri uzastopna: 88,3 %, 87,3 %, 88,3 %), jer grane ovise o tome koja faza
   gašenja pobijedi.

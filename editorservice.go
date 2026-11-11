@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -406,13 +407,21 @@ func neovimMayEdit(name string) bool {
 
 // initialRefusal says why the document named on the command line is not
 // opened, or "" when it is accepted. A file that does not exist yet is fine
-// (Neovim opens a new buffer with that name); a folder is not a document.
+// (Neovim opens a new buffer with that name). Anything that exists must be a
+// regular file: Lstat, not Stat, because a link named x.md may point at a
+// .docx, and Neovim's :w writes through a link into its target.
 func initialRefusal(abs string) string {
 	if !neovimMayEdit(abs) {
 		return "not a .md or .txt file"
 	}
-	if isDir(abs) {
-		return "is a folder"
+	info, err := os.Lstat(abs)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return ""
+	case err != nil:
+		return "cannot be examined"
+	case !info.Mode().IsRegular():
+		return "not a regular file (a folder, a link or a special file)"
 	}
 	return ""
 }
