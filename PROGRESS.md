@@ -4,10 +4,12 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 1 — Kostur, projekti i stablo (koraci 1–9 gotovi 2026-11-11; čeka vlasnikov ručni pogled). Faza 0 je prihvaćena 2026-11-11:
+- Trenutna faza: 2 — `.md` i `.txt` (plan faze u izradi). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
+  ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnik prolazi popis „Ručni pogled” u odjeljku faze 1; zatim plan faze 2 (effort medium)
-- Zadnja izmjena: 2026-11-11 (faza 1, koraci 1–9 gotovi; `plan-reviewer` PASS u krugu 3 od 3)
+- Sljedeći korak: plan faze 2 i vlasnikovo „kreni”
+- Effort: vlasnik je 2026-11-11 odlučio da sesija ostaje na `high` i izvan faza 0 i 3 (ne podsjećati na `medium`)
+- Zadnja izmjena: 2026-11-11 (faza 1 prihvaćena)
 
 ## Priprema (2026-11-11)
 
@@ -358,17 +360,16 @@ folderima, povlačenje, kontekstni meni, hrvatski meni umjesto Wailsovih uloga, 
 
 ### Kriteriji prihvaćanja
 
-Dokazi su u odjeljku „Dokazi po kriterijima” gore. Dva kriterija ostaju neoznačena dok vlasnik ne
-provjeri dio koji traži klikanje (dijalog za folder, stvarno Smeće); sva njihova logika je pokrivena
-testovima.
+Dokazi su u odjeljku „Dokazi po kriterijima” gore. Dio koji traži klikanje (dijalog za folder, tipke u
+prozoru, stvarno Smeće) vlasnik je provjerio ručno 2026-11-11 i potvrdio da radi; agent to nije provjeravao.
 
 - [x] struktura repozitorija iz `CLAUDE.md`, `task dev/build/test/lint` — dokaz 1
-- [ ] dodavanje i uklanjanje projekta (odabir foldera); konfiguracija preživljava ponovno pokretanje —
-      dokaz 2; odabir foldera kroz nativni dijalog čeka ručni pogled (stavka 1)
+- [x] dodavanje i uklanjanje projekta (odabir foldera); konfiguracija preživljava ponovno pokretanje —
+      dokaz 2; odabir foldera kroz nativni dijalog potvrdio vlasnik
 - [x] stablo prikazuje samo podržane vrste, s oznakom vrste; skrivene datoteke i folderi su izostavljeni
       — dokaz 3 (izgled stabla je u ručnom pogledu, stavka 2)
-- [ ] nova datoteka, preimenovanje, brisanje u Trash — dokaz 4; pravi `trash` i tipke `a` / `r` / `d` u
-      prozoru čekaju ručni pogled (stavke 4–6)
+- [x] nova datoteka, preimenovanje, brisanje u Trash — dokaz 4; pravi `trash` i tipke `a` / `r` / `d` u
+      prozoru potvrdio vlasnik
 - [x] stablo se osvježava kad se datoteke promijene izvana — dokaz 5 (dimna provjera, od diska do frontenda)
 - [x] `theme/tokens.ts` postoji i iz njega izlaze CSS varijable — dokaz 6
 
