@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 5 (`internal/project` — praćenje promjena)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 4 gotov)
+- Sljedeći korak: faza 1, korak 6 (`ProjectService`, meni, povezivanje u `main.go`)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 5 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -221,7 +221,14 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
         nakon pregleda, s testom `TestRenameOntoHardLink`).
       - Na volumenu bez tvrdih linkova ostaje „provjeri pa preimenuj” s malim prozorom utrke; ta
         staza nema test
-- [ ] 5. `internal/project` — praćenje: FSEvents po projektu, debounce, izvor iza sučelja
+- [x] 5. `internal/project` — praćenje: `Watcher` (debounce 200 ms, najdulja odgoda 2 s, jedan `OnChange` po
+      naletu, projekti neovisni, gašenje bez zaostalih goroutina) i `FSEventsSource` (fsevents v0.2.0,
+      latencija 50 ms); 13 testova s lažnim izvorom i 5 s pravim FSEventsom, pokrivenost paketa 94,5 %.
+      - Novi limit u konfiguraciji: `WatchMaxDelay` (2 s), da neprekidne promjene ne odgađaju osvježavanje.
+      - Zanemaruje se sve što stablo ne prikazuje (skriveno, `~$…`, nepodržane vrste) i događaj za sam
+        korijen (FSEvents ga javlja pri pokretanju streama); premješten ili obrisan korijen stiže kao
+        `Rescan`.
+      - `OnChange` ne smije zvati metode `Watcher`-a (`Remove` i `Close` čekaju na njega)
 - [ ] 6. `ProjectService` i meni: servis prema ugovoru, dijalog za folder, potvrda brisanja, događaji
 - [ ] 7. Tema: `theme/tokens.ts`, CSS varijable, test kontrasta, fontovi Inter i JetBrains Mono, `strings.ts`
 - [ ] 8. Raspored i stablo: alatna traka 48 px, stablo 240 px, prazno stanje; stablo s `j`/`k`,

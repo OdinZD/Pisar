@@ -70,6 +70,16 @@ func TestLimits(t *testing.T) {
 	}
 }
 
+func TestLimitsWatchMaxDelay(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.WatchMaxDelay != DefaultWatchMaxDelay {
+		t.Fatalf("WatchMaxDelay = %v, want %v", l.WatchMaxDelay, DefaultWatchMaxDelay)
+	}
+	if l.WatchMaxDelay < l.WatchDebounce {
+		t.Fatalf("WatchMaxDelay %v is shorter than WatchDebounce %v", l.WatchMaxDelay, l.WatchDebounce)
+	}
+}
+
 func TestPersistence(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")

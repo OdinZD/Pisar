@@ -33,6 +33,7 @@ const (
 // Built-in limits. They are not written to the config file.
 const (
 	DefaultWatchDebounce  = 200 * time.Millisecond
+	DefaultWatchMaxDelay  = 2 * time.Second
 	DefaultMaxTreeNodes   = 20000
 	DefaultCommandTimeout = 10 * time.Second
 )
@@ -48,6 +49,7 @@ type Project struct {
 // package only; other packages receive them, they do not invent their own.
 type Limits struct {
 	WatchDebounce  time.Duration // quiet time after a disk change before the tree is refreshed
+	WatchMaxDelay  time.Duration // longest a refresh may be postponed while changes keep coming
 	MaxTreeNodes   int           // a project tree larger than this is refused
 	CommandTimeout time.Duration // external commands (trash, later pandoc/textutil)
 }
@@ -190,6 +192,7 @@ func (s *Store) Home() string { return s.home }
 func (s *Store) Limits() Limits {
 	return Limits{
 		WatchDebounce:  DefaultWatchDebounce,
+		WatchMaxDelay:  DefaultWatchMaxDelay,
 		MaxTreeNodes:   DefaultMaxTreeNodes,
 		CommandTimeout: DefaultCommandTimeout,
 	}
