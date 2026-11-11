@@ -335,9 +335,16 @@ func TestRenameInvalid(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "a.md"), "A", 0o644)
 	o := newOps(t, &fakeRun{})
-	for _, n := range append(badNames, "novo.txt", "novo.docx", strings.Repeat("a", 253)) {
+	for _, n := range append(badNames, strings.Repeat("a", 253)) {
 		if _, err := o.Rename(context.Background(), root, "a.md", n); !errors.Is(err, ErrInvalidName) {
 			t.Errorf("%q: got %v", n, err)
+		}
+	}
+	// The extension of another supported type would change the document type:
+	// that has its own error, so the user is not told the name is malformed.
+	for _, n := range []string{"novo.txt", "novo.docx", "novo.DOC"} {
+		if _, err := o.Rename(context.Background(), root, "a.md", n); !errors.Is(err, ErrUnsupportedKind) {
+			t.Errorf("%q: got %v, want ErrUnsupportedKind", n, err)
 		}
 	}
 	if n := names(t, root); !reflect.DeepEqual(n, []string{"a.md"}) {

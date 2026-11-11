@@ -191,7 +191,9 @@ func (o *Ops) Rename(ctx context.Context, root, rel, newName string) (newRel str
 	if kind, ok := project.KindOf(newName); ok {
 		oldKind, _ := project.KindOf(base)
 		if kind != oldKind {
-			return "", fmt.Errorf("%w: %q would change the document type", ErrInvalidName, newName)
+			// Not ErrInvalidName: the name is fine, the type change is what is
+			// refused, and the user is told exactly that.
+			return "", fmt.Errorf("%w: %q would change the document type", ErrUnsupportedKind, newName)
 		}
 		stem = strings.TrimSuffix(newName, filepath.Ext(newName)) // typed the same extension: do not double it
 	}
@@ -215,7 +217,10 @@ func (o *Ops) Rename(ctx context.Context, root, rel, newName string) (newRel str
 	switch {
 	case linkErr == nil:
 		if err := os.Remove(abs); err != nil {
-			_ = os.Remove(dst) // undo: dst is only the extra link we just made
+			// Undo: dst is only the extra link we just made.
+			if uerr := os.Remove(dst); uerr != nil {
+				return "", fmt.Errorf("docsafe: rename %q: remove old name: %w; removing the new name %q failed too, both names exist now: %w", rel, err, newRel, uerr)
+			}
 			return "", fmt.Errorf("docsafe: rename %q: remove old name: %w", rel, err)
 		}
 		return newRel, nil

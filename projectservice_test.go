@@ -522,6 +522,7 @@ func TestRenameDocument(t *testing.T) {
 	cases := []struct{ name, rel, newName, code string }{
 		{"exists", "dir/fresh.md", "other.md", codeExists},
 		{"invalid name", "dir/fresh.md", "a/b.md", codeInvalidName},
+		{"other type", "dir/fresh.md", "x.txt", codeUnsupportedKind},
 		{"folder", "dir", "x", codeNotDocument},
 		{"missing file", "dir/gone.md", "x.md", codeNotDocument},
 	}

@@ -21,6 +21,14 @@ import (
 // EnvHome overrides the directory that holds everything Pisar owns.
 const EnvHome = "PISAR_HOME"
 
+// Window size in points. The minimum comes from docs/design/DESIGN.md.
+const (
+	WindowWidth     = 1280
+	WindowHeight    = 800
+	WindowMinWidth  = 1000
+	WindowMinHeight = 600
+)
+
 // EnvLog set to "debug" makes the application log every service call to
 // stderr. It is a diagnostic for development and for scripts/smoke.sh.
 const EnvLog = "PISAR_LOG"

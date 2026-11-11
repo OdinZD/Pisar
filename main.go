@@ -115,10 +115,10 @@ func run() error {
 	// (alpha 0), so the NSWindow background is clear and may flash see-through before the webview paints.
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            text.AppName,
-		Width:            1280,
-		Height:           800,
-		MinWidth:         1000,
-		MinHeight:        600,
+		Width:            config.WindowWidth,
+		Height:           config.WindowHeight,
+		MinWidth:         config.WindowMinWidth,
+		MinHeight:        config.WindowMinHeight,
 		BackgroundColour: application.NewRGB(255, 255, 255),
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarDefault,

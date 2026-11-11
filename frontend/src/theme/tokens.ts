@@ -61,8 +61,6 @@ export const sizes = {
   rowHeight: 28,
   buttonHeight: 32,
   radius: 6,
-  windowMinWidth: 1000,
-  windowMinHeight: 600,
   // 2 px stays visible next to the 1 px borders and is the common minimum for a focus indicator.
   focusRingWidth: 2,
 } as const
