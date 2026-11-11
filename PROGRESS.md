@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 6 (`ProjectService`, meni, povezivanje u `main.go`)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 5 gotov)
+- Sljedeći korak: faza 1, korak 7 (tema: tokeni, CSS varijable, fontovi)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 6 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -229,7 +229,19 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
         korijen (FSEvents ga javlja pri pokretanju streama); premješten ili obrisan korijen stiže kao
         `Rescan`.
       - `OnChange` ne smije zvati metode `Watcher`-a (`Remove` i `Close` čekaju na njega)
-- [ ] 6. `ProjectService` i meni: servis prema ugovoru, dijalog za folder, potvrda brisanja, događaji
+- [x] 6. `ProjectService` i meni: servis prema ugovoru (`projectservice.go`), Wails dijalozi za folder i
+      potvrdu brisanja (`dialogs.go`), meni (`menu.go`), povezivanje i gašenje u `main.go`; 17 Go testova
+      s lažnim dijalozima, izvršiteljem i izvorom promjena.
+      - Tekst sučelja ima JEDAN izvor: `frontend/src/strings.json`. Frontend ga uvozi kroz `strings.ts`,
+        Go ga ugrađuje s `go:embed` (`uitext.go`). Time je riješeno odstupanje „tekst na dva mjesta”.
+      - Greške prema frontendu nose stabilan kod (`not-found`, `missing`, `too-large`, `invalid-path`,
+        `exists`, `invalid-name`, `unsupported-kind`, `not-document`, `not-a-directory`, `canceled`,
+        `internal`). U JS stižu kao `RuntimeError` s `cause.code` (Wailsov `MarshalError`) i s tekstom
+        koji počinje kodom; čita ih `frontend/src/lib/apiError.ts`.
+      - Putanja alata za Smeće je samo u `internal/config` (`DefaultTrashBin`, `Store.TrashBin()`).
+      - Greška iz stavke menija „Dodaj projekt…” se samo logira, bez nativne poruke.
+      - Nije provjereno bez klikanja: oba dijaloga, stavke menija, poruke o oštećenoj i novijoj
+        konfiguraciji (ide na popis za ručni pogled)
 - [ ] 7. Tema: `theme/tokens.ts`, CSS varijable, test kontrasta, fontovi Inter i JetBrains Mono, `strings.ts`
 - [ ] 8. Raspored i stablo: alatna traka 48 px, stablo 240 px, prazno stanje; stablo s `j`/`k`,
       `a`/`r`/`d`, „+ Dodaj projekt”, osvježavanje na događaje; model stabla s vitest testovima

@@ -1,0 +1,63 @@
+package main
+
+import (
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
+)
+
+// The interface text lives in one file shared with the frontend
+// (frontend/src/strings.json); Go needs it for native menus and dialogs.
+//
+//go:embed frontend/src/strings.json
+var stringsJSON []byte
+
+// uiText holds the texts the Go side uses. Keys the frontend adds later are
+// ignored here on purpose: the file is shared.
+type uiText struct {
+	AppName              string `json:"appName"`
+	MenuFile             string `json:"menuFile"`
+	MenuNewDocument      string `json:"menuNewDocument"`
+	MenuAddProject       string `json:"menuAddProject"`
+	ChooseFolderTitle    string `json:"chooseFolderTitle"`
+	TrashTitle           string `json:"trashTitle"`
+	TrashMessage         string `json:"trashMessage"` // placeholder {name}
+	TrashConfirm         string `json:"trashConfirm"`
+	Cancel               string `json:"cancel"`
+	OK                   string `json:"ok"`
+	ConfigRecoveredTitle string `json:"configRecoveredTitle"`
+	ConfigRecovered      string `json:"configRecovered"` // placeholder {path}
+	ConfigNewerTitle     string `json:"configNewerTitle"`
+	ConfigNewer          string `json:"configNewer"`
+}
+
+// parseUIText decodes the texts and reports every key that is missing or empty,
+// so a broken file gives a clear error at startup instead of blank dialogs.
+func parseUIText(data []byte) (uiText, error) {
+	var t uiText
+	if err := json.Unmarshal(data, &t); err != nil {
+		return uiText{}, fmt.Errorf("interface texts: %w", err)
+	}
+	var missing []string
+	rt, rv := reflect.TypeOf(t), reflect.ValueOf(t)
+	for i := range rt.NumField() {
+		if strings.TrimSpace(rv.Field(i).String()) == "" {
+			missing = append(missing, rt.Field(i).Tag.Get("json"))
+		}
+	}
+	if len(missing) > 0 {
+		return uiText{}, fmt.Errorf("interface texts: missing or empty keys: %s", strings.Join(missing, ", "))
+	}
+	return t, nil
+}
+
+// loadUIText reads the embedded texts.
+func loadUIText() (uiText, error) { return parseUIText(stringsJSON) }
+
+// fill replaces one {placeholder} in a single pass, so a value that itself
+// contains "{name}" is not substituted again.
+func fill(template, placeholder, value string) string {
+	return strings.NewReplacer("{"+placeholder+"}", value).Replace(template)
+}

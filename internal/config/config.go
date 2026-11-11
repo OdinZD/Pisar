@@ -38,6 +38,10 @@ const (
 	DefaultCommandTimeout = 10 * time.Second
 )
 
+// DefaultTrashBin is the macOS tool that moves a file to the Trash. This is
+// the only place its path is written down.
+const DefaultTrashBin = "/usr/bin/trash"
+
 // Project is one registered folder.
 type Project struct {
 	ID   string `json:"id"`   // stable, random; independent of the path
@@ -197,6 +201,10 @@ func (s *Store) Limits() Limits {
 		CommandTimeout: DefaultCommandTimeout,
 	}
 }
+
+// TrashBin returns the path of the tool that moves files to the Trash. It is a
+// method of its own rather than a Limits field because it is a path, not a limit.
+func (s *Store) TrashBin() string { return DefaultTrashBin }
 
 // Recovered returns the path the damaged file was moved to by Open, or "".
 func (s *Store) Recovered() string { return s.recovered }

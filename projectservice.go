@@ -1,0 +1,443 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"path"
+	"sync"
+
+	"Pisar/internal/config"
+	"Pisar/internal/docsafe"
+	"Pisar/internal/project"
+)
+
+// Events sent to the frontend (payload is always a string).
+const (
+	eventProjectsChanged = "projects:changed"  // the list of projects changed; payload ""
+	eventProjectChanged  = "project:changed"   // the tree of one project may have changed; payload is the project ID
+	eventMenuNewDocument = "menu:new-document" // payload ""
+)
+
+// dialogs is what the service needs from the UI toolkit.
+type dialogs interface {
+	ChooseFolder() (path string, err error) // "" when the user cancelled
+	ConfirmTrash(name string) (bool, error)
+}
+
+// ProjectInfo is one row of the project list.
+type ProjectInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Missing bool   `json:"missing"` // the folder does not exist (or is not a folder) right now
+}
+
+// projectServiceDeps are the parts a ProjectService is built from.
+type projectServiceDeps struct {
+	Store   *config.Store
+	Docs    *docsafe.Ops
+	Dialogs dialogs
+	Source  project.Source          // file system notifications
+	Emit    func(name, data string) // to the frontend
+	Limits  config.Limits
+}
+
+// ProjectService is the Wails service behind the project list and the document
+// tree. Wails binds every exported method, so everything that is not meant for
+// the frontend is unexported. Calls may run concurrently.
+type ProjectService struct {
+	store   *config.Store
+	docs    *docsafe.Ops
+	dialogs dialogs
+	emit    func(name, data string)
+	limits  config.Limits
+	watcher *project.Watcher
+
+	// watchMu serialises changes to the set of watched projects, so two
+	// concurrent calls do not both try to Add the same project.
+	watchMu sync.Mutex
+
+	// closeMu guards closed. Emitting holds the read lock, so once shutdown has
+	// taken the write lock no emit is running and none will start.
+	closeMu sync.RWMutex
+	closed  bool
+}
+
+func newProjectService(d projectServiceDeps) (*ProjectService, error) {
+	s := &ProjectService{
+		store:   d.Store,
+		docs:    d.Docs,
+		dialogs: d.Dialogs,
+		emit:    d.Emit,
+		limits:  d.Limits,
+	}
+	w, err := project.NewWatcher(project.WatchOptions{
+		Source:   d.Source,
+		Debounce: d.Limits.WatchDebounce,
+		MaxDelay: d.Limits.WatchMaxDelay,
+		// Must not call the Watcher (see project.Watcher); notify does not.
+		OnChange: func(id string) { s.notify(eventProjectChanged, id) },
+	})
+	if err != nil {
+		return nil, fmt.Errorf("project service: %w", err)
+	}
+	s.watcher = w
+	return s, nil
+}
+
+// notify emits unless the service has been shut down.
+func (s *ProjectService) notify(name, data string) {
+	s.closeMu.RLock()
+	defer s.closeMu.RUnlock()
+	if s.closed {
+		return
+	}
+	s.emit(name, data)
+}
+
+// shutdown stops watching and silences events. Idempotent. Unexported so
+// Wails does not expose it to the frontend.
+func (s *ProjectService) shutdown() {
+	// closed first: Watcher.Close waits for a running OnChange, which may be in
+	// notify; after this lock is released notify returns without emitting.
+	s.closeMu.Lock()
+	s.closed = true
+	s.closeMu.Unlock()
+	s.watcher.Close()
+}
+
+// bounded applies the limit for blocking calls. Dialogs are not bounded: the
+// user may take as long as they like.
+func (s *ProjectService) bounded(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, s.limits.CommandTimeout)
+}
+
+func isDir(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
+}
+
+// syncWatchers brings the watched set in line with the disk: a folder that
+// came back is watched again (also after its stream died), one that went away
+// is dropped. It returns the projects with their Missing flag.
+func (s *ProjectService) syncWatchers() []ProjectInfo {
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	projects := s.store.Projects()
+	out := make([]ProjectInfo, 0, len(projects))
+	for _, p := range projects {
+		missing := !isDir(p.Path)
+		watching := s.watcher.Watching(p.ID)
+		switch {
+		case missing && watching:
+			s.watcher.Remove(p.ID)
+		case !missing && !watching:
+			if err := s.watcher.Add(p.ID, p.Path); err != nil {
+				slog.Warn("cannot watch project", "project", p.ID, "err", err)
+			}
+		}
+		out = append(out, ProjectInfo{ID: p.ID, Name: p.Name, Path: p.Path, Missing: missing})
+	}
+	return out
+}
+
+// Projects returns the registered projects in the order they were added.
+func (s *ProjectService) Projects() []ProjectInfo { return s.syncWatchers() }
+
+// AddProject asks for a folder and registers it. Cancelling is not an error:
+// the result is the zero ProjectInfo.
+func (s *ProjectService) AddProject(ctx context.Context) (ProjectInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return ProjectInfo{}, s.fail("add project", err)
+	}
+	dir, err := s.dialogs.ChooseFolder()
+	if err != nil {
+		return ProjectInfo{}, s.fail("choose folder", err)
+	}
+	if dir == "" {
+		return ProjectInfo{}, nil
+	}
+	p, err := s.store.AddProject(dir)
+	if err != nil {
+		return ProjectInfo{}, s.fail("add project", err)
+	}
+	s.watchMu.Lock()
+	if !s.watcher.Watching(p.ID) {
+		if err := s.watcher.Add(p.ID, p.Path); err != nil {
+			// The project is registered anyway; Projects retries later.
+			slog.Warn("cannot watch project", "project", p.ID, "err", err)
+		}
+	}
+	s.watchMu.Unlock()
+	s.notify(eventProjectsChanged, "")
+	return ProjectInfo{ID: p.ID, Name: p.Name, Path: p.Path, Missing: !isDir(p.Path)}, nil
+}
+
+// RemoveProject forgets a project. The folder on disk is never touched.
+func (s *ProjectService) RemoveProject(id string) error {
+	s.watchMu.Lock()
+	s.watcher.Remove(id)
+	s.watchMu.Unlock()
+	if err := s.store.RemoveProject(id); err != nil {
+		return s.fail("remove project", err)
+	}
+	s.notify(eventProjectsChanged, "")
+	return nil
+}
+
+// errMissing marks a project whose folder is not there right now.
+var errMissing = errors.New("project folder is missing")
+
+// root returns the folder of a known project whose folder exists.
+func (s *ProjectService) root(id string) (string, error) {
+	p, ok := s.store.Project(id)
+	if !ok {
+		return "", config.ErrNotFound
+	}
+	if !isDir(p.Path) {
+		return "", errMissing
+	}
+	return p.Path, nil
+}
+
+// Tree returns the top level of the project tree (folders carry children).
+func (s *ProjectService) Tree(ctx context.Context, id string) ([]project.Node, error) {
+	root, err := s.root(id)
+	if err != nil {
+		return nil, s.fail("tree", err)
+	}
+	ctx, cancel := s.bounded(ctx)
+	defer cancel()
+	tree, err := project.Scan(ctx, root, s.limits.MaxTreeNodes)
+	if err != nil {
+		return nil, s.fail("tree", err)
+	}
+	if len(tree.Skipped) > 0 {
+		// Relative paths only; the frontend does not need to know.
+		slog.Warn("unreadable folders skipped", "project", id, "count", len(tree.Skipped), "folders", tree.Skipped)
+	}
+	if tree.Nodes == nil {
+		return []project.Node{}, nil // JSON [] rather than null
+	}
+	return tree.Nodes, nil
+}
+
+// requireFolder checks that dirRel names an existing folder. A missing folder
+// is reported as invalid-path: the frontend only sends paths from its tree, so
+// a path that is gone means the tree is stale.
+func requireFolder(root, dirRel string) error {
+	abs, err := project.Resolve(root, dirRel)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(abs)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("%w: %q is not an existing folder", project.ErrInvalidPath, dirRel)
+	}
+	return nil
+}
+
+func nodeFor(rel string) (project.Node, error) {
+	name := path.Base(rel)
+	kind, ok := project.KindOf(name)
+	if !ok {
+		return project.Node{}, fmt.Errorf("no document kind for %q", name)
+	}
+	return project.Node{Name: name, Rel: rel, Kind: kind}, nil
+}
+
+// CreateDocument creates an empty document in the folder dirRel ("" is the project root).
+func (s *ProjectService) CreateDocument(ctx context.Context, id, dirRel, name string) (project.Node, error) {
+	root, err := s.root(id)
+	if err != nil {
+		return project.Node{}, s.fail("create document", err)
+	}
+	ctx, cancel := s.bounded(ctx)
+	defer cancel()
+	if err := requireFolder(root, dirRel); err != nil {
+		return project.Node{}, s.fail("create document", err)
+	}
+	rel, err := s.docs.CreateFile(ctx, root, dirRel, name)
+	if err != nil {
+		return project.Node{}, s.fail("create document", err)
+	}
+	node, err := nodeFor(rel)
+	if err != nil {
+		return project.Node{}, s.fail("create document", err)
+	}
+	s.notify(eventProjectChanged, id) // do not wait for FSEvents
+	return node, nil
+}
+
+// RenameDocument renames the document rel and returns its new state.
+func (s *ProjectService) RenameDocument(ctx context.Context, id, rel, newName string) (project.Node, error) {
+	root, err := s.root(id)
+	if err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
+	ctx, cancel := s.bounded(ctx)
+	defer cancel()
+	newRel, err := s.docs.Rename(ctx, root, rel, newName)
+	if err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
+	node, err := nodeFor(newRel)
+	if err != nil {
+		return project.Node{}, s.fail("rename document", err)
+	}
+	s.notify(eventProjectChanged, id)
+	return node, nil
+}
+
+// requireDocument checks, before any dialog is shown, that rel is a supported
+// document inside the project. docsafe repeats the check before it acts.
+func requireDocument(root, rel string) error {
+	if rel == "" {
+		return fmt.Errorf("%w: the project root", docsafe.ErrNotDocument)
+	}
+	abs, err := project.Resolve(root, rel)
+	if err != nil {
+		return err
+	}
+	if _, ok := project.KindOf(path.Base(rel)); !ok {
+		return fmt.Errorf("%w: %q has no supported extension", docsafe.ErrNotDocument, rel)
+	}
+	info, err := os.Lstat(abs)
+	if err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %q is not a file", docsafe.ErrNotDocument, rel)
+	}
+	return nil
+}
+
+// TrashDocument moves a document to the Trash after the user confirms.
+// Declining is not an error.
+func (s *ProjectService) TrashDocument(ctx context.Context, id, rel string) error {
+	root, err := s.root(id)
+	if err != nil {
+		return s.fail("trash document", err)
+	}
+	if err := requireDocument(root, rel); err != nil {
+		return s.fail("trash document", err)
+	}
+	// The dialog is outside the time limit: the user may think.
+	ok, err := s.dialogs.ConfirmTrash(path.Base(rel))
+	if err != nil {
+		return s.fail("confirm trash", err)
+	}
+	if !ok {
+		return nil
+	}
+	ctx, cancel := s.bounded(ctx)
+	defer cancel()
+	if err := s.docs.Trash(ctx, root, rel); err != nil {
+		return s.fail("trash document", err)
+	}
+	s.notify(eventProjectChanged, id)
+	return nil
+}
+
+// Error codes the frontend can rely on (see frontend/src/lib/apiError.ts).
+const (
+	codeNotFound        = "not-found"
+	codeMissing         = "missing"
+	codeTooLarge        = "too-large"
+	codeInvalidPath     = "invalid-path"
+	codeExists          = "exists"
+	codeInvalidName     = "invalid-name"
+	codeUnsupportedKind = "unsupported-kind"
+	codeNotDocument     = "not-document"
+	codeNotADirectory   = "not-a-directory"
+	codeCanceled        = "canceled"
+	codeInternal        = "internal"
+)
+
+// codeOf maps an error to its stable code, looking through wrapping. Package
+// sentinels come before the context errors, so a specific meaning wins over
+// "canceled" when both are in the chain.
+func codeOf(err error) string {
+	var ae *apiError
+	switch {
+	case errors.As(err, &ae):
+		return ae.code
+	case errors.Is(err, config.ErrNotFound):
+		return codeNotFound
+	case errors.Is(err, errMissing):
+		return codeMissing
+	case errors.Is(err, project.ErrTooLarge):
+		return codeTooLarge
+	case errors.Is(err, project.ErrInvalidPath), errors.Is(err, project.ErrOutsideRoot):
+		return codeInvalidPath
+	case errors.Is(err, docsafe.ErrExists):
+		return codeExists
+	case errors.Is(err, docsafe.ErrInvalidName):
+		return codeInvalidName
+	case errors.Is(err, docsafe.ErrUnsupportedKind):
+		return codeUnsupportedKind
+	case errors.Is(err, docsafe.ErrNotDocument):
+		return codeNotDocument
+	case errors.Is(err, config.ErrNotADirectory):
+		return codeNotADirectory
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return codeCanceled
+	}
+	return codeInternal
+}
+
+// codeText is the English description that travels with a code. It is for logs
+// and developers; the user sees the Croatian text the frontend picks by code.
+// It never contains paths: the full error, which may, is only logged.
+var codeText = map[string]string{
+	codeNotFound:        "unknown project",
+	codeMissing:         "the project folder does not exist",
+	codeTooLarge:        "the project has too many entries",
+	codeInvalidPath:     "invalid path",
+	codeExists:          "an item with that name already exists",
+	codeInvalidName:     "invalid name",
+	codeUnsupportedKind: "unsupported document type",
+	codeNotDocument:     "not a document",
+	codeNotADirectory:   "not a folder",
+	codeCanceled:        "the operation was canceled or timed out",
+	codeInternal:        "unexpected error",
+}
+
+// apiError is what service methods return. Wails delivers it to JavaScript as
+// a RuntimeError whose message is Error() and whose cause is marshalError's
+// JSON (checked in the Wails v3.1.0 sources, see frontend/src/lib/apiError.ts).
+type apiError struct {
+	code  string
+	cause error // full error, for logs and errors.Is; never sent
+}
+
+func (e *apiError) Error() string { return e.code + ": " + codeText[e.code] }
+func (e *apiError) Unwrap() error { return e.cause }
+
+// fail logs the full error and returns the one the frontend may see.
+func (s *ProjectService) fail(op string, err error) error {
+	code := codeOf(err)
+	if code == codeInternal {
+		slog.Error("project service", "op", op, "err", err)
+	} else {
+		slog.Debug("project service", "op", op, "code", code, "err", err)
+	}
+	return &apiError{code: code, cause: err}
+}
+
+// marshalError is the service's ServiceOptions.MarshalError: it puts the code
+// into the JavaScript error's cause. nil falls back to Wails' default.
+func marshalError(err error) []byte {
+	var ae *apiError
+	if !errors.As(err, &ae) {
+		return nil
+	}
+	b, jerr := json.Marshal(struct {
+		Code string `json:"code"`
+	}{ae.code})
+	if jerr != nil {
+		return nil
+	}
+	return b
+}

@@ -1,0 +1,16 @@
+{
+  "appName": "Pisar",
+  "menuFile": "Datoteka",
+  "menuNewDocument": "Novi dokument",
+  "menuAddProject": "Dodaj projekt…",
+  "chooseFolderTitle": "Odaberi folder projekta",
+  "trashTitle": "Premjestiti u Smeće?",
+  "trashMessage": "Dokument „{name}” bit će premješten u Smeće.",
+  "trashConfirm": "Premjesti u Smeće",
+  "cancel": "Odustani",
+  "ok": "U redu",
+  "configRecoveredTitle": "Konfiguracija je bila oštećena",
+  "configRecovered": "Datoteka s popisom projekata bila je oštećena pa nije učitana. Njezina kopija je spremljena ovdje: {path}. Pisar je pokrenut s praznim popisom projekata.",
+  "configNewerTitle": "Konfiguracija je iz novije verzije",
+  "configNewer": "Datoteku s popisom projekata napisala je novija verzija aplikacije Pisar. Ova verzija je ne mijenja i zato se zatvara. Pokreni noviju verziju."
+}

@@ -407,3 +407,9 @@ func TestDefaultHome(t *testing.T) {
 		}
 	})
 }
+
+func TestTrashBinDefault(t *testing.T) {
+	if got := mustOpen(t, t.TempDir()).TrashBin(); got != DefaultTrashBin || DefaultTrashBin != "/usr/bin/trash" {
+		t.Fatalf("TrashBin = %q", got)
+	}
+}
