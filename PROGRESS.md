@@ -4,9 +4,9 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 7 (gašenje aplikacije bez zaostalog `nvim` procesa)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 6 gotov)
+- Trenutna faza: 0 — Spike (koraci gotovi 2026-11-11; čeka ručnu provjeru **[R]** i odluku vlasnika)
+- Sljedeći korak: vlasnik prolazi popis **[R]** iz `docs/spike-report.md` (odjeljak 3) i odlučuje idemo / ne idemo
+- Zadnja izmjena: 2026-11-11 (faza 0, koraci 1–9 gotovi)
 
 ## Priprema (2026-11-11)
 
@@ -66,9 +66,10 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
       događaj → bracketed paste); tipke s `⌘` xterm.js ne šalje Neovimu. Dolazak tipki do menija je **[R]**
 - [x] 6. Mjerenje: `task -d spike bench` (bez tipkovnice: Go šalje `Ctrl-d` kroz PTY), datoteka od 5000
       redaka (`task -d spike sample` → `spike/bin/sample-5000.md`), oba renderera; rezultati dolje
-- [ ] 7. Gašenje aplikacije: hook zove `Close`; skripta gradi, pokreće, gasi i provjerava `pgrep`
-- [ ] 8. Popis za ručnu provjeru **[R]** predan vlasniku
-- [ ] 9. `docs/spike-report.md`, kriteriji s dokazima, `plan-reviewer`, sažetak, STOP
+- [x] 7. Gašenje aplikacije: `OnShutdown` zove `Close`; `bash spike/scripts/shutdown.sh` gradi, pokreće i
+      gasi aplikaciju sa SIGTERM, SIGINT, SIGHUP i SIGKILL te provjerava da nema Neovima
+- [x] 8. Popis za ručnu provjeru **[R]** predan vlasniku: `docs/spike-report.md`, odjeljak 3
+- [x] 9. `docs/spike-report.md`, kriteriji s dokazima (dolje), `plan-reviewer`, sažetak, STOP
 
 ### Nalazi tijekom faze (ulaze u `docs/spike-report.md`)
 
@@ -117,6 +118,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   Vrijednosti ispod 1 ms su na granici razlučivosti sata u WKWebViewu (zaokružen na oko 1 ms; zato se
   pojavljuju i blago negativne razlike). Propusnost ograničava Neovim (0,16 MB/s), ne prijenos Wails
   događajima: prijenos nije zasićen ni u najgorem slučaju.
+- Gašenje: nakon SIGKILL ili SIGHUP aplikacije oba Neovim procesa nestaju sama (PTY se zatvori), ali
+  ostaje privremena mapa `pisar-spike-*` s `init.lua`. Zaglavljeni server uz SIGKILL aplikacije ostao
+  bi živ; uredno gašenje taj slučaj rješava.
 - Trag za dijagnostiku: `PISAR_SPIKE_TRACE=<datoteka>` bilježi pozive i SVE tipke; samo za spike,
   ne prenositi u aplikaciju. Renderer: `PISAR_SPIKE_RENDERER=webgl|dom`.
 
@@ -137,12 +141,17 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - [ ] **[R]** promjena veličine prozora: Neovim se preslaže, bez odsječenih redaka
 - [ ] **[R]** font je učitan prije otvaranja terminala; ćelije su poravnate
 - [ ] **[R]** držanje `Ctrl-d` kroz datoteku od 5000 redaka: bez vidljivog zastoja i razbijenog prikaza
-- [ ] Go otvara datoteku u pokrenutom Neovimu preko RPC socketa
-- [ ] Go prima obavijest kad Neovim spremi buffer
-- [ ] nakon gašenja aplikacije nema živog `nvim` procesa
-- [ ] `docs/spike-report.md`: što radi, što ne, zaobilaznice, preporuka
+- [x] Go otvara datoteku u pokrenutom Neovimu preko RPC socketa — dokaz: `go test -v -run TestOpen ./internal/nvim/`
+      → `--- PASS: TestOpen` (7 podtestova); `bash spike/scripts/smoke.sh` → `neovim says: '141 33 sample.md'`
+- [x] Go prima obavijest kad Neovim spremi buffer — dokaz: `--- PASS: TestSave`, `--- PASS: TestColonW`,
+      `--- PASS: TestWQ` (`task -d spike test` → `ok Pisar/spike/internal/nvim`)
+- [x] nakon gašenja aplikacije nema živog `nvim` procesa — dokaz: `bash spike/scripts/shutdown.sh` →
+      `shutdown: all checks passed` (četiri signala); `--- PASS: TestClose`, `--- PASS: TestHung`;
+      `task -d spike bench` → `no Neovim process of ours is left` nakon `Quit`; `pgrep -fl nvim` prazan
+- [x] `docs/spike-report.md`: što radi, što ne, zaobilaznice, preporuka — dokaz: `test -s docs/spike-report.md`
 
-Odluku idemo / ne idemo donosi vlasnik.
+Sedam kriterija **[R]** gore ostaje neoznačeno dok ih vlasnik ne provjeri ručno (popis s radnjama:
+`docs/spike-report.md`, odjeljak 3). Odluku idemo / ne idemo donosi vlasnik.
 
 ## Faza 1 — Kostur, projekti i stablo
 
