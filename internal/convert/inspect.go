@@ -22,6 +22,12 @@ const (
 	LossComments       Loss = "comments"
 	LossTrackedChanges Loss = "tracked-changes"
 	LossTextBoxes      Loss = "text-boxes"
+
+	// LossTables: a table pandoc cannot write in Markdown at all, so it comes
+	// out as raw HTML, which is lost when the Markdown is written back to .docx.
+	// Only DocxToMarkdown reports it (it takes the pandoc output to know);
+	// Inspect never does.
+	LossTables Loss = "tables"
 )
 
 // InspectLimits bound the work done on one archive. A zero value refuses

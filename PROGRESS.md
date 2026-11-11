@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–2 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–3 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 3 (`internal/convert`: pretvorbe i golden testovi)
+- Sljedeći korak: faza 3, korak 4 (`internal/docsafe`: atomski zapis, backup, konflikt)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 3, korak 2)
+- Zadnja izmjena: 2026-11-11 (faza 3, korak 3)
 
 ## Priprema (2026-11-11)
 
@@ -754,7 +754,31 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         neopaženo); nema limita ukupnog rada preko svih dijelova, pa pozivatelj mora dati `ctx` s rokom.
       - `coder` nije učitao skillove `samber/cc-skills-golang` (nije naveo razlog); u sljedećim briefovima
         to izričito tražim.
-- [ ] 3. `internal/convert`: pretvorbe `.docx → .md`, `.md → .docx`, `.doc → .docx`; golden testovi
+- [x] 3. `internal/convert`: pretvorbe i golden testovi. `Converter` (`New(Options)`, `Runner` s radnim
+      direktorijem): `DocxToMarkdown(ctx, src, dir) ([]Loss, error)`, `MarkdownToDocx(ctx, dir, reference, dst)`,
+      `DocToDocx(ctx, src, dst)`, `MakeReference(ctx, src, dst)`; greške `ErrToolMissing`, `*ToolError`
+      (stderr ograničen na 4 KiB). Pokrivenost paketa 91,5 %.
+      - Čitanje: pipe tablice, pa grid ako prvi prolaz da `<table`; ako i grid ostavi `<table`, vraća se
+        gubitak `tables` (dokument ide samo za čitanje). Pandoc 3.13 u grid tablicama podnosi i spojene
+        ćelije, pa je to zaštita, ne očekivani slučaj. Mapa u kojoj `doc.md` već postoji se odbija.
+      - Pisanje: čitač `markdown-smart` (sve vrste tablica); daje bajt-identičan `.docx` kao čitanje
+        formatom kojim je Markdown zapisan. Odredište mora biti slobodno (ne postoji ili prazna datoteka).
+      - `MakeReference`: uklanja slike na koje pokazuju samo slikovne veze tijela i briše te veze iz
+        `document.xml.rels` (rez na razini bajtova, ostalo netaknuto); ostali unosi se kopiraju bez
+        dekompresije. Slike zaglavlja, podnožja i drugih dijelova ostaju.
+      - Golden: `testdata/docx/golden/*.md` za svih sedam dokumenata (`-update` ih regenerira); krug
+        `.docx → .md → .docx → .md` za `basic`, `complex-table`, `header-image`. Ime slike je stabilno kroz
+        tri generacije, drugo spremanje daje bajt-identičan `.docx`, zaglavlje i logo preživljavaju, nema
+        visećih veza ni unosa u `[Content_Types].xml` bez dijela.
+      - Novi probni dokument `header-image.docx` (slika u tijelu + logo u zaglavlju); skripta ima 31 provjeru.
+      - Za `docs/known-losses.md`: nestaje `lang` iz metapodataka; numerirana lista postaje `1.  `;
+        tablica se poravna; slika dobiva `{width=… height=…}`; širine stupaca grid tablice se mijenjaju;
+        zaglavlje i podnožje nisu vidljivi u Markdownu (preživljavaju preko referentnog dokumenta);
+        `.doc`: nema naslova, poveznice ni teksta fusnote, lista je citat s „•”, tablica zasebni odlomci.
+      - `textutil` i od datoteke koja nije `.doc` (običan tekst) napravi `.docx` bez greške.
+      - **Odstupanje od plana:** pandoc ne piše privremenu datoteku u korisnikov folder nego u Pisarovu
+        radnu mapu; kopiranje u privremenu datoteku pored izvornika, `fsync` i `rename` radi `docsafe`
+        (korak 4). Tako u korisnikovu mapu piše isključivo `docsafe`, kako traži `CLAUDE.md`.
 - [ ] 4. `internal/docsafe`: atomski zapis, backup s rotacijom, snimka izvornika i konflikt
 - [ ] 5. `internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”
 - [ ] 6. Editor (Go): otvaranje kroz radnu kopiju, samo za čitanje, tok spremanja, dijalozi
