@@ -9,7 +9,17 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
- * Name of the custom event "time".
+ * Name of the custom event "nvim:exit".
  */
-export const Time = "time";
+export const NvimExit = "nvim:exit";
+
+/**
+ * Name of the custom event "nvim:saved".
+ */
+export const NvimSaved = "nvim:saved";
+
+/**
+ * Name of the custom event "pty:data".
+ */
+export const PtyData = "pty:data";
 

@@ -517,6 +517,13 @@ func (p *Process) Save(ctx context.Context) error {
 	return p.execLua(ctx, "save", nil, `vim.cmd.write()`)
 }
 
+// Redraw forces Neovim to repaint the whole screen (what a re-attached terminal needs).
+func (p *Process) Redraw(ctx context.Context) error {
+	// ":redraw!" is the stable command for a full repaint (:help :redraw);
+	// nvim__redraw() is documented as experimental.
+	return p.execLua(ctx, "redraw", nil, `vim.cmd.redraw({ bang = true })`)
+}
+
 // Events returns the notification stream. It is buffered (eventBuffer
 // entries); if the consumer does not keep up, the oldest events are dropped
 // so Neovim and the RPC loop never block. It is closed when the process is gone.

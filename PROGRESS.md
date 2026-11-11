@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 3 (most PTY ↔ frontend)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 2 gotov)
+- Sljedeći korak: faza 0, korak 4 (terminal u Svelteu: xterm.js, font, promjena veličine)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 3 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -56,8 +56,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
       `lint`, `.golangci.yml` kao u Tragu; aplikacija se gradi (`spike/bin/spike`) i pokreće
 - [x] 2. Neovim proces (Go): `spike/internal/nvim` — PTY, promjena veličine, RPC preko socketa, uredno
       gašenje; 14 integracijskih testova s pravim `nvim`-om, čisto i s `-race`
-- [ ] 3. Most PTY ↔ frontend: Wails servis (`Write`, `Resize`), događaji s izlazom grupirani po
-      vremenu i veličini, bez rezanja usred UTF-8 znaka; brojači propusnosti
+- [x] 3. Most PTY ↔ frontend: `spike/internal/term` (`Session`, grupiranje 8 ms / 16 KiB, bez rezanja
+      usred UTF-8 znaka, brojači) i `TerminalService`; gašenje kroz `OnShutdown`
 - [ ] 4. Terminal (Svelte): xterm.js + fit, prekidač DOM / WebGL, JetBrains Mono učitan prije
       otvaranja terminala, promjena veličine → fit → `Resize`
 - [ ] 5. Tipke i clipboard: `⌘S` → Go → RPC, `⌘C` / `⌘V`, `"+y` / `"+p`, `Ctrl-` tipke i `Esc`,
@@ -80,6 +80,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   dugoživuće procese; odlučiti u fazi 1 kako ga zapisati.
 - Putanja RPC socketa mora stati u `sun_path` (103 bajta na macOS-u); `Start` to provjerava unaprijed.
 - `coder` je registriran od koraka 3 (agent se pojavio u sesiji nakon koraka 2).
+- Wails v3.1.0: metoda servisa smije primiti `context.Context` kao prvi argument (generator ga
+  izostavlja iz bindinga); `kill` (SIGTERM) aplikaciji pokreće `OnShutdown`.
+- `npm install` u predlošku javlja nalaze `npm audit`; pregledati prije faze 1.
 
 ### API-ji koje treba potvrditi prije upotrebe
 

@@ -1,12 +1,20 @@
 package main
 
 import (
+	"context"
 	"embed"
-
+	"errors"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"Pisar/spike/internal/nvim"
+	"Pisar/spike/internal/term"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -17,28 +25,82 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// The Neovim configuration the application ships. It is written to a private
+// temporary directory at startup because Neovim reads it from a file path.
+//
+//go:embed nvim/init.lua
+var initLua []byte
+
+// shutdownTimeout bounds stopping Neovim when the application quits.
+const shutdownTimeout = 5 * time.Second
+
 func init() {
-	// Register a custom event whose associated data type is string.
-	// This is not required, but the binding generator will pick up registered events
-	// and provide a strongly typed JS/TS API for them.
-	application.RegisterEvent[string]("time")
+	// Typed events: the binding generator emits a TypeScript type for each payload.
+	application.RegisterEvent[string](term.EventData)
+	application.RegisterEvent[string](term.EventSaved)
+	application.RegisterEvent[string](term.EventExit)
 }
 
-// main function serves as the application's entry point. It initializes the application, creates a window,
-// and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
-// logs any error that might occur.
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
 
-	// Create a new Wails application by providing the necessary options.
-	// Variables 'Name' and 'Description' are for application metadata.
-	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
-	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
-	// 'Mac' options tailor the application when running an macOS.
-	app := application.New(application.Options{
-		Name:        "spike",
-		Description: "A demo of using raw HTML & CSS",
+func run() error {
+	// The directory holds init.lua and Neovim's RPC socket. It is ours alone
+	// (MkdirTemp creates it 0700), which is what nvim.Options.SocketDir asks for.
+	dir, err := os.MkdirTemp("", "pisar-spike-")
+	if err != nil {
+		return fmt.Errorf("create temporary directory: %w", err)
+	}
+	initPath := filepath.Join(dir, "init.lua")
+	if err := os.WriteFile(initPath, initLua, 0o600); err != nil {
+		return errors.Join(fmt.Errorf("write init.lua: %w", err), os.RemoveAll(dir))
+	}
+
+	// The emitter needs the application, the application needs the service:
+	// the closure reads wails after it has been created, and nothing emits
+	// before the frontend calls Start.
+	var wails *application.App
+	session := term.NewSession(term.Config{
+		Nvim: nvim.Options{
+			Bin:       "nvim",
+			InitLua:   initPath,
+			AppName:   "pisar-spike",
+			SocketDir: dir,
+		},
+	}, func(name, data string) { wails.Event.Emit(name, data) })
+
+	// On macOS Run does not return when the application quits, so cleanup
+	// runs from OnShutdown; the deferred call covers a failed start. Once
+	// makes the second call a no-op.
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+			if err := session.Close(ctx); err != nil {
+				log.Printf("close session: %v", err)
+			}
+			if err := os.RemoveAll(dir); err != nil {
+				log.Printf("remove %s: %v", dir, err)
+			}
+		})
+	}
+	defer cleanup()
+
+	// A first command-line argument is a file to open once Neovim runs.
+	var initialFile string
+	if len(os.Args) > 1 {
+		initialFile = os.Args[1]
+	}
+
+	wails = application.New(application.Options{
+		Name:        "Pisar spike",
+		Description: "Neovim in a terminal, driven from Go",
 		Services: []application.Service{
-			application.NewService(&GreetService{}),
+			application.NewService(NewTerminalService(session, initialFile)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -46,42 +108,16 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		OnShutdown: cleanup,
 	})
 
-	// Create a new window with the necessary options.
-	// 'Title' is the title of the window.
-	// 'Mac' options tailor the window when running on macOS.
-	// 'BackgroundColour' is the background colour of the window.
-	// 'URL' is the URL that will be loaded into the webview.
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Window 1",
-		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
-		Width:  1000,
-		Height: 618,
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 50,
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-		},
-		BackgroundColour: application.NewRGB(6, 7, 15),
+	wails.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Pisar spike",
+		Width:            1100,
+		Height:           700,
+		BackgroundColour: application.NewRGB(255, 255, 255),
 		URL:              "/",
 	})
 
-	// Create a goroutine that emits an event containing the current time every second.
-	// The frontend can listen to this event and update the UI accordingly.
-	go func() {
-		for {
-			now := time.Now().Format(time.RFC1123)
-			app.Event.Emit("time", now)
-			time.Sleep(time.Second)
-		}
-	}()
-
-	// Run the application. This blocks until the application has been exited.
-	err := app.Run()
-
-	// If an error occurred while running the application, log it and exit.
-	if err != nil {
-		log.Fatal(err)
-	}
+	return wails.Run()
 }

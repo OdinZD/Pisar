@@ -8,7 +8,9 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "time": string;
+            "nvim:exit": string;
+            "nvim:saved": string;
+            "pty:data": string;
         }
     }
 }

@@ -305,6 +305,30 @@ func TestResize(t *testing.T) {
 	}
 }
 
+func TestRedraw(t *testing.T) {
+	p, out := newProc(t, nil)
+	// Let the startup screen finish, or its output would pass for the redraw's.
+	var last int
+	stable := 0
+	eventually(t, "idle TUI", func() bool {
+		n := len(out.bytes())
+		if n > 0 && n == last {
+			stable++
+		} else {
+			stable = 0
+		}
+		last = n
+		return stable >= 10 // 10 polls x testPoll without new output
+	})
+	before := len(out.bytes())
+	ctx, cancel := context.WithTimeout(context.Background(), testWait)
+	defer cancel()
+	if err := p.Redraw(ctx); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "output after Redraw", func() bool { return len(out.bytes()) > before })
+}
+
 func TestSize(t *testing.T) {
 	p, _ := newProc(t, func(o *Options) { o.Cols, o.Rows = 90, 28 })
 	var got []int
