@@ -4,13 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 2 — `.md` i `.txt` (koraci 1–10 gotovi 2026-11-11; čeka vlasnikovu ručnu provjeru **[R]**). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan faze u izradi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+  ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnik prolazi popis „Ručna provjera [R]” u odjeljku faze 2; zatim plan faze 3 (preduvjet: `brew install pandoc`)
+- Sljedeći korak: plan faze 3 i vlasnikovo „kreni” (preduvjet: instaliran `pandoc`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 2, koraci 1–10 gotovi; `plan-reviewer` PASS u krugu 3 od 3)
+- Zadnja izmjena: 2026-11-11 (faza 2 prihvaćena)
 
 ## Priprema (2026-11-11)
 
@@ -644,19 +645,18 @@ menija, tamna tema, pakiranje, brisanje `~/.local/state/pisar-spike/` i `~/.loca
 
 ### Kriteriji prihvaćanja
 
-Dokazi su u odjeljku „Dokazi po kriterijima” gore. Označen je samo kriterij koji je u cijelosti dokazan
-naredbom. Za ostale je logika pokrivena testovima i dimnom provjerom, ali zadnji korak (klik u
-prozoru, boja reda, tekst u traci, nativni dijalog) može potvrditi samo vlasnik.
+Dokazi su u odjeljku „Dokazi po kriterijima” gore. Ono što traži gledanje i tipkanje u prozoru (klik,
+boja reda, tekst u traci, nativni dijalog, fokus) vlasnik je provjerio ručno 2026-11-11 i potvrdio da
+radi; agent to nije provjeravao.
 
-- [ ] klik ili `↵` u stablu otvara dokument u Neovimu — dokaz 1; klik i `↵` u prozoru čekaju ručnu
-      provjeru (stavka 1)
-- [ ] aktivni dokument je označen u stablu i kad se buffer promijeni iz Neovima — dokaz 2; boja reda
-      čeka ručnu provjeru (stavka 2)
-- [ ] alatna traka prikazuje „Izmijenjeno” / „Spremljeno” prema stanju buffera — dokaz 3; prikaz u traci
-      čeka ručnu provjeru (stavka 3)
-- [ ] gašenje s nespremljenim izmjenama traži potvrdu — dokaz 4; sam dijalog čeka ručnu provjeru (stavka 6)
+- [x] klik ili `↵` u stablu otvara dokument u Neovimu — dokaz 1; klik i `↵` u prozoru potvrdio vlasnik
+- [x] aktivni dokument je označen u stablu i kad se buffer promijeni iz Neovima — dokaz 2; boju reda
+      potvrdio vlasnik
+- [x] alatna traka prikazuje „Izmijenjeno” / „Spremljeno” prema stanju buffera — dokaz 3; prikaz u traci
+      potvrdio vlasnik
+- [x] gašenje s nespremljenim izmjenama traži potvrdu — dokaz 4; sam dijalog potvrdio vlasnik
 - [x] xterm.js tema i Neovim colorscheme generirani su iz tokena — dokaz 5
-- [ ] **[R]** fokus: tipke iz terminala ne aktiviraju stablo, i obratno — ručna provjera, stavka 4
+- [x] **[R]** fokus: tipke iz terminala ne aktiviraju stablo, i obratno — potvrdio vlasnik ručno 2026-11-11
 
 ## Faza 3 — `.docx` i `.doc`
 
