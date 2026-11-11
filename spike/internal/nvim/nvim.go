@@ -512,6 +512,41 @@ func (p *Process) CurrentFile(ctx context.Context) (string, error) {
 	return name, nil
 }
 
+// Screen describes what Neovim shows in the current window.
+type Screen struct {
+	TopLine    int      // 1-based buffer line at the top of the window (line('w0'))
+	Height     int      // window height in rows (winheight(0))
+	CursorLine int      // 1-based
+	LastLine   int      // number of lines in the buffer
+	Lines      []string // buffer lines TopLine .. TopLine+Height-1 (fewer at the end of the buffer)
+}
+
+// Screen reports which part of the buffer the current window shows and where
+// the cursor is. It is a snapshot taken inside Neovim's main loop, so all
+// fields agree with each other. Lines are buffer text, not screen text: a
+// wrapped long line is one entry although it fills several rows.
+func (p *Process) Screen(ctx context.Context) (Screen, error) {
+	var s Screen
+	// The keys of the returned table are the field names of Screen, which is
+	// how the msgpack decoder fills the struct. line('w0') validates the
+	// window first, so the top line is current even in the middle of a scroll.
+	err := p.execLua(ctx, "screen", &s, `
+		local top = vim.fn.line("w0")
+		local height = vim.fn.winheight(0)
+		local last = vim.api.nvim_buf_line_count(0)
+		return {
+			TopLine = top,
+			Height = height,
+			CursorLine = vim.api.nvim_win_get_cursor(0)[1],
+			LastLine = last,
+			Lines = vim.api.nvim_buf_get_lines(0, top - 1, math.min(top - 1 + height, last), false),
+		}`)
+	if err != nil {
+		return Screen{}, err
+	}
+	return s, nil
+}
+
 // Save writes the current buffer to its file (what ⌘S calls). It works in any
 // mode and leaves the mode alone. When the write fails (E32 for an unnamed
 // buffer, for instance) the error is returned and the same message is shown in

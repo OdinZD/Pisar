@@ -22,6 +22,8 @@ type TerminalService struct {
 	trace    *tracer // may be nil or disabled
 	renderer string  // "dom" or "webgl"
 
+	bench *benchRun // nil unless PISAR_SPIKE_BENCH is set
+
 	mu          sync.Mutex
 	initialFile string // opened once, after the first successful Start
 
@@ -59,13 +61,24 @@ func (t *TerminalService) Start(ctx context.Context, cols, rows int) (err error)
 	path := t.initialFile
 	t.initialFile = ""
 	t.mu.Unlock()
-	if path == "" {
-		return nil
+	if path != "" {
+		if err := t.session.OpenFile(ctx, path); err != nil {
+			return fmt.Errorf("open %q: %w", path, err)
+		}
 	}
-	if err := t.session.OpenFile(ctx, path); err != nil {
-		return fmt.Errorf("open %q: %w", path, err)
-	}
+	t.bench.onStarted() // no-op unless bench mode is on
 	return nil
+}
+
+// useBench switches bench mode on. Unexported, so Wails does not bind it.
+func (t *TerminalService) useBench(b *benchRun) { t.bench = b }
+
+// BenchReport receives what the frontend measured during one bench phase.
+func (t *TerminalService) BenchReport(phase string, report FrontendReport) error {
+	if t.bench == nil {
+		return errors.New("bench report: bench mode is off")
+	}
+	return t.bench.deliver(phase, report)
 }
 
 // Write sends keystrokes, already encoded by the terminal, to Neovim.

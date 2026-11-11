@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -1014,5 +1015,69 @@ func TestDarwinProvider(t *testing.T) {
 	}
 	if res.Has != 1 || res.Provider != "pbcopy" {
 		t.Errorf("has('clipboard') = %d, provider = %q; want 1 and pbcopy", res.Has, res.Provider)
+	}
+}
+
+// writeLines creates a file of n lines "line 001", "line 002", ... in dir.
+func writeLines(t *testing.T, dir string, n int) string {
+	t.Helper()
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "line %03d\n", i)
+	}
+	path := filepath.Join(dir, "lines.md")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestScreen(t *testing.T) {
+	p, _ := newProc(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), testWait)
+	defer cancel()
+	if err := p.OpenFile(ctx, writeLines(t, t.TempDir(), 200)); err != nil {
+		t.Fatalf("OpenFile: %v", err)
+	}
+
+	scr, err := p.Screen(ctx)
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+	if scr.TopLine != 1 || scr.CursorLine != 1 || scr.LastLine != 200 {
+		t.Errorf("at the top: TopLine=%d CursorLine=%d LastLine=%d, want 1 1 200", scr.TopLine, scr.CursorLine, scr.LastLine)
+	}
+	if scr.Height < 5 || len(scr.Lines) != scr.Height {
+		t.Fatalf("Height=%d with %d lines, want equal and at least 5", scr.Height, len(scr.Lines))
+	}
+	if scr.Lines[0] != "line 001" || scr.Lines[scr.Height-1] != fmt.Sprintf("line %03d", scr.Height) {
+		t.Errorf("Lines = %q ... %q", scr.Lines[0], scr.Lines[len(scr.Lines)-1])
+	}
+
+	// Keys travel through the PTY, asynchronously to the RPC call.
+	if _, err := p.Write([]byte("\x04")); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Ctrl-d to scroll", func() bool {
+		s, err := p.Screen(ctx)
+		return err == nil && s.TopLine > 1 && s.CursorLine > 1 && s.Lines[0] == fmt.Sprintf("line %03d", s.TopLine)
+	})
+
+	if _, err := p.Write([]byte("G")); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "G to reach the last line", func() bool {
+		s, err := p.Screen(ctx)
+		return err == nil && s.CursorLine == s.LastLine && s.LastLine == 200
+	})
+	scr, err = p.Screen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := scr.Lines[len(scr.Lines)-1]; got != "line 200" {
+		t.Errorf("last window line = %q, want %q", got, "line 200")
+	}
+	if want := 200 - scr.TopLine + 1; len(scr.Lines) != want {
+		t.Errorf("%d lines from TopLine %d, want %d", len(scr.Lines), scr.TopLine, want)
 	}
 }

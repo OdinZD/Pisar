@@ -41,9 +41,15 @@ func init() {
 	application.RegisterEvent[string](term.EventExit)
 	application.RegisterEvent[string](term.EventCopy)
 	application.RegisterEvent[string](eventRenderer)
+	// Only the bench mode emits these; registering lets the binding generator type them.
+	application.RegisterEvent[string](eventBenchStart)
+	application.RegisterEvent[string](eventBenchStop)
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == benchTableFlag {
+		os.Exit(benchTableMain(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -65,6 +71,15 @@ func run() error {
 	// the closure reads wails after it has been created, and nothing emits
 	// before the frontend calls Start.
 	var wails *application.App
+	emit := func(name, data string) { wails.Event.Emit(name, data) }
+	// Bench mode only: the recorder sees every pty:data event on its way out.
+	benchPath := os.Getenv(envBench)
+	var rec *emitRecorder
+	sessionEmit := term.Emitter(emit)
+	if benchPath != "" {
+		rec = &emitRecorder{}
+		sessionEmit = rec.wrap(emit)
+	}
 	session := term.NewSession(term.Config{
 		Nvim: nvim.Options{
 			Bin:       "nvim",
@@ -72,7 +87,7 @@ func run() error {
 			AppName:   "pisar-spike",
 			SocketDir: dir,
 		},
-	}, func(name, data string) { wails.Event.Emit(name, data) })
+	}, sessionEmit)
 
 	tr, err := newTracer(os.Getenv(envTrace))
 	if err != nil {
@@ -86,6 +101,17 @@ func run() error {
 		initialFile = os.Args[1]
 	}
 	service := NewTerminalService(session, initialFile, os.Getenv(envRenderer), tr)
+	if benchPath != "" {
+		service.useBench(newBenchRun(benchConfig{
+			Session:  session,
+			Recorder: rec,
+			Emit:     emit,
+			Quit:     func() { wails.Quit() },
+			Path:     benchPath,
+			File:     initialFile,
+			NvimBin:  "nvim",
+		}))
+	}
 
 	// On macOS Run does not return when the application quits, so cleanup
 	// runs from OnShutdown; the deferred call covers a failed start. Once
@@ -125,7 +151,7 @@ func run() error {
 	})
 
 	service.useClipboard(wails.Clipboard.SetText)
-	actions := newMenuActions(session, func(name, data string) { wails.Event.Emit(name, data) }, tr)
+	actions := newMenuActions(session, emit, tr)
 	wails.Menu.Set(newMenu(wails, actions))
 
 	wails.Window.NewWithOptions(application.WebviewWindowOptions{

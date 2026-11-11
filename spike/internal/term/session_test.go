@@ -474,3 +474,36 @@ func TestCopyVisual(t *testing.T) {
 		t.Errorf("CopyVisual after Close = %v, want ErrClosed", err)
 	}
 }
+
+func TestScreen(t *testing.T) {
+	s, _ := newSession(t)
+	ctx := testCtx(t)
+	if err := s.Start(ctx, testSize, 24); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for i := 1; i <= 100; i++ {
+		b.WriteString("redak " + strconv.Itoa(i) + "\n")
+	}
+	path := filepath.Join(t.TempDir(), "r.md")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.OpenFile(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	scr, err := s.Screen(ctx)
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+	if scr.LastLine != 100 || scr.TopLine != 1 || len(scr.Lines) == 0 || scr.Lines[0] != "redak 1" {
+		t.Errorf("Screen = %+v", scr)
+	}
+
+	if err := s.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Screen(ctx); !errors.Is(err, ErrClosed) {
+		t.Errorf("Screen after Close = %v, want ErrClosed", err)
+	}
+}

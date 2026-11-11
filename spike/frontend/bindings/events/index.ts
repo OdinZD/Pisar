@@ -9,6 +9,16 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "bench:start".
+ */
+export const BenchStart = "bench:start";
+
+/**
+ * Name of the custom event "bench:stop".
+ */
+export const BenchStop = "bench:stop";
+
+/**
  * Name of the custom event "nvim:exit".
  */
 export const NvimExit = "nvim:exit";

@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 6 (mjerenje: 5000 redaka, `Ctrl-d`, oba renderera)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 5 gotov)
+- Sljedeći korak: faza 0, korak 7 (gašenje aplikacije bez zaostalog `nvim` procesa)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 6 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -64,7 +64,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - [x] 5. Tipke i clipboard: meni aplikacije (`spike/menu.go`) — „Spremi” `⌘S` → Go → RPC, „Kopiraj” `⌘C`
       (vizualni odabir u Neovimu, inače odabir u xterm.js-u), „Zalijepi” `⌘V` (uloga sustava → `paste`
       događaj → bracketed paste); tipke s `⌘` xterm.js ne šalje Neovimu. Dolazak tipki do menija je **[R]**
-- [ ] 6. Mjerenje: datoteka od 5000 redaka, propusnost i kašnjenje pri držanju `Ctrl-d`, oba renderera
+- [x] 6. Mjerenje: `task -d spike bench` (bez tipkovnice: Go šalje `Ctrl-d` kroz PTY), datoteka od 5000
+      redaka (`task -d spike sample` → `spike/bin/sample-5000.md`), oba renderera; rezultati dolje
 - [ ] 7. Gašenje aplikacije: hook zove `Close`; skripta gradi, pokreće, gasi i provjerava `pgrep`
 - [ ] 8. Popis za ručnu provjeru **[R]** predan vlasniku
 - [ ] 9. `docs/spike-report.md`, kriteriji s dokazima, `plan-reviewer`, sažetak, STOP
@@ -100,6 +101,22 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   ostaju na engleskom (Wails ih sam generira) — za fazu 1 treba vlastiti meni ako želimo hrvatski.
 - Testovi clipboarda koriste lažni `g:clipboard` i stub `pbcopy`/`pbpaste` na PATH-u; pravi sistemski
   clipboard se u testovima ne dira. Ponašanje s pravim `pbcopy` provjerava vlasnik ručno.
+- Mjerenje (`task -d spike bench`, 2026-11-11, prozor 1100×700, Neovim 0.12.0, tri pokretanja s
+  gotovo istim brojkama). Faza `repeat`: `Ctrl-d` svaka 33 ms do dna (345 pritisaka, 11,4 s). Faza
+  `flood`: `Ctrl-d` pa `Ctrl-u` bez stanke (720 pritisaka, oko 5 s).
+
+  | renderer | faza | događaja/s | MB/s | emit→obrađeno p50/p95/max (ms) | kadar p95/max (ms) | >33 ms | >100 ms |
+  |---|---|---|---|---|---|---|---|
+  | DOM | repeat | 42 | 0,04 | 0,1 / 7,3 / 9,9 | 18 / 19 | 0 | 0 |
+  | DOM | flood | 12 | 0,16 | 1,1 / 1,9 / 9,1 | 18 / 19 | 0 | 0 |
+  | WebGL | repeat | 44 | 0,04 | <1 / <1 / 3,5 | 18 / 20 | 0 | 0 |
+  | WebGL | flood | 12 | 0,16 | <1 / 0,9 / 1,3 | 18 / 19 | 0 | 0 |
+
+  U svim fazama svi događaji su stigli redom i iste duljine (`eventsMatch`), a zaslon xterm.js-a na
+  kraju je jednak onome što Neovim prikazuje (`screenMatches`). Nijedan kadar nije kasnio preko 33 ms.
+  Vrijednosti ispod 1 ms su na granici razlučivosti sata u WKWebViewu (zaokružen na oko 1 ms; zato se
+  pojavljuju i blago negativne razlike). Propusnost ograničava Neovim (0,16 MB/s), ne prijenos Wails
+  događajima: prijenos nije zasićen ni u najgorem slučaju.
 - Trag za dijagnostiku: `PISAR_SPIKE_TRACE=<datoteka>` bilježi pozive i SVE tipke; samo za spike,
   ne prenositi u aplikaciju. Renderer: `PISAR_SPIKE_RENDERER=webgl|dom`.
 

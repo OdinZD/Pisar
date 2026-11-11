@@ -15,6 +15,17 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as term$0 from "./internal/term/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+/**
+ * BenchReport receives what the frontend measured during one bench phase.
+ */
+export function BenchReport(phase: string, report: $models.FrontendReport): $CancellablePromise<void> {
+    return $Call.ByID(60867647, phase, report);
+}
+
 /**
  * CopyText puts text on the system clipboard (used for the terminal's own selection).
  * Empty text leaves the clipboard alone.

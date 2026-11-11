@@ -8,6 +8,8 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "bench:start": string;
+            "bench:stop": string;
             "nvim:exit": string;
             "nvim:saved": string;
             "pty:data": string;

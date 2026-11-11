@@ -6,8 +6,9 @@
   import { WebglAddon } from '@xterm/addon-webgl'
   import '@xterm/xterm/css/xterm.css'
 
-  import { NvimExit, PtyData, UiCopy, UiRenderer } from '../bindings/events'
-  import { CopyText, Renderer, Resize, Start, Trace, Write } from '../bindings/Pisar/spike/terminalservice'
+  import { BenchStart, BenchStop, NvimExit, PtyData, UiCopy, UiRenderer } from '../bindings/events'
+  import { BenchReport, CopyText, Renderer, Resize, Start, Trace, Write } from '../bindings/Pisar/spike/terminalservice'
+  import { createBench, createClock } from './bench'
   import { loadTerminalFonts } from './fonts'
   import { createSerialSender } from './serialSender'
   import { strings } from './strings'
@@ -200,14 +201,81 @@
       // 3. Output first: subscribe before Start, so nothing Neovim draws is missed.
       let firstData = true
       const encoder = new TextEncoder()
+      // Benchmark mode (bench.go): Go sends bench:start and bench:stop around a
+      // phase. Outside a phase the PtyData handler below does one boolean check
+      // and nothing else; the frame loop only runs between the two events.
+      const bench = createBench()
+      const clock = createClock()
       const offData = Events.On(PtyData, (ev) => {
         if (firstData) {
           firstData = false
           trace(`first data bytes=${encoder.encode(ev.data).length}`)
         }
+        if (bench.active()) {
+          // The arrival time is taken when the handler runs, after the Wails
+          // runtime has decoded the event, so decoding counts as latency.
+          const index = bench.onEvent(ev.data.length, clock.now())
+          term.write(ev.data, () => bench.onParsed(index, clock.now()))
+          return
+        }
         term.write(ev.data)
       })
       cleanups.push(offData)
+
+      let benchFrame = 0
+      function benchTick(ts: number): void {
+        bench.onFrame(ts)
+        benchFrame = requestAnimationFrame(benchTick)
+      }
+      function stopBenchFrames(): void {
+        if (benchFrame) cancelAnimationFrame(benchFrame)
+        benchFrame = 0
+      }
+      const onVisibility = (): void => {
+        if (document.visibilityState !== 'visible') bench.markHidden()
+      }
+      document.addEventListener('visibilitychange', onVisibility)
+      cleanups.push(() => {
+        stopBenchFrames()
+        document.removeEventListener('visibilitychange', onVisibility)
+      })
+
+      // Text of every row of the terminal, as the user would read it.
+      function screenRows(): string[] {
+        const buf = term.buffer.active
+        const rows: string[] = []
+        for (let y = 0; y < term.rows; y++) {
+          rows.push(buf.getLine(buf.viewportY + y)?.translateToString(true) ?? '')
+        }
+        return rows
+      }
+
+      // How long to wait for xterm.js to finish the events of a phase.
+      const benchParseWaitMs = 10_000
+      async function finishBench(phaseName: string): Promise<void> {
+        stopBenchFrames()
+        const deadline = performance.now() + benchParseWaitMs
+        while (bench.unparsed() > 0 && performance.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        }
+        const report = bench.finish({ renderer, cols: term.cols, rows: term.rows, screenRows: screenRows() })
+        try {
+          await BenchReport(phaseName, report)
+        } catch (err) {
+          console.error('bench report failed', err)
+          trace(`bench report failed err=${errText(err)}`)
+        }
+      }
+      const offBenchStart = Events.On(BenchStart, (ev) => {
+        trace(`bench start phase=${ev.data} clock=${clock.source} renderer=${renderer}`)
+        bench.start(ev.data)
+        if (document.visibilityState !== 'visible') bench.markHidden()
+        benchFrame = requestAnimationFrame(benchTick)
+      })
+      const offBenchStop = Events.On(BenchStop, (ev) => {
+        void finishBench(ev.data)
+      })
+      cleanups.push(offBenchStart, offBenchStop)
 
       // Menu actions from Go.
       const offRenderer = Events.On(UiRenderer, (ev) => requestRenderer(ev.data))

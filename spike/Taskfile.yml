@@ -76,6 +76,16 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  sample:
+    summary: Writes bin/sample-5000.md, a 5000-line file for the benchmark and for manual checks
+    cmds:
+      - bash scripts/bench.sh sample
+
+  bench:
+    summary: Holds Ctrl-d through the sample file with both renderers and prints a table (the window must stay visible)
+    cmds:
+      - bash scripts/bench.sh
+
   install:msix:tools:
     summary: Installs tools required for Windows MSIX packaging
     cmds:

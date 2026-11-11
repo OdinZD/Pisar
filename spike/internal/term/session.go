@@ -275,6 +275,15 @@ func (s *Session) OpenFile(ctx context.Context, path string) error {
 	return p.OpenFile(ctx, path)
 }
 
+// Screen reports which part of the buffer Neovim's window shows.
+func (s *Session) Screen(ctx context.Context) (nvim.Screen, error) {
+	p, err := s.current()
+	if err != nil {
+		return nvim.Screen{}, err
+	}
+	return p.Screen(ctx)
+}
+
 // Save writes the current buffer to its file.
 func (s *Session) Save(ctx context.Context) error {
 	p, err := s.current()

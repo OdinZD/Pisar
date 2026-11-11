@@ -5,3 +5,7 @@ import * as TerminalService from "./terminalservice.js";
 export {
     TerminalService
 };
+
+export type {
+    FrontendReport
+} from "./models.js";
