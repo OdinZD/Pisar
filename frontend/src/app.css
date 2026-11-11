@@ -1,0 +1,26 @@
+/* Base document styles only; every value comes from the variables generated from theme/tokens.ts. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-ui);
+  line-height: var(--font-line-height-ui);
+  font-weight: var(--font-weight-regular);
+}
+
+:focus-visible {
+  outline: var(--size-focus-ring-width) solid var(--accent);
+}

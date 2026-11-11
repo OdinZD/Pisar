@@ -107,6 +107,8 @@ func run() error {
 		},
 	))
 
+	// BackgroundColour is white and lives outside tokens.ts on purpose: omitting it leaves RGBA{}
+	// (alpha 0), so the NSWindow background is clear and may flash see-through before the webview paints.
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            text.AppName,
 		Width:            1280,

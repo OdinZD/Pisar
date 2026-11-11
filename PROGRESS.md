@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 7 (tema: tokeni, CSS varijable, fontovi)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 6 gotov)
+- Sljedeći korak: faza 1, korak 8 (raspored i stablo u frontendu)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 7 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -242,7 +242,19 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       - Greška iz stavke menija „Dodaj projekt…” se samo logira, bez nativne poruke.
       - Nije provjereno bez klikanja: oba dijaloga, stavke menija, poruke o oštećenoj i novijoj
         konfiguraciji (ide na popis za ručni pogled)
-- [ ] 7. Tema: `theme/tokens.ts`, CSS varijable, test kontrasta, fontovi Inter i JetBrains Mono, `strings.ts`
+- [x] 7. Tema: `theme/tokens.ts` (16 boja iz `DESIGN.md`, tipografija, veličine, razmaci), `cssVars.ts`
+      (varijable se postavljaju pri pokretanju), `contrast.ts`, `fonts.ts` (Inter v4.1 400/600 iz
+      službenog izdanja rsms/inter, JetBrains Mono 400 iz spikea; registrirani iz TS-a da imena obitelji
+      ostanu samo u tokenima); 64 vitest testa.
+      - Testovi čuvaju: tokeni = tablica u `DESIGN.md`; kontrast teksta ≥ 4.5:1; nijedna boja ni ime
+        fonta izvan `tokens.ts`.
+      - Par `text.linenr` na `bg.cursorline` ima 4.25:1 (ispod 4.5). U fazi 1 se ne koristi i nije u
+        testu; odluka u fazi 2 uz Neovim colorscheme.
+      - `main.go` zadržava bijelu `BackgroundColour` prozora (boja izvan `tokens.ts`): bez nje je
+        pozadina prozora prozirna dok webview ne iscrta stranicu. Poznato odstupanje.
+      - Testovi čitaju `DESIGN.md` i izvore kroz Viteov `?raw` uvoz, jer projekt nema `@types/node`.
+      - Glavna sesija je nakon pregleda ispravila ime varijable prstena fokusa u `app.css`
+        (`--size-focus-ring-width`); čuvar nedefiniranih varijabli dolazi u koraku 8
 - [ ] 8. Raspored i stablo: alatna traka 48 px, stablo 240 px, prazno stanje; stablo s `j`/`k`,
       `a`/`r`/`d`, „+ Dodaj projekt”, osvježavanje na događaje; model stabla s vitest testovima
 - [ ] 9. Kraj faze: `scripts/smoke.sh`, kriteriji s dokazima, popis za ručni pogled, `plan-reviewer`,
