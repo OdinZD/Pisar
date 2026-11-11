@@ -4,12 +4,12 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 2 — `.md` i `.txt` (plan faze u izradi). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 2 i vlasnikovo „kreni”
+- Sljedeći korak: faza 2, korak 1 (`internal/nvim`)
 - Effort: vlasnik je 2026-11-11 odlučio da sesija ostaje na `high` i izvan faza 0 i 3 (ne podsjećati na `medium`)
-- Zadnja izmjena: 2026-11-11 (faza 1 prihvaćena)
+- Zadnja izmjena: 2026-11-11 (plan faze 2 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -374,6 +374,63 @@ prozoru, stvarno Smeće) vlasnik je provjerio ručno 2026-11-11 i potvrdio da ra
 - [x] `theme/tokens.ts` postoji i iz njega izlaze CSS varijable — dokaz 6
 
 ## Faza 2 — `.md` i `.txt`
+
+Kod iz `spike/` se prepisuje u pravu aplikaciju; `spike/` se briše zadnjim korakom faze.
+
+### Odluke vlasnika (2026-11-11)
+
+- Novi token `danger` = `#B42318` (greške) u `DESIGN.md` i `tokens.ts`.
+- Broj retka na retku kursora je u boji `text`; ostali brojevi ostaju `text.linenr`.
+- `↵` / klik na `.docx` i `.doc`: red se odabere, ispod njega poruka da otvaranje dolazi u sljedećoj fazi.
+- `spike/` se briše na kraju faze (`git rm -r spike`), kad sve provjere prođu.
+- Meni „Uređivanje” postaje vlastiti (samo „Kopiraj” i „Zalijepi”): u poljima za unos više nema `⌘Z` i `⌘A`.
+
+### Ovisnosti (odobrene)
+
+- Go: `github.com/creack/pty` v1.1.24, `github.com/neovim/go-client` v1.2.1
+- npm: `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0 (bez WebGL dodatka)
+
+### Gdje živi Neovimovo stanje
+
+Sve pod `<home>/nvim/` (`<home>` = `~/Library/Application Support/Pisar` ili `PISAR_HOME`): `XDG_CONFIG_HOME`,
+`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` na podmape, `NVIM_APPNAME=pisar`. `init.lua` i
+colorscheme aplikacija zapisuje pri pokretanju. Vlasnikova Neovim konfiguracija se ne učitava. RPC
+socket ide u kratku privremenu mapu; zaostale mape se čiste pri pokretanju. Imena i putanje su u
+`internal/config`.
+
+### Ugovor Go ↔ frontend
+
+```go
+EditorService.Start(cols, rows int, colorscheme string) error // pokreće Neovim ako ne radi; inače Resize + Redraw
+EditorService.Write(data string) error
+EditorService.Resize(cols, rows int) error
+EditorService.OpenDocument(projectID, rel string) error        // samo .md i .txt; .docx/.doc → unsupported-kind
+EditorService.Save() error
+EditorService.Copy() (handled bool, err error)                 // vizualni odabir u Neovimu → "+y
+EditorService.CopyText(text string) error                      // odabir iz xterm.js-a
+```
+Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `document:active`
+(`{projectId, rel, path, name}`) · `document:state` (`{path, modified}`) · `ui:focus-tree` · `menu:copy`.
+
+### Koraci
+
+- [ ] 1. `internal/nvim`: prijenos iz spikea + izolirano stanje, događaji (aktivni buffer, stanje
+      izmjene), popis izmijenjenih buffera, spremanje svih, `nvim/init.lua`
+- [ ] 2. `internal/term`: sesija i grupiranje izlaza; prosljeđivanje novih događaja
+- [ ] 3. Tema za terminal i Neovim: token `danger`, `terminalTheme.ts`, `nvimColorscheme.ts`
+- [ ] 4. `EditorService`: servis prema ugovoru, zapis colorschemea, preslikavanje putanja u projekt
+- [ ] 5. Terminal u frontendu: `Terminal.svelte`, serijsko slanje, kalibracija visine retka
+- [ ] 6. Otvaranje i praćenje: `↵` / klik, poruka za `.docx`, aktivni dokument u stablu, stanje u traci
+- [ ] 7. Meni, prečaci i fokus: Spremi, Kopiraj, Zalijepi, `␣e`, `Esc` u stablu
+- [ ] 8. Gašenje: dijalog Spremi / Odbaci / Odustani
+- [ ] 9. Dimne provjere prave aplikacije: `scripts/smoke.sh`, `scripts/shutdown.sh`
+- [ ] 10. Kraj faze: `git rm -r spike`, kriteriji s dokazima, popis **[R]**, `plan-reviewer`, sažetak, STOP
+
+### Izvan opsega
+
+Konverzija `.docx` / `.doc`, „Samo za čitanje”, oporavak radne kopije, pregled, tražilica, postavke za
+prozu i pravopis, `user.lua`, WebGL, zaslon „nedostaje `nvim`”, hrvatski nazivi u Wailsovim ulogama
+menija, tamna tema, pakiranje, brisanje `~/.local/state/pisar-spike/` i `~/.local/share/pisar-spike/`.
 
 ### Kriteriji prihvaćanja
 
