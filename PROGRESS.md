@@ -4,9 +4,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 0 — Spike (koraci gotovi 2026-11-11; čeka ručnu provjeru **[R]** i odluku vlasnika)
+- Trenutna faza: 0 — Spike (koraci 1–8 gotovi 2026-11-11, korak 9 čeka prolaz `plan-reviewer`-a; zatim
+  ručna provjera **[R]** i odluka vlasnika)
 - Sljedeći korak: vlasnik prolazi popis **[R]** iz `docs/spike-report.md` (odjeljak 3) i odlučuje idemo / ne idemo
-- Zadnja izmjena: 2026-11-11 (faza 0, koraci 1–9 gotovi)
+- Zadnja izmjena: 2026-11-11 (faza 0, koraci 1–8 gotovi; korak 9: pregled u tijeku)
 
 ## Priprema (2026-11-11)
 
@@ -70,7 +71,8 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
       gasi aplikaciju sa SIGTERM, SIGINT, SIGHUP i SIGKILL te provjerava da nema Neovima
 - [x] 8. Popis za ručnu provjeru **[R]** predan vlasniku: `docs/spike-report.md`, odjeljak 3
 - [ ] 9. `docs/spike-report.md` (napisan), kriteriji s dokazima (dolje), `plan-reviewer`: krug 1 FAIL
-      (5 odstupanja u dokumentaciji, ispravljena), krug 2 u tijeku; zatim sažetak i STOP
+      (5 odstupanja u dokumentaciji, ispravljena), krug 2 FAIL (3 sitna odstupanja u dokumentaciji,
+      ispravljena), krug 3 u tijeku; zatim sažetak i STOP
 
 ### Nalazi tijekom faze (ulaze u `docs/spike-report.md`)
 
@@ -103,8 +105,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   ostaju na engleskom (Wails ih sam generira) — za fazu 1 treba vlastiti meni ako želimo hrvatski.
 - Testovi clipboarda koriste lažni `g:clipboard` i stub `pbcopy`/`pbpaste` na PATH-u; pravi sistemski
   clipboard se u testovima ne dira. Ponašanje s pravim `pbcopy` provjerava vlasnik ručno.
-- Mjerenje (`task -d spike bench`, 2026-11-11, prozor 1100×700, Neovim 0.12.0, tri pokretanja s
-  gotovo istim brojkama). Faza `repeat`: `Ctrl-d` svaka 33 ms do dna (345 pritisaka, 11,4 s). Faza
+- Mjerenje (`task -d spike bench`, 2026-11-11, prozor 1100×700, Neovim 0.12.0). Tablica je iz zadnjeg
+  pokretanja (`spike/bin/bench-*.json`, izvan gita); dva ranija pokretanja u koraku 6 dala su gotovo
+  iste brojke, ali njihove datoteke nisu sačuvane. Faza `repeat`: `Ctrl-d` svaka 33 ms do dna (345 pritisaka, 11,4 s). Faza
   `flood`: `Ctrl-d` pa `Ctrl-u` bez stanke (720 pritisaka, oko 5 s).
 
   | renderer | faza | događaja/s | MB/s | emit→obrađeno p50/p95/max (ms) | kadar p95/max (ms) | >33 ms | >100 ms |

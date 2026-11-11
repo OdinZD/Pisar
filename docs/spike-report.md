@@ -6,7 +6,8 @@ Datum: 2026-11-11 · Kod: `spike/` (za bacanje) · Stanje po koracima: `PROGRESS
 
 **Idemo s pristupom A** (pravi Neovim u PTY-ju, prikazan kroz xterm.js u Wails prozoru), uz uvjet da
 ručna provjera tipkovnice u odjeljku 3 prođe. Sve što se dalo provjeriti naredbom prolazi, a mjerenje
-ne pokazuje ni zastoje ni razbijen prikaz. Odluku donosi vlasnik.
+izlaza i iscrtavanja ne pokazuje ni zastoje ni razbijen prikaz. Kašnjenje same tipke nije mjereno;
+njega pokazuje ručna provjera 7. Odluku donosi vlasnik.
 
 Što još nije dokazano: sedam kriterija **[R]** (tipkovnica, clipboard, izgled). Njih agent ne može
 provjeriti bez slanja tipki u korisnikovu sesiju, pa nisu označeni kao prošli.
