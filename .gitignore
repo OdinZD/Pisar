@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.junie/
+.claude/settings.local.json
+.mcp.json
+bin/
+node_modules/
+dist/
+.task/
+.wails/
+*.test
+*.out
