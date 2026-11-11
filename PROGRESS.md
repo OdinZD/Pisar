@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–3 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–4 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 4 (`internal/docsafe`: atomski zapis, backup, konflikt)
+- Sljedeći korak: faza 3, korak 5 (`internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-11 (faza 3, korak 3)
+- Zadnja izmjena: 2026-11-11 (faza 3, korak 4)
 
 ## Priprema (2026-11-11)
 
@@ -779,7 +779,27 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       - **Odstupanje od plana:** pandoc ne piše privremenu datoteku u korisnikov folder nego u Pisarovu
         radnu mapu; kopiranje u privremenu datoteku pored izvornika, `fsync` i `rename` radi `docsafe`
         (korak 4). Tako u korisnikovu mapu piše isključivo `docsafe`, kako traži `CLAUDE.md`.
-- [ ] 4. `internal/docsafe`: atomski zapis, backup s rotacijom, snimka izvornika i konflikt
+- [x] 4. `internal/docsafe`: siguran zapis. `TakeSnapshot` / `Snapshot.Same` (veličina + SHA-256; mtime se
+      ne uspoređuje), `CheckWritable` (`not-regular`, `hard-links`, `locked`, `no-permission`),
+      `Ops.Replace(ctx, src, dst, expect) (ReplaceResult, error)`, greške `ErrConflict`, `ErrReadOnly`
+      (`*ReadOnlyError` s razlogom). `Options` ima `BackupsDir`, `MaxBackups`, `Now`. Pokrivenost 83,2 %.
+      - Redoslijed: provjera pisanja → konflikt → backup → privremena datoteka u istom folderu
+        (`.<ime>.<slučajno>.tmp`, `O_EXCL`, 0600) → sadržaj → xattr-i → dozvole → `fsync` → zatvaranje →
+        druga provjera konflikta → `rename` → `fsync` foldera.
+      - Backup se radi kad god sadržaj izvornika nije ono što je Pisar sam zadnji zapisao (prvo
+        prepisivanje u sesiji, ali i „Prepiši” nakon konflikta): `<backups>/<ime>-<hash putanje>/<UTC
+        vrijeme>-<ime>`, 0600, provjeren hashom, rotacija na `MaxBackups`.
+      - Greška ubačena u svakoj od 10 faza: izvornik bajt-identičan, iste dozvole i xattr-i, bez zaostalih
+        datoteka (nakon `rename`-a je na mjestu novi, potpun sadržaj, a greška se svejedno prijavljuje
+        zajedno s rezultatom — pozivatelj to mora tretirati kao „spremljeno, uz upozorenje”).
+      - Izmjereno: `File.Sync` na macOS-u je `F_FULLFSYNC`. `com.apple.provenance` je jedini atribut koji
+        se ne da prenijeti (kernel ga postavlja sam; jedina imenovana iznimka). `quarantine`,
+        `FinderInfo`, `ResourceFork`, oznake, `macl` prenose se. Atribut koji sustav odbije (npr.
+        `com.apple.rootless`) prekida spremanje, izvornik ostaje netaknut.
+      - Poznata ograničenja (ne prenosi se): ACL, vlasnik i grupa, vrijeme stvaranja, inode (aliasi mogu
+        puknuti), BSD zastavice osim zaključanosti. Između druge provjere konflikta i `rename`-a ostaje
+        mali prozor koji bi zatvorilo samo zaključavanje.
+      - `golang.org/x/sys` v0.48.0 je sada izravna ovisnost (odobreno planom); `go.sum` nepromijenjen.
 - [ ] 5. `internal/docsafe`: radne kopije, oporavak, „Spremi kao kopiju”
 - [ ] 6. Editor (Go): otvaranje kroz radnu kopiju, samo za čitanje, tok spremanja, dijalozi
 - [ ] 7. Frontend: otvaranje iz stabla, stanja u alatnoj traci

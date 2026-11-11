@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -32,6 +33,11 @@ type Options struct {
 	TrashBin string        // path or name of the trash tool; required
 	Timeout  time.Duration // limit for one external command; required, > 0
 	Run      Runner        // nil means ExecRunner
+
+	// The next three are needed only by Replace.
+	BackupsDir string           // Pisar's own backup folder; must not be inside the user's documents
+	MaxBackups int              // newest backups kept per document; >= 1
+	Now        func() time.Time // nil means time.Now; names the backups
 }
 
 var (
@@ -49,6 +55,18 @@ type Ops struct {
 	trashBin string
 	timeout  time.Duration
 	run      Runner
+
+	backupsDir string
+	maxBackups int
+	now        func() time.Time
+
+	// mu serializes Replace calls: they share written and may target one file.
+	mu sync.Mutex
+	// written holds, per absolute path, the snapshot of what this Ops itself
+	// last wrote there. A file that still matches it needs no new backup.
+	written map[string]Snapshot
+	// fail is the test-only fault injection point (see replace.go); nil in production.
+	fail func(stage string) error
 }
 
 // New validates opts and returns Ops.
@@ -63,7 +81,14 @@ func New(opts Options) (*Ops, error) {
 	if run == nil {
 		run = ExecRunner
 	}
-	return &Ops{trashBin: opts.TrashBin, timeout: opts.Timeout, run: run}, nil
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Ops{
+		trashBin: opts.TrashBin, timeout: opts.Timeout, run: run,
+		backupsDir: opts.BackupsDir, maxBackups: opts.MaxBackups, now: now,
+	}, nil
 }
 
 // validName checks the rules shared by every user-supplied file name.
