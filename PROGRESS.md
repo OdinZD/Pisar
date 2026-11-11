@@ -6,8 +6,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 - Trenutna faza: 1 — Kostur, projekti i stablo (plan odobren 2026-11-11). Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 1, korak 8 (raspored i stablo u frontendu)
-- Zadnja izmjena: 2026-11-11 (faza 1, korak 7 gotov)
+- Sljedeći korak: faza 1, korak 9 (dimna provjera, dokazi, pregled)
+- Zadnja izmjena: 2026-11-11 (faza 1, korak 8 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -255,8 +255,17 @@ Bez slanja tipki preko `osascript`-a; bez dodira sistemskog clipboarda; testovi 
       - Testovi čitaju `DESIGN.md` i izvore kroz Viteov `?raw` uvoz, jer projekt nema `@types/node`.
       - Glavna sesija je nakon pregleda ispravila ime varijable prstena fokusa u `app.css`
         (`--size-focus-ring-width`); čuvar nedefiniranih varijabli dolazi u koraku 8
-- [ ] 8. Raspored i stablo: alatna traka 48 px, stablo 240 px, prazno stanje; stablo s `j`/`k`,
-      `a`/`r`/`d`, „+ Dodaj projekt”, osvježavanje na događaje; model stabla s vitest testovima
+- [x] 8. Raspored i stablo: `App.svelte`, `components/` (`Toolbar`, `Sidebar`, `TreeRow`, `TreeField`,
+      `EmptyState`), logika u čistim modulima `lib/tree.ts`, `treeKeys.ts`, `latest.ts`,
+      `errorMessage.ts`, stanje u `lib/treeController.svelte.ts`; 143 vitest testa, svelte-check bez
+      grešaka i upozorenja.
+      - Novi čuvar `theme/usedVariables.test.ts`: svaka `var(--…)` mora postojati u tokenima.
+      - Odluke koje plan nije odredio: `d` na projektu uklanja ga s popisa uz potvrdu u stablu;
+        projekti su zadano rašireni, folderi skupljeni (ne pamti se između pokretanja); prazno stanje
+        bez natuknica `␣f` / `⌘P` do faze 4; `k` bez odabira odabire prvi red.
+      - Dok traje jedna radnja servisa (i dok je otvoren nativni dijalog), ostale radnje čekaju.
+      - Komponente i `treeController` nemaju testove (vitest radi bez DOM-a; `jsdom` nije odobren).
+        Izgled, fokus i tipke provjerava vlasnik ručno
 - [ ] 9. Kraj faze: `scripts/smoke.sh`, kriteriji s dokazima, popis za ručni pogled, `plan-reviewer`,
       sažetak, STOP
 

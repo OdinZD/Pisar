@@ -1,0 +1,22 @@
+import type { ErrorCode } from './apiError'
+import { strings } from '../strings'
+
+const byCode: Record<ErrorCode, string> = {
+  'not-found': strings.errorNotFound,
+  missing: strings.errorMissing,
+  'too-large': strings.errorTooLarge,
+  'invalid-path': strings.errorInvalidPath,
+  exists: strings.errorExists,
+  'invalid-name': strings.errorInvalidName,
+  'unsupported-kind': strings.errorUnsupportedKind,
+  // Not something the user can fix or act on: the general message is the honest one.
+  'not-document': strings.errorGeneric,
+  'not-a-directory': strings.errorGeneric,
+  canceled: strings.errorGeneric,
+  internal: strings.errorGeneric,
+}
+
+/** The Croatian text shown to the user for a stable service error code. */
+export function errorMessage(code: ErrorCode): string {
+  return byCode[code] ?? strings.errorGeneric
+}
