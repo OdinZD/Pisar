@@ -3,7 +3,9 @@ module Pisar
 go 1.27
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsevents v0.2.0
+	github.com/neovim/go-client v1.2.1
 	github.com/wailsapp/wails/v3 v3.1.0
 )
 

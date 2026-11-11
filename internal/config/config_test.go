@@ -70,6 +70,16 @@ func TestLimits(t *testing.T) {
 	}
 }
 
+func TestLimitsNvim(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.NvimStartTimeout != DefaultNvimStartTimeout || l.NvimStopTimeout != DefaultNvimStopTimeout {
+		t.Fatalf("unexpected Neovim limits %+v", l)
+	}
+	if l.NvimStartTimeout <= 0 || l.NvimStopTimeout <= 0 {
+		t.Fatalf("Neovim limits must be positive: %+v", l)
+	}
+}
+
 func TestLimitsWatchMaxDelay(t *testing.T) {
 	l := mustOpen(t, t.TempDir()).Limits()
 	if l.WatchMaxDelay != DefaultWatchMaxDelay {

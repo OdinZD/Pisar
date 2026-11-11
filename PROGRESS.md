@@ -7,9 +7,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Trenutna faza: 2 — `.md` i `.txt` (plan odobren 2026-11-11). Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 2, korak 1 (`internal/nvim`)
-- Effort: vlasnik je 2026-11-11 odlučio da sesija ostaje na `high` i izvan faza 0 i 3 (ne podsjećati na `medium`)
-- Zadnja izmjena: 2026-11-11 (plan faze 2 odobren)
+- Sljedeći korak: faza 2, korak 2 (`internal/term`)
+- Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
+  `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
+- Zadnja izmjena: 2026-11-11 (faza 2, korak 1 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -414,8 +415,25 @@ Događaji (payload string; složeni kao JSON): `pty:data` · `nvim:exit` · `doc
 
 ### Koraci
 
-- [ ] 1. `internal/nvim`: prijenos iz spikea + izolirano stanje, događaji (aktivni buffer, stanje
-      izmjene), popis izmijenjenih buffera, spremanje svih, `nvim/init.lua`
+- [x] 1. `internal/nvim`: prijenos iz spikea (gašenje oba procesa, odgovori na upite terminala i ostalo
+      dokazano ponašanje nepromijenjeni) + događaji `EventBufferEntered`, `EventModifiedChanged`,
+      `EventFocusTree`, metode `Current`, `Modified`, `SaveAll`; `nvim/init.lua`; 43 testa s pravim
+      Neovimom, pokrivenost 88,4 %. Vremenska ograničenja su u `internal/config`
+      (`NvimStartTimeout` 10 s, `NvimStopTimeout` 3 s). Prvi prolaz radio je `coder` na `medium`,
+      doradu nakon pregleda na `high`.
+      - Neovim 0.12 ne okida `BufModifiedSet` kad se zapiše buffer koji nije trenutačan; `init.lua`
+        zato stanje izmjene šalje i iz `BufWritePost`.
+      - Poruka šira od retka za poruke, ispisana unutar RPC poziva, otvara hit-enter prompt i
+        zamrzava Neovim. Greške se zato skraćuju na širinu retka (`columns` − 12, odnosno − 30 bez
+        statusne linije; izmjereno na 11 kombinacija opcija), a Go dobiva puni tekst. Uspješne
+        poruke `:write` i `:edit` Neovim skraćuje sam (`shortmess` `t`/`T`, izričito u `init.lua`).
+      - **Opasnost od gubitka teksta, nađena i zatvorena:** dok stoji pitanje o swap datoteci, `Save`
+        je zapisivao prazan, još neučitan buffer preko prave datoteke. `Save` sada odbija pisati dok
+        je bilo koji prompt otvoren (`TestSwap`, `TestSaveAsk`).
+      - Swap pitanje (nakon rušenja s nespremljenim izmjenama) se namjerno NE utišava. Dok stoji:
+        `OpenFile` se vraća s istekom konteksta, ostali pozivi ne traju dulje od svog konteksta,
+        `Close` završava i ne ostavlja procese. Za politiku oporavka (kasnija faza): u terminalu od
+        24 retka pitanje počinje s „-- More --”, a tipka `q` ondje ugasi cijeli Neovim.
 - [ ] 2. `internal/term`: sesija i grupiranje izlaza; prosljeđivanje novih događaja
 - [ ] 3. Tema za terminal i Neovim: token `danger`, `terminalTheme.ts`, `nvimColorscheme.ts`
 - [ ] 4. `EditorService`: servis prema ugovoru, zapis colorschemea, preslikavanje putanja u projekt

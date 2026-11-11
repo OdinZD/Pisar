@@ -48,6 +48,12 @@ const (
 	DefaultWatchMaxDelay  = 2 * time.Second
 	DefaultMaxTreeNodes   = 20000
 	DefaultCommandTimeout = 10 * time.Second
+
+	// DefaultNvimStartTimeout bounds the wait until Neovim has started and
+	// run init.lua. DefaultNvimStopTimeout applies to each stage of its
+	// shutdown (RPC quit, SIGTERM, SIGKILL), not to the whole of it.
+	DefaultNvimStartTimeout = 10 * time.Second
+	DefaultNvimStopTimeout  = 3 * time.Second
 )
 
 // DefaultTrashBin is the macOS tool that moves a file to the Trash. This is
@@ -68,6 +74,9 @@ type Limits struct {
 	WatchMaxDelay  time.Duration // longest a refresh may be postponed while changes keep coming
 	MaxTreeNodes   int           // a project tree larger than this is refused
 	CommandTimeout time.Duration // external commands (trash, later pandoc/textutil)
+
+	NvimStartTimeout time.Duration // longest wait until Neovim is up and init.lua has run
+	NvimStopTimeout  time.Duration // longest wait per shutdown stage of Neovim
 }
 
 var (
@@ -211,6 +220,9 @@ func (s *Store) Limits() Limits {
 		WatchMaxDelay:  DefaultWatchMaxDelay,
 		MaxTreeNodes:   DefaultMaxTreeNodes,
 		CommandTimeout: DefaultCommandTimeout,
+
+		NvimStartTimeout: DefaultNvimStartTimeout,
+		NvimStopTimeout:  DefaultNvimStopTimeout,
 	}
 }
 
