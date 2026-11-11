@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -71,6 +72,13 @@ func (r *recorder) count(name string) int {
 // newSession returns a Session whose Neovim is confined to t.TempDir().
 func newSession(t *testing.T) (*Session, *recorder) {
 	t.Helper()
+	return newSessionInit(t, "")
+}
+
+// newSessionInit is newSession with extraLua appended to the shipped init.lua
+// (through a wrapper file in the test's directory).
+func newSessionInit(t *testing.T, extraLua string) (*Session, *recorder) {
+	t.Helper()
 	if _, err := exec.LookPath("nvim"); err != nil {
 		t.Skip("nvim not found in PATH")
 	}
@@ -85,6 +93,14 @@ func newSession(t *testing.T) (*Session, *recorder) {
 	initLua, err := filepath.Abs(filepath.Join("..", "..", "nvim", "init.lua"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if extraLua != "" {
+		wrapper := filepath.Join(root, "i.lua")
+		code := "dofile(" + strconv.Quote(initLua) + ")\n" + extraLua
+		if err := os.WriteFile(wrapper, []byte(code), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		initLua = wrapper
 	}
 	rec := &recorder{}
 	s := NewSession(Config{Nvim: nvim.Options{
@@ -382,5 +398,79 @@ func TestNotStarted(t *testing.T) {
 	s, _ := newSession(t)
 	if err := s.Write("x"); !errors.Is(err, nvim.ErrNotRunning) {
 		t.Errorf("Write before Start: %v, want ErrNotRunning", err)
+	}
+}
+
+func TestCopyVisual(t *testing.T) {
+	// The fake clipboard writes the yanked lines to a file, so the test can read
+	// them without RPC access to Neovim. It is set in init.lua, before any use of
+	// the clipboard provider, so the system clipboard is never touched.
+	clipFile := filepath.Join(t.TempDir(), "clip")
+	s, _ := newSessionInit(t, `
+		local file = `+strconv.Quote(clipFile)+`
+		vim.g.clipboard = {
+			name = "pisar-fake",
+			copy = {
+				["+"] = function(lines) vim.fn.writefile(lines, file) end,
+				["*"] = function(lines) vim.fn.writefile(lines, file) end,
+			},
+			paste = {
+				["+"] = function() return { {}, "v" } end,
+				["*"] = function() return { {}, "v" } end,
+			},
+		}`)
+	ctx, cancel := context.WithTimeout(context.Background(), testWait)
+	defer cancel()
+	if err := s.Start(ctx, testSize, 24); err != nil {
+		t.Fatal(err)
+	}
+	doc := filepath.Join(t.TempDir(), "d.md")
+	if err := os.WriteFile(doc, []byte("čaj\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.OpenFile(ctx, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := s.CopyVisual(ctx)
+	if err != nil || ok {
+		t.Fatalf("CopyVisual in normal mode = %v, %v; want false, nil", ok, err)
+	}
+	if _, err := os.Stat(clipFile); err == nil {
+		t.Fatal("the fake clipboard was written outside visual mode")
+	}
+
+	// "v" selects the character under the cursor. Keys reach Neovim
+	// asynchronously, so retry until the visual mode is on.
+	if err := s.Write("v"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(testWait)
+	for {
+		ok, err = s.CopyVisual(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("CopyVisual never reported a visual selection")
+		}
+		time.Sleep(testPoll)
+	}
+	got, err := os.ReadFile(clipFile)
+	if err != nil {
+		t.Fatalf("fake clipboard not written: %v", err)
+	}
+	if string(got) != "č\n" {
+		t.Errorf("clipboard = %q, want %q", got, "č\n")
+	}
+
+	if err := s.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CopyVisual(ctx); !errors.Is(err, ErrClosed) {
+		t.Errorf("CopyVisual after Close = %v, want ErrClosed", err)
 	}
 }

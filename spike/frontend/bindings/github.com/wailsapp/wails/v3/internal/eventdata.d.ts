@@ -11,6 +11,8 @@ declare module "@wailsio/runtime" {
             "nvim:exit": string;
             "nvim:saved": string;
             "pty:data": string;
+            "ui:copy": string;
+            "ui:renderer": string;
         }
     }
 }

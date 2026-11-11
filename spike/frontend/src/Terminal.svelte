@@ -6,8 +6,8 @@
   import { WebglAddon } from '@xterm/addon-webgl'
   import '@xterm/xterm/css/xterm.css'
 
-  import { NvimExit, PtyData } from '../bindings/events'
-  import { Renderer, Resize, Start, Trace, Write } from '../bindings/Pisar/spike/terminalservice'
+  import { NvimExit, PtyData, UiCopy, UiRenderer } from '../bindings/events'
+  import { CopyText, Renderer, Resize, Start, Trace, Write } from '../bindings/Pisar/spike/terminalservice'
   import { loadTerminalFonts } from './fonts'
   import { createSerialSender } from './serialSender'
   import { strings } from './strings'
@@ -76,6 +76,15 @@
       cleanups.push(() => {
         term.dispose() // also disposes loaded addons
       })
+      // Keys with Cmd belong to the application menu (Cmd+S, Cmd+C, Cmd+V)
+      // and never reach Neovim. xterm.js would still encode some of them, for
+      // example Cmd+Enter as CR, Cmd+Escape as ESC and Cmd+A as its own
+      // select-all, so it is told to skip every event that has metaKey. It
+      // returns false without cancelling, so the browser keeps its default:
+      // paste arrives as a "paste" event, which xterm.js handles itself and
+      // sends through onData, wrapped in bracketed-paste markers when Neovim
+      // asked for them. Option and Ctrl combinations are untouched.
+      term.attachCustomKeyEventHandler((ev) => !ev.metaKey)
       term.open(container)
 
       // Window size changes: at most one fit per frame.
@@ -124,13 +133,16 @@
         trace(`renderer switched to ${renderer}${cellInfo()}`)
         scheduleFit()
       }
-      window.pisarSetRenderer = (kind) => {
+      // Entry point for both the manual switch in the console and the menu.
+      function requestRenderer(kind: unknown): void {
         if (kind !== 'dom' && kind !== 'webgl') {
-          console.error(`pisarSetRenderer: unknown renderer ${String(kind)}`)
+          console.error(`unknown renderer ${String(kind)}`)
           return
         }
         setRenderer(kind)
+        term.focus() // a menu action must not take the keyboard away from Neovim
       }
+      window.pisarSetRenderer = requestRenderer
       cleanups.push(() => {
         delete window.pisarSetRenderer
       })
@@ -196,6 +208,18 @@
         term.write(ev.data)
       })
       cleanups.push(offData)
+
+      // Menu actions from Go.
+      const offRenderer = Events.On(UiRenderer, (ev) => requestRenderer(ev.data))
+      // Copy from the menu when Neovim has no visual selection: copy the
+      // terminal's own (mouse) selection, if there is one.
+      const offCopy = Events.On(UiCopy, () => {
+        if (term.hasSelection()) {
+          CopyText(term.getSelection()).catch((err) => console.error('copy failed', err))
+        }
+        term.focus()
+      })
+      cleanups.push(offRenderer, offCopy)
 
       // 4. Input. One serial sender for onData and onBinary, so order is kept.
       const sender = createSerialSender(

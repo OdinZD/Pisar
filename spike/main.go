@@ -39,6 +39,8 @@ func init() {
 	application.RegisterEvent[string](term.EventData)
 	application.RegisterEvent[string](term.EventSaved)
 	application.RegisterEvent[string](term.EventExit)
+	application.RegisterEvent[string](term.EventCopy)
+	application.RegisterEvent[string](eventRenderer)
 }
 
 func main() {
@@ -121,6 +123,10 @@ func run() error {
 		},
 		OnShutdown: cleanup,
 	})
+
+	service.useClipboard(wails.Clipboard.SetText)
+	actions := newMenuActions(session, func(name, data string) { wails.Event.Emit(name, data) }, tr)
+	wails.Menu.Set(newMenu(wails, actions))
 
 	wails.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Pisar spike",

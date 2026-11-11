@@ -3,11 +3,13 @@ package nvim
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -679,4 +681,338 @@ func TestLateReplies(t *testing.T) {
 		err := p.execLua(ctx, "mode", &mode, `return vim.api.nvim_get_mode().mode`)
 		return err == nil && mode == "n"
 	})
+}
+
+// fakeClipboardLua is the "fake clipboard" example of :help g:clipboard: the
+// provider keeps [lines, regtype] in g:foo and never starts a process.
+const fakeClipboardLua = `
+	vim.api.nvim_exec2([[
+		let g:clipboard = {
+		\   'name': 'pisar-fake',
+		\   'copy': {
+		\      '+': {lines, regtype -> extend(g:, {'foo': [lines, regtype]}) },
+		\      '*': {lines, regtype -> extend(g:, {'foo': [lines, regtype]}) },
+		\    },
+		\   'paste': {
+		\      '+': {-> get(g:, 'foo', [])},
+		\      '*': {-> get(g:, 'foo', [])},
+		\   },
+		\ }
+	]], {})
+	return vim.fn.has("clipboard")`
+
+// clipProc is a Process whose clipboard provider is the fake one.
+type clipProc struct {
+	*Process
+	pbMarker string // created by the stub pbcopy/pbpaste if either is ever run
+}
+
+// newClipProc starts Neovim with a fake clipboard. Two layers keep the real
+// system clipboard out of reach: g:clipboard is set before any provider use
+// (providers load on the first has('clipboard') or register access), and
+// pbcopy/pbpaste on PATH are stubs that only record that they were called.
+func newClipProc(t *testing.T) *clipProc {
+	t.Helper()
+	bin := t.TempDir()
+	marker := filepath.Join(bin, "pb-called")
+	stub := "#!/bin/sh\necho called >> '" + marker + "'\ncat >/dev/null\n"
+	for _, name := range []string{"pbcopy", "pbpaste"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(stub), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, _ := newProc(t, func(o *Options) {
+		o.Env = append(o.Env, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	})
+	cp := &clipProc{Process: p, pbMarker: marker}
+
+	ctx, cancel := context.WithTimeout(context.Background(), testWait)
+	defer cancel()
+	var has int
+	if err := p.execLua(ctx, "fake clipboard", &has, fakeClipboardLua); err != nil {
+		t.Fatalf("set g:clipboard: %v", err)
+	}
+	if has != 1 {
+		t.Fatalf("has('clipboard') = %d, want 1", has)
+	}
+	var name string
+	if err := p.execLua(ctx, "provider", &name, `return vim.fn["provider#clipboard#Executable"]()`); err != nil {
+		t.Fatal(err)
+	}
+	if name != "pisar-fake" {
+		t.Fatalf("clipboard provider = %q, want the fake one", name)
+	}
+	t.Cleanup(func() {
+		if _, err := os.Stat(marker); err == nil {
+			t.Error("pbcopy or pbpaste was run: the fake clipboard did not cover everything")
+		}
+	})
+	return cp
+}
+
+// fakeClip is the content of the fake clipboard; nil lines means untouched.
+type fakeClip struct {
+	Lines   []string
+	Regtype string
+}
+
+func (cp *clipProc) clip(t *testing.T) *fakeClip {
+	t.Helper()
+	var raw string
+	err := cp.execLua(context.Background(), "read fake clipboard", &raw, `
+		if vim.g.foo == nil then return "null" end
+		return vim.json.encode(vim.g.foo)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pair []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &pair); err != nil {
+		t.Fatalf("decode %q: %v", raw, err)
+	}
+	if pair == nil {
+		return nil
+	}
+	if len(pair) != 2 {
+		t.Fatalf("fake clipboard = %s, want [lines, regtype]", raw)
+	}
+	var c fakeClip
+	if err := json.Unmarshal(pair[0], &c.Lines); err != nil {
+		t.Fatalf("decode lines of %q: %v", raw, err)
+	}
+	if err := json.Unmarshal(pair[1], &c.Regtype); err != nil {
+		t.Fatalf("decode regtype of %q: %v", raw, err)
+	}
+	return &c
+}
+
+func (p *Process) mode(t *testing.T) string {
+	t.Helper()
+	var m string
+	if err := p.execLua(context.Background(), "mode", &m, `return vim.api.nvim_get_mode().mode`); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// setBuffer replaces the current buffer's text and puts the cursor at 1,0.
+func (p *Process) setBuffer(t *testing.T, lines ...string) {
+	t.Helper()
+	err := p.execLua(context.Background(), "set buffer", nil, `
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, ...)
+		vim.api.nvim_win_set_cursor(0, { 1, 0 })`, lines)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// typeKeys sends keys through the PTY and waits until the mode is wantMode and
+// the cursor is at wantPos (row 1-based, byte column), which proves Neovim
+// has processed all of them: keys travel asynchronously from the RPC calls.
+func (p *Process) typeKeys(t *testing.T, keys, wantMode string, wantPos [2]int) {
+	t.Helper()
+	if _, err := p.Write([]byte(keys)); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "keys processed", func() bool {
+		var st struct {
+			Mode string
+			Row  int
+			Col  int
+		}
+		err := p.execLua(context.Background(), "state", &st, `
+			local pos = vim.api.nvim_win_get_cursor(0)
+			return { Mode = vim.api.nvim_get_mode().mode, Row = pos[1], Col = pos[2] }`)
+		return err == nil && st.Mode == wantMode && st.Row == wantPos[0] && st.Col == wantPos[1]
+	})
+}
+
+func TestCopyVisual(t *testing.T) {
+	// Text with Croatian letters (two bytes each) so the selection is cut by
+	// characters, not bytes.
+	text := []string{"čćšžđ abc", "def ghi", "jkl mno"}
+	// What the provider's copy function receives (:help clipboard): a linewise
+	// yank carries a trailing empty line, and a block's regtype is just "b".
+	tests := []struct {
+		name    string
+		keys    string
+		pos     [2]int // cursor after the keys: row, byte column
+		mode    string // visual mode that must be active before CopyVisual
+		want    []string
+		regtype string
+	}{
+		{"char", "vlll", [2]int{1, 6}, "v", []string{"čćšž"}, "v"},
+		{"line", "Vj", [2]int{2, 0}, "V", []string{"čćšžđ abc", "def ghi", ""}, "V"},
+		{"block", "\x16jll", [2]int{2, 2}, "\x16", []string{"čćš", "def", ""}, "b"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newClipProc(t)
+			p.setBuffer(t, text...)
+			p.typeKeys(t, tc.keys, tc.mode, tc.pos)
+
+			ctx, cancel := context.WithTimeout(context.Background(), testWait)
+			defer cancel()
+			ok, err := p.CopyVisual(ctx)
+			if err != nil || !ok {
+				t.Fatalf("CopyVisual = %v, %v; want true, nil", ok, err)
+			}
+			if m := p.mode(t); m != "n" {
+				t.Errorf("mode after copy = %q, want n", m)
+			}
+			got := p.clip(t)
+			if got == nil {
+				t.Fatal("fake clipboard was not written")
+			}
+			if strings.Join(got.Lines, "\n") != strings.Join(tc.want, "\n") || got.Regtype != tc.regtype {
+				t.Errorf("clipboard = %q %q, want %q %q", got.Lines, got.Regtype, tc.want, tc.regtype)
+			}
+		})
+	}
+}
+
+func TestCopyNone(t *testing.T) {
+	tests := []struct {
+		name string
+		keys string
+		mode string
+		pos  [2]int
+	}{
+		{"norm", "", "n", [2]int{1, 0}},
+		{"ins", "i", "i", [2]int{1, 0}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newClipProc(t)
+			p.setBuffer(t, "some text")
+			if tc.keys != "" {
+				p.typeKeys(t, tc.keys, tc.mode, tc.pos)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), testWait)
+			defer cancel()
+			ok, err := p.CopyVisual(ctx)
+			if err != nil || ok {
+				t.Fatalf("CopyVisual = %v, %v; want false, nil", ok, err)
+			}
+			if m := p.mode(t); m != tc.mode {
+				t.Errorf("mode = %q, want %q", m, tc.mode)
+			}
+			if got := p.clip(t); got != nil {
+				t.Errorf("fake clipboard = %+v, want untouched", got)
+			}
+		})
+	}
+}
+
+func TestSaveUnnamed(t *testing.T) {
+	tests := []struct {
+		name string
+		keys string
+		mode string
+	}{
+		{"normal", "", "n"},
+		{"insert", "i", "i"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _ := newProc(t, nil)
+			p.setBuffer(t, "x")
+			if tc.keys != "" {
+				p.typeKeys(t, tc.keys, tc.mode, [2]int{1, 0})
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), testWait)
+			defer cancel()
+			err := p.Save(ctx)
+			if err == nil || !strings.Contains(err.Error(), "E32") {
+				t.Fatalf("Save = %v, want an E32 error", err)
+			}
+			var msgs string
+			if err := p.execLua(ctx, "messages", &msgs, `
+				return vim.api.nvim_exec2("messages", { output = true }).output`); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(msgs, "E32") {
+				t.Errorf(":messages = %q, want it to contain E32", msgs)
+			}
+			if m := p.mode(t); m != tc.mode {
+				t.Errorf("mode = %q, want %q", m, tc.mode)
+			}
+		})
+	}
+}
+
+func TestSaveModes(t *testing.T) {
+	tests := []struct {
+		name string
+		keys string
+		mode string
+	}{
+		{"insert", "i", "i"},
+		{"visual", "v", "v"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _ := newProc(t, nil)
+			path := filepath.Join(t.TempDir(), "m.md")
+			if err := os.WriteFile(path, []byte("old\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), testWait)
+			defer cancel()
+			if err := p.OpenFile(ctx, path); err != nil {
+				t.Fatal(err)
+			}
+			p.setBuffer(t, "nov\u00e1 linija")
+			p.typeKeys(t, tc.keys, tc.mode, [2]int{1, 0})
+			if err := p.Save(ctx); err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+			ev := waitEvent(t, p)
+			if ev.Kind != EventSaved || realPath(t, ev.Path) != realPath(t, path) {
+				t.Errorf("event = %+v, want saved %q", ev, path)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != "nov\u00e1 linija\n" {
+				t.Errorf("file = %q", data)
+			}
+			if m := p.mode(t); m != tc.mode {
+				t.Errorf("mode = %q, want %q", m, tc.mode)
+			}
+		})
+	}
+}
+
+// TestDarwinProvider checks which provider Neovim picks on its own. Neither
+// call below runs pbcopy or pbpaste: the provider script only maps names to
+// commands, and has('clipboard') only asks whether a provider exists.
+func TestDarwinProvider(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS only")
+	}
+	if _, err := exec.LookPath("pbcopy"); err != nil {
+		t.Skip("pbcopy not found in PATH")
+	}
+	p, _ := newProc(t, nil)
+	var res struct {
+		Has      int
+		Provider string
+		Custom   bool
+	}
+	err := p.execLua(context.Background(), "provider", &res, `
+		return {
+			Custom = vim.g.clipboard ~= nil,
+			Has = vim.fn.has("clipboard"),
+			Provider = vim.fn["provider#clipboard#Executable"](),
+		}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Custom {
+		t.Error("g:clipboard is set; the test must see Neovim's own choice")
+	}
+	if res.Has != 1 || res.Provider != "pbcopy" {
+		t.Errorf("has('clipboard') = %d, provider = %q; want 1 and pbcopy", res.Has, res.Provider)
+	}
 }

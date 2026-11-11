@@ -512,9 +512,48 @@ func (p *Process) CurrentFile(ctx context.Context) (string, error) {
 	return name, nil
 }
 
-// Save writes the current buffer to its file (what ⌘S will call).
+// Save writes the current buffer to its file (what ⌘S calls). It works in any
+// mode and leaves the mode alone. When the write fails (E32 for an unnamed
+// buffer, for instance) the error is returned and the same message is shown in
+// Neovim, so the user sees why ⌘S did nothing; it stays in :messages.
 func (p *Process) Save(ctx context.Context) error {
-	return p.execLua(ctx, "save", nil, `vim.cmd.write()`)
+	// The message is echoed with the ErrorMsg highlight instead of err = true,
+	// and followed by :redraw. In insert and visual mode Neovim otherwise
+	// blocks the main loop, ignoring keys, to keep a message on screen: 1 s
+	// for an error message, 3 s for the "written" message of a successful
+	// :write (measured with Neovim 0.12). The error is re-raised without a
+	// position prefix so Go sees the original text.
+	return p.execLua(ctx, "save", nil, `
+		local ok, err = pcall(vim.cmd.write)
+		if not ok then
+			vim.api.nvim_echo({ { tostring(err), "ErrorMsg" } }, true, {})
+		end
+		vim.cmd.redraw()
+		if not ok then
+			error(err, 0)
+		end`)
+}
+
+// CopyVisual yanks the current visual selection into the "+ register (the
+// system clipboard, through Neovim's clipboard provider) and leaves visual
+// mode, exactly as typing "+y would. It reports false and does nothing when
+// Neovim is not in a visual mode (v, V or CTRL-V).
+func (p *Process) CopyVisual(ctx context.Context) (bool, error) {
+	var copied bool
+	// The first character of the mode string is enough: select mode is "s",
+	// "S" or CTRL-S and operator-pending modes start with "n", so neither
+	// counts. "normal!" ignores mappings, and the yank itself ends visual mode.
+	err := p.execLua(ctx, "copy visual", &copied, `
+		local mode = vim.api.nvim_get_mode().mode:sub(1, 1)
+		if mode ~= "v" and mode ~= "V" and mode ~= "\22" then
+			return false
+		end
+		vim.cmd.normal({ args = { '"+y' }, bang = true })
+		return true`)
+	if err != nil {
+		return false, err
+	}
+	return copied, nil
 }
 
 // Redraw forces Neovim to repaint the whole screen (what a re-attached terminal needs).

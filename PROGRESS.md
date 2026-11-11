@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 0 — Spike (u tijeku od 2026-11-11)
-- Sljedeći korak: faza 0, korak 5 (tipke, clipboard, meni)
-- Zadnja izmjena: 2026-11-11 (faza 0, korak 4 gotov)
+- Sljedeći korak: faza 0, korak 6 (mjerenje: 5000 redaka, `Ctrl-d`, oba renderera)
+- Zadnja izmjena: 2026-11-11 (faza 0, korak 5 gotov)
 
 ## Priprema (2026-11-11)
 
@@ -61,8 +61,9 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 - [x] 4. Terminal (Svelte): `@xterm/xterm` 6.0.0 + fit 0.11.0 + WebGL 0.19.0, JetBrains Mono v2.304 učitan
       prije otvaranja terminala, promjena veličine → fit → `Resize`, serijsko slanje tipki;
       `bash spike/scripts/smoke.sh` prolazi (dom i webgl)
-- [ ] 5. Tipke i clipboard: `⌘S` → Go → RPC, `⌘C` / `⌘V`, `"+y` / `"+p`, `Ctrl-` tipke i `Esc`,
-      `⌥` slaže znakove
+- [x] 5. Tipke i clipboard: meni aplikacije (`spike/menu.go`) — „Spremi” `⌘S` → Go → RPC, „Kopiraj” `⌘C`
+      (vizualni odabir u Neovimu, inače odabir u xterm.js-u), „Zalijepi” `⌘V` (uloga sustava → `paste`
+      događaj → bracketed paste); tipke s `⌘` xterm.js ne šalje Neovimu. Dolazak tipki do menija je **[R]**
 - [ ] 6. Mjerenje: datoteka od 5000 redaka, propusnost i kašnjenje pri držanju `Ctrl-d`, oba renderera
 - [ ] 7. Gašenje aplikacije: hook zove `Close`; skripta gradi, pokreće, gasi i provjerava `pgrep`
 - [ ] 8. Popis za ručnu provjeru **[R]** predan vlasniku
@@ -92,6 +93,13 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
   i 7.50×21 (WebGL zaokružuje širinu na fizičke piksele), pa je mreža 141×33 odnosno 146×33.
 - xterm.js 6.0.0 pri pokretanju sam šalje Neovimu odgovore na upite terminala, uključujući DSR i DA1
   po drugi put (uz Go). Ti stvarni odgovori su u `TestLateReplies` i ne ulaze u buffer.
+- Poruka o grešci iz `Save` ispisuje se s `ErrorMsg` + `:redraw`, a ne kao prava greška: u insert i
+  visual modu Neovim 0.12 inače drži poruku na zaslonu i ne prima tipke (izmjereno: 1 s nakon greške,
+  3 s nakon obične poruke „written” u visualu). Isti `:redraw` ide i nakon uspješnog zapisa.
+- Wails v3.1.0 ima pojedinačne uloge menija `Copy` i `Paste`; stavke iz uloga `AppMenu` i `WindowMenu`
+  ostaju na engleskom (Wails ih sam generira) — za fazu 1 treba vlastiti meni ako želimo hrvatski.
+- Testovi clipboarda koriste lažni `g:clipboard` i stub `pbcopy`/`pbpaste` na PATH-u; pravi sistemski
+  clipboard se u testovima ne dira. Ponašanje s pravim `pbcopy` provjerava vlasnik ručno.
 - Trag za dijagnostiku: `PISAR_SPIKE_TRACE=<datoteka>` bilježi pozive i SVE tipke; samo za spike,
   ne prenositi u aplikaciju. Renderer: `PISAR_SPIKE_RENDERER=webgl|dom`.
 

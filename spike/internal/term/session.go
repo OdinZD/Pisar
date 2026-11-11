@@ -21,6 +21,7 @@ const (
 	EventData  = "pty:data"   // payload string: a chunk of terminal output, always valid UTF-8 on its own
 	EventSaved = "nvim:saved" // payload string: absolute path of the saved file
 	EventExit  = "nvim:exit"  // payload string: always ""
+	EventCopy  = "ui:copy"    // payload string: always ""; the frontend should copy the terminal's own selection
 )
 
 // maxDim is the largest terminal size the PTY's 16-bit winsize can hold.
@@ -281,6 +282,16 @@ func (s *Session) Save(ctx context.Context) error {
 		return err
 	}
 	return p.Save(ctx)
+}
+
+// CopyVisual yanks Neovim's visual selection into the system clipboard. It
+// reports false when Neovim is not in a visual mode.
+func (s *Session) CopyVisual(ctx context.Context) (bool, error) {
+	p, err := s.current()
+	if err != nil {
+		return false, err
+	}
+	return p.CopyVisual(ctx)
 }
 
 // Stats returns the traffic counters.

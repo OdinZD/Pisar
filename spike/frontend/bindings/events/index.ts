@@ -23,3 +23,13 @@ export const NvimSaved = "nvim:saved";
  */
 export const PtyData = "pty:data";
 
+/**
+ * Name of the custom event "ui:copy".
+ */
+export const UiCopy = "ui:copy";
+
+/**
+ * Name of the custom event "ui:renderer".
+ */
+export const UiRenderer = "ui:renderer";
+

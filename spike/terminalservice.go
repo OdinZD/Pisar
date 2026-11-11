@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -23,6 +24,11 @@ type TerminalService struct {
 
 	mu          sync.Mutex
 	initialFile string // opened once, after the first successful Start
+
+	// setClipboard puts text on the system clipboard and reports success. The
+	// Wails clipboard needs the application, which is created after the
+	// service, so main sets it through useClipboard.
+	setClipboard func(text string) bool
 }
 
 // NewTerminalService wraps session. initialFile, if not empty, is opened
@@ -103,6 +109,31 @@ func (t *TerminalService) Save(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	return t.session.Save(ctx)
+}
+
+// useClipboard sets the function CopyText uses. Unexported, so Wails does not bind it.
+func (t *TerminalService) useClipboard(set func(text string) bool) {
+	t.mu.Lock()
+	t.setClipboard = set
+	t.mu.Unlock()
+}
+
+// CopyText puts text on the system clipboard (used for the terminal's own selection).
+// Empty text leaves the clipboard alone.
+func (t *TerminalService) CopyText(text string) error {
+	if text == "" {
+		return nil
+	}
+	t.mu.Lock()
+	set := t.setClipboard
+	t.mu.Unlock()
+	if set == nil {
+		return errors.New("copy text: no clipboard available")
+	}
+	if !set(text) {
+		return errors.New("copy text: the system clipboard refused the text")
+	}
+	return nil
 }
 
 // Stats returns the output and input byte counters.

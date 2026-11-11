@@ -16,6 +16,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as term$0 from "./internal/term/models.js";
 
 /**
+ * CopyText puts text on the system clipboard (used for the terminal's own selection).
+ * Empty text leaves the clipboard alone.
+ */
+export function CopyText(text: string): $CancellablePromise<void> {
+    return $Call.ByID(2095071979, text);
+}
+
+/**
  * OpenFile edits the file at path.
  */
 export function OpenFile(path: string): $CancellablePromise<void> {
