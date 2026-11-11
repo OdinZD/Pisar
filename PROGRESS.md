@@ -4,9 +4,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 0 — Spike (koraci 1–9 gotovi 2026-11-11; čeka ručnu provjeru **[R]** i odluku vlasnika)
-- Sljedeći korak: vlasnik prolazi popis **[R]** iz `docs/spike-report.md` (odjeljak 3) i odlučuje idemo / ne idemo
-- Zadnja izmjena: 2026-11-11 (faza 0, koraci 1–9 gotovi; `plan-reviewer` PASS u krugu 3 od 3)
+- Trenutna faza: 1 — Kostur, projekti i stablo (plan faze u izradi). Faza 0 je prihvaćena 2026-11-11:
+  vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
+- Sljedeći korak: plan faze 1 i vlasnikovo „kreni”
+- Zadnja izmjena: 2026-11-11 (faza 0 prihvaćena)
 
 ## Priprema (2026-11-11)
 
@@ -139,13 +140,13 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
 
 ### Kriteriji prihvaćanja
 
-- [ ] **[R]** `Esc`, `Ctrl-d`, `Ctrl-u`, `Ctrl-v`, `Ctrl-w`, `Ctrl-r` stižu do Neovima
-- [ ] **[R]** č ć š ž đ i znakovi koji na mojoj tipkovnici traže `⌥` upisuju se ispravno
-- [ ] **[R]** `⌘C` / `⌘V` rade sa sistemskim clipboardom; `"+y` i `"+p` također
-- [ ] **[R]** `⌘S` sprema preko RPC-a i ne presreće ga Wails meni
-- [ ] **[R]** promjena veličine prozora: Neovim se preslaže, bez odsječenih redaka
-- [ ] **[R]** font je učitan prije otvaranja terminala; ćelije su poravnate
-- [ ] **[R]** držanje `Ctrl-d` kroz datoteku od 5000 redaka: bez vidljivog zastoja i razbijenog prikaza
+- [x] **[R]** `Esc`, `Ctrl-d`, `Ctrl-u`, `Ctrl-v`, `Ctrl-w`, `Ctrl-r` stižu do Neovima
+- [x] **[R]** č ć š ž đ i znakovi koji na mojoj tipkovnici traže `⌥` upisuju se ispravno
+- [x] **[R]** `⌘C` / `⌘V` rade sa sistemskim clipboardom; `"+y` i `"+p` također
+- [x] **[R]** `⌘S` sprema preko RPC-a i ne presreće ga Wails meni
+- [x] **[R]** promjena veličine prozora: Neovim se preslaže, bez odsječenih redaka
+- [x] **[R]** font je učitan prije otvaranja terminala; ćelije su poravnate
+- [x] **[R]** držanje `Ctrl-d` kroz datoteku od 5000 redaka: bez vidljivog zastoja i razbijenog prikaza
 - [x] Go otvara datoteku u pokrenutom Neovimu preko RPC socketa — dokaz: `go test -v -run TestOpen ./internal/nvim/`
       → `--- PASS: TestOpen` (7 podtestova); `bash spike/scripts/smoke.sh` → `neovim says: '141 33 sample.md'`
 - [x] Go prima obavijest kad Neovim spremi buffer — dokaz: `--- PASS: TestSave`, `--- PASS: TestColonW`,
@@ -155,10 +156,13 @@ Effort high (glavna sesija i `coder`). Kod je za bacanje i živi u `spike/`.
       `task -d spike bench` → `no Neovim process of ours is left` nakon `Quit`; `pgrep -fl nvim` prazan
 - [x] `docs/spike-report.md`: što radi, što ne, zaobilaznice, preporuka — dokaz: `test -s docs/spike-report.md`
 
-Sedam kriterija **[R]** gore ostaje neoznačeno dok ih vlasnik ne provjeri ručno (popis s radnjama:
-`docs/spike-report.md`, odjeljak 3). Odluku idemo / ne idemo donosi vlasnik.
+Sedam kriterija **[R]** potvrdio je vlasnik ručno 2026-11-11 (popis s radnjama: `docs/spike-report.md`,
+odjeljak 3); agent ih nije provjeravao. Odluka vlasnika: **idemo**.
 
 ## Faza 1 — Kostur, projekti i stablo
+
+Odobreno 2026-11-11: `github.com/fsnotify/fsevents` v0.2.0 za praćenje promjena na disku (kao Trag);
+`vitest` kao razvojna ovisnost za frontend testove (kao Trag).
 
 ### Kriteriji prihvaćanja
 
