@@ -6,7 +6,10 @@
 # the document with the generated colorscheme, that buffer and state changes
 # reach the application, that a file created from outside refreshes the tree,
 # and that quitting leaves nothing behind. A last run proves the chain behind
-# <Space>p (preview) and <Space>f (search) up to the page that comes back.
+# <Space>p (preview) and <Space>f (search) up to the page that comes back. A
+# further three runs prove writing comfort on the built application: prose
+# options, Croatian spelling, the formatting keys and the user's own words
+# without a user.lua, then with a valid one and with one that fails.
 #   bash scripts/smoke.sh
 #
 # No keys or clicks are sent: Neovim is driven through its socket. Everything temporary lives in one mktemp
@@ -115,6 +118,9 @@ tree_calls() {
 
 REAL_HOME_BEFORE=absent
 if [[ -e "$REAL_HOME_DIR" ]]; then REAL_HOME_BEFORE=$(ls -la "$REAL_HOME_DIR" | shasum | cut -d' ' -f1); fi
+# user.lua is the user's own file; the script must neither create nor touch it there.
+real_user_lua() { { ls -la "$REAL_HOME_DIR/user.lua" 2>&1 || true; } | shasum | cut -d' ' -f1; }
+REAL_USER_LUA_BEFORE=$(real_user_lua)
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/pisar-smoke.XXXXXX")
 # $TMPDIR ends in a slash on macOS; drop the double slash so paths compare as text.
@@ -716,6 +722,227 @@ MD
   WANT_BUF=""
 fi
 
+# ---- writing: prose, spelling, formatting and user.lua ------------------------
+#
+# The same application, started three times with ONE home of its own and one
+# document in a "user's folder" in the temporary directory. The tests of phase 5
+# start Neovim directly with the repository's init.lua; this proves the same on
+# the BUILT application: the embedded files, writeConfig, the environment the
+# process gets and Neovim at the end of that chain. Keys go to Neovim's socket
+# (--remote-send), never to the application's window, so the application menu
+# (the command-B shortcut) is not covered here.
+#   1. no user.lua: the defaults, the spelling, moving, the toggles, the
+#      formatting keys, zg, :write and a clean exit;
+#   2. a valid user.lua written by this script: the user's settings win, what the
+#      application depends on is restored, the words added with zg are still known;
+#   3. a user.lua that fails after its first command: the editor still starts.
+# Every wait is on a condition with a limit (a keystroke is asynchronous: the
+# next question to Neovim may be answered before the key is handled).
+
+# send_keys <keys>: keys for Neovim's input, as if typed.
+send_keys() { remote "$WSOCK" --remote-send "$1" >/dev/null || true; }
+
+# nv_is <expression> <wanted>: Neovim evaluates the expression to exactly this text.
+nv_is() { [[ "$(nv "$1" 2>/dev/null)" == "$2" ]]; }
+
+# keys_give <keys> <expression> <wanted>: send the keys, then wait (10 s) until
+# the expression has the wanted value.
+keys_give() {
+  send_keys "$1"
+  wait_for 10 nv_is "$2" "$3"
+}
+
+# put_cursor <line> <column>: the cursor is there (the column in bytes).
+put_cursor() {
+  send_keys "<Cmd>call cursor($1, $2)<CR>"
+  wait_for 10 nv_is 'line(".") . ":" . col(".")' "$1:$2"
+}
+
+# real_path <path>: the folder resolved through links (/var is /private/var).
+real_path() { (cd -P "$1" 2>/dev/null && pwd); }
+
+# in_spell_dir: the 'spellfile' option points into <home>/spell/.
+in_spell_dir() {
+  local got
+  got=$(nv '&spellfile') || return 1
+  [[ "$got" == "$WHOME/spell/"* || "$got" == "$(real_path "$WHOME/spell")/"* ]]
+}
+
+# no_user_lua: nothing, not even a dangling link, is at <home>/user.lua.
+no_user_lua() { [[ ! -e "$WHOME/user.lua" && ! -L "$WHOME/user.lua" ]]; }
+
+# add_has <word>: the file of the user's own words holds that word on a line.
+add_has() { grep -Fxq -- "$1" "$WHOME/spell/pisar.utf-8.add" 2>/dev/null; }
+
+# file_has <file> <text>: the file contains the text.
+file_has() { grep -Fq -- "$2" "$1" 2>/dev/null; }
+
+L="writing"
+WBASE="$TMP/writing"
+WHOME="$WBASE/home"
+WUSER="$WBASE/user"
+mkdir -p "$WHOME" "$WUSER"
+printf '{\n  "version": 1,\n  "projects": []\n}\n' >"$WHOME/config.json"
+
+# One long paragraph (about 1800 bytes: longer than any terminal this window can
+# have), a line of correct Croatian and English words, a line with one wrong word,
+# and one line for each formatting key. The last line holds the word for zg.
+SENTENCE="Sjećanja na putovanje ostaju u pamćenju dugo nakon što se računala ugase. "
+PARAGRAPH=""
+for _ in $(seq 1 25); do PARAGRAPH="$PARAGRAPH$SENTENCE"; done
+{
+  printf '%s\n\n' "${PARAGRAPH% }"
+  printf 'Sjećanja računalima document\n\n'
+  printf 'rijč\n\n'
+  printf 'alfa beta gama\n'
+  printf 'kurziv riječ ovdje\n'
+  printf 'naslov teksta\n'
+  printf 'stavka liste\n'
+  printf 'nova kvrzgnut tu\n'
+} >"$WUSER/tekst.md"
+TEXT_LONG=1
+TEXT_GOOD=3
+TEXT_BAD=5
+TEXT_BOLD=7
+TEXT_ITALIC=8
+TEXT_HEAD=9
+TEXT_LIST=10
+TEXT_ZG=11
+INVENTED="kvrzgnut"
+
+WANT_BUF=tekst.md
+
+# A. No user.lua.
+echo "--- writing"
+WLOG="$WBASE/app-1.log"
+if ! word_open "$L (1)" tekst.md; then
+  :
+else
+  check "$L (1): the dictionary in the application's home is byte for byte nvim/spell/hr.utf-8.spl" \
+    cmp -s "$ROOT/nvim/spell/hr.utf-8.spl" "$WHOME/nvim/config/pisar/spell/hr.utf-8.spl"
+  check "$L (1): the folder for the user's own words exists (<home>/spell/)" test -d "$WHOME/spell"
+  check "$L (1): the application did not create user.lua" no_user_lua
+
+  # Options, as Neovim itself reports them.
+  check "$L (1): wrap, linebreak and breakindent are on" nv_is '&wrap . &linebreak . &breakindent' 111
+  check "$L (1): line numbers and relative numbers are off" nv_is '&number . &relativenumber' 00
+  check "$L (1): spell is on and spelllang is hr,en" nv_is '&spell . " " . &spelllang' "1 hr,en"
+  check "$L (1): spellfile points into <home>/spell/" in_spell_dir
+  check "$L (1): laststatus is 2 and cmdheight is 1" nv_is '&laststatus . " " . &cmdheight' "2 1"
+
+  # Spelling: the wrong word is marked, the right ones are not.
+  check "$L (1): spellbadword marks the wrong word of line $TEXT_BAD (rijč)" \
+    nv_is "spellbadword(getline($TEXT_BAD))[0]" "rijč"
+  check "$L (1): spellbadword marks none of sjećanja, računalima, document (line $TEXT_GOOD)" \
+    nv_is "spellbadword(getline($TEXT_GOOD))[0]" ""
+
+  # Moving: j and k go by display rows. At the start of a paragraph that wraps,
+  # j stays on the same real line, further right; k comes back.
+  check "$L (1): the cursor is at the start of the long paragraph" put_cursor "$TEXT_LONG" 1
+  send_keys j
+  moved() { ! nv_is 'line(".") . ":" . col(".")' "$TEXT_LONG:1"; }
+  wait_for 10 moved || true
+  got=$(nv 'line(".") . " " . col(".")') || got=""
+  j_line=${got%% *}
+  j_col=${got#* }
+  if [[ "$j_line" == "$TEXT_LONG" && "$j_col" =~ ^[0-9]+$ && "$j_col" -gt 1 ]]; then
+    ok "$L (1): j stayed in real line $TEXT_LONG, in column $j_col (a display row down)"
+  else
+    fail "$L (1): j stayed in real line $TEXT_LONG in a column beyond 1 (got '$got')"
+  fi
+  check "$L (1): k brings the cursor back to the start" keys_give k 'line(".") . ":" . col(".")' "$TEXT_LONG:1"
+
+  # The two toggles: each key, once and twice.
+  check "$L (1): <Space>n turns line numbers on" keys_give '<Space>n' '&number' 1
+  check "$L (1): <Space>n again turns them off" keys_give '<Space>n' '&number' 0
+  check "$L (1): <Space>s turns spell off" keys_give '<Space>s' '&spell' 0
+  check "$L (1): <Space>s again turns it on" keys_give '<Space>s' '&spell' 1
+
+  # Formatting keys: each on its own line; undo takes back one action exactly.
+  put_cursor "$TEXT_BOLD" 6 >/dev/null || true
+  h0=$(buffer_hash || true)
+  check "$L (1): <Space>b on the word beta gives **beta**" \
+    keys_give '<Space>b' "getline($TEXT_BOLD)" 'alfa **beta** gama'
+  send_keys u
+  back() { [[ -n "$h0" && "$(buffer_hash || true)" == "$h0" ]]; }
+  check "$L (1): u gives back exactly the text from before (the whole buffer)" wait_for 10 back
+  put_cursor "$TEXT_ITALIC" 8 >/dev/null || true
+  check "$L (1): <Space>i on the word riječ gives *riječ*" \
+    keys_give '<Space>i' "getline($TEXT_ITALIC)" 'kurziv *riječ* ovdje'
+  put_cursor "$TEXT_HEAD" 1 >/dev/null || true
+  check "$L (1): <Space>h gives a heading (# naslov teksta)" \
+    keys_give '<Space>h' "getline($TEXT_HEAD)" '# naslov teksta'
+  put_cursor "$TEXT_LIST" 1 >/dev/null || true
+  check "$L (1): <Space>l gives a list item (- stavka liste)" \
+    keys_give '<Space>l' "getline($TEXT_LIST)" '- stavka liste'
+  check "$L (1): the formatting keys left Neovim in normal mode, nothing pending" nv_is 'mode()' n
+
+  # zg: the invented word stops being marked and lands in the user's own file.
+  check "$L (1): the invented word $INVENTED is marked before zg" \
+    nv_is "spellbadword(getline($TEXT_ZG))[0]" "$INVENTED"
+  put_cursor "$TEXT_ZG" 6 >/dev/null || true
+  send_keys zg
+  check "$L (1): after zg spellbadword no longer marks it" \
+    wait_for 10 nv_is "spellbadword(getline($TEXT_ZG))[0]" ""
+  check "$L (1): <home>/spell/pisar.utf-8.add exists and holds the word" wait_for 10 add_has "$INVENTED"
+
+  # Save, then leave through the application's own pid.
+  send_keys '<Cmd>silent write<CR>'
+  check "$L (1): :write put the formatted text in the file" wait_for 10 file_has "$WUSER/tekst.md" '- stavka liste'
+  check "$L (1): ... with the heading and the italics too" \
+    sh -c 'grep -Fxq -- "# naslov teksta" "$1" && grep -Fxq -- "kurziv *riječ* ovdje" "$1" && grep -Fxq -- "alfa beta gama" "$1"' _ "$WUSER/tekst.md"
+  word_stop "$L (1)"
+  check "$L (1): no process of this run is left" test -z "$(pgrep -f -- "$WHOME" || true)"
+  check "$L (1): the file of the user's own words is still there after the exit" add_has "$INVENTED"
+  check "$L (1): the application still has not created user.lua" no_user_lua
+
+  # B. user.lua, written by this script, into the same home.
+  cat >"$WHOME/user.lua" <<'LUA'
+vim.o.number = true
+vim.g.pisar_smoke = "da"
+vim.o.hidden = false
+vim.o.laststatus = 0
+LUA
+  cp "$WHOME/user.lua" "$WBASE/user.lua.written"
+  WLOG="$WBASE/app-2.log"
+  if word_open "$L (2)" tekst.md; then
+    check "$L (2): user.lua of the user is in force (number is on, g:pisar_smoke is da)" \
+      nv_is '&number . " " . get(g:, "pisar_smoke", "")' "1 da"
+    check "$L (2): what the application relies on is back (hidden is on, laststatus is 2)" \
+      nv_is '&hidden . " " . &laststatus' "1 2"
+    check "$L (2): the file had no error (g:pisar_user_error is empty)" nv_is 'get(g:, "pisar_user_error", "")' ""
+    check "$L (2): the word added with zg in the first run is still not marked" \
+      nv_is "spellbadword(getline($TEXT_ZG))[0]" ""
+    check "$L (2): the file of the user's own words still holds it" add_has "$INVENTED"
+    check "$L (2): user.lua is byte for byte what the script wrote" cmp -s "$WBASE/user.lua.written" "$WHOME/user.lua"
+    word_stop "$L (2)"
+    check "$L (2): no process of this run is left" test -z "$(pgrep -f -- "$WHOME" || true)"
+    check "$L (2): user.lua is still byte for byte what the script wrote" cmp -s "$WBASE/user.lua.written" "$WHOME/user.lua"
+  fi
+
+  # C. user.lua with a runtime error after its first valid command.
+  cat >"$WHOME/user.lua" <<'LUA'
+vim.g.pisar_smoke = "prvo"
+error("smoke boom")
+vim.g.pisar_smoke = "nakon greske"
+LUA
+  WLOG="$WBASE/app-3.log"
+  if word_open "$L (3)" tekst.md; then
+    check "$L (3): the application started, Neovim answers and tekst.md is open" nv_is 'fnamemodify(bufname(""), ":t")' tekst.md
+    check "$L (3): the command before the error is in force, the one after it did not run" \
+      nv_is 'get(g:, "pisar_smoke", "")' prvo
+    check "$L (3): g:pisar_user_error is set and names the error" \
+      sh -c 'case "$1" in *"smoke boom"*) exit 0 ;; *) exit 1 ;; esac' _ "$(nv 'get(g:, "pisar_user_error", "")' || true)"
+    warned() { wlogged 'level=WARN msg="editor: user\.lua".*smoke boom'; }
+    check "$L (3): the application log has a warning about user.lua with the error" wait_for 10 warned
+    check "$L (3): what the application relies on is back (hidden is on, laststatus is 2)" \
+      nv_is '&hidden . " " . &laststatus' "1 2"
+    word_stop "$L (3)"
+    check "$L (3): no process of this run is left" test -z "$(pgrep -f -- "$WHOME" || true)"
+  fi
+fi
+WANT_BUF=""
+
 check "config.json is unchanged" cmp -s "$CONFIG" "$TMP/config.before"
 check "the temporary home holds only config.json and Neovim's own folder" \
   test "$(ls -A "$TMP/home" | sort | tr '\n' ' ')" = "config.json nvim spell "
@@ -724,6 +951,8 @@ check "init.lua and the colorscheme were written under the home" \
 REAL_HOME_AFTER=absent
 if [[ -e "$REAL_HOME_DIR" ]]; then REAL_HOME_AFTER=$(ls -la "$REAL_HOME_DIR" | shasum | cut -d' ' -f1); fi
 check "the real configuration folder was not touched ($REAL_HOME_BEFORE)" test "$REAL_HOME_BEFORE" = "$REAL_HOME_AFTER"
+check "no user.lua was created or changed in the real configuration folder" \
+  test "$REAL_USER_LUA_BEFORE" = "$(real_user_lua)"
 
 echo
 if [[ "$FAILS" -eq 0 ]]; then
