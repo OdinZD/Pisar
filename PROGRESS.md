@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, u tijeku korak 1). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, korak 1 gotov). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 1 (`internal/preview`)
+- Sljedeći korak: faza 4, korak 2 (pretraga po imenu u `internal/project`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (plan faze 4 odobren)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 1)
 
 ## Priprema (2026-11-11)
 
@@ -1170,7 +1170,32 @@ event "menu:search" ""         // ⌘P
 
 ### Koraci
 
-- [ ] 1. `internal/config` + `internal/preview`: `Render(ctx, markdown, resourceDir)` s Lua filtrom
+- [x] 1. `internal/config` + `internal/preview`. `config`: `PreviewDebounce` (300 ms), `PreviewTimeout` (10 s),
+      `MaxPreviewSource` (8 MiB), `MaxPreviewHTML` (64 MiB), `MaxSearchResults` (50), `PreviewDir()`.
+      `preview.Renderer.Render(ctx, markdown, resourceDir)`: pandoc čita Markdown sa standardnog ulaza i
+      vraća tijelo stranice; radni direktorij je Pisarova mapa; zadani runner prekida proces kad izlaz
+      prijeđe granicu; greške `ErrToolMissing`, `ErrTooLarge`, `*ToolError`. Pokrivenost 92,2 %; fuzz
+      20 s bez nalaza.
+      - **Odstupanje od plana:** čitač je `markdown-smart-raw_tex-raw_attribute`, dakle sirovi HTML je
+        UKLJUČEN u čitaču, a cijeloga ga uklanja filter. Razlog: s isključenim sirovim HTML-om komentar
+        `<!-- -->`, koji pandoc sam upisuje između susjednih lista u radnim kopijama Wordovih
+        dokumenata, vidio bi se u pregledu kao tekst. Svi neprijateljski ulazi ponovljeni su s novim
+        čitačem i nijedan ne prolazi (`<script>`, `<iframe>`, `<svg onload>`, `<img onerror>`,
+        `<a href="javascript:">`, `<meta refresh>`, `<form>`… nestaju; `<span onclick>` i `<div>`
+        zadržavaju tekst bez atributa).
+      - Filter (`internal/preview/filters/preview.lua`) uz polazni radi i ovo, sve nađeno mjerenjem:
+        provjera putanje i na percent-dekodiranom obliku (`%2e%2e/x.png` i `%2fetc%2fhosts` su prije
+        toga bili ugrađeni — stvarni bijeg iz foldera); dopušteni nastavci slike (`.mp4`, `.mp3`,
+        `.pdf` su davali `<video>`, `<audio>`, `<embed>`); briše se svaki atribut osim `class` (i
+        brojčanih `width`/`height` na slici) na svim elementima koji ih nose; slika koja nije
+        čitljiva u folderu dokumenta zamjenjuje se opisom (pandoc je traži i u radnom direktoriju);
+        `- [ ]` ne postaje `<input>`.
+      - Neprijateljski SVG kao lokalna slika ugrađuje se kao `<img src="data:image/svg+xml…">`, ne kao
+        umetnuti `<svg>`; test pada ako se to promijeni.
+      - Poznata ograničenja: simbolička veza u folderu dokumenta koja pokazuje izvan njega se ugrađuje
+        (pandoc je slijedi; iz Markdowna se ne vidi); folder s `:` u imenu dobiva pregled bez slika
+        (pandoc dijeli `--resource-path` po `:`); u pregledu ostaju pandocova sidra fusnota
+        (`href="#fn1"`) i slike kao `data:` URI.
 - [ ] 2. `internal/project`: pretraga po imenu (bez dijakritika i veličine slova, rasponi podudaranja)
 - [ ] 3. Neovim: obavijest o izmjeni, mapiranja `␣p` i `␣f`, čitanje teksta buffera
 - [ ] 4. Usluge: petlja pregleda u `EditorService`, `SearchDocuments`, meni `⌘P`, `main.go`

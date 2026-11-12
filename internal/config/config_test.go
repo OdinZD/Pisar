@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func mustOpen(t *testing.T, home string) *Store {
@@ -546,6 +547,54 @@ func TestDocumentDirsCreateNothing(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(home, name)); !errors.Is(err, fs.ErrNotExist) {
 			t.Fatalf("%s must not be created: %v", name, err)
 		}
+	}
+}
+
+func TestLimitsPreview(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	for _, tc := range []struct {
+		name      string
+		got, want int64
+	}{
+		{"PreviewDebounce", int64(l.PreviewDebounce), int64(DefaultPreviewDebounce)},
+		{"PreviewTimeout", int64(l.PreviewTimeout), int64(DefaultPreviewTimeout)},
+		{"MaxPreviewSource", int64(l.MaxPreviewSource), DefaultMaxPreviewSource},
+		{"MaxPreviewHTML", int64(l.MaxPreviewHTML), DefaultMaxPreviewHTML},
+		{"MaxSearchResults", int64(l.MaxSearchResults), DefaultMaxSearchResults},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want || tc.got <= 0 {
+				t.Fatalf("got %d, want %d (positive)", tc.got, tc.want)
+			}
+		})
+	}
+	if DefaultPreviewDebounce != 300*time.Millisecond || DefaultMaxSearchResults != 50 {
+		t.Fatalf("debounce %v and result count %d come from the design", DefaultPreviewDebounce, DefaultMaxSearchResults)
+	}
+	if l.PreviewTimeout <= l.PreviewDebounce {
+		t.Fatalf("PreviewTimeout %v must exceed PreviewDebounce %v", l.PreviewTimeout, l.PreviewDebounce)
+	}
+	// Pictures are embedded, so the page may be much larger than its source.
+	if l.MaxPreviewHTML < l.MaxPreviewSource {
+		t.Fatalf("MaxPreviewHTML %d is smaller than MaxPreviewSource %d", l.MaxPreviewHTML, l.MaxPreviewSource)
+	}
+}
+
+func TestPreviewDir(t *testing.T) {
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	want := filepath.Join(home, "preview")
+	if got := s.PreviewDir(); got != want || !filepath.IsAbs(got) {
+		t.Fatalf("PreviewDir = %q, want %q", got, want)
+	}
+	for name, other := range map[string]string{"work": s.WorkDir(), "backups": s.BackupsDir()} {
+		if s.PreviewDir() == other {
+			t.Errorf("preview folder is the %s folder", name)
+		}
+	}
+	// A path must not create anything: the folder appears when the preview needs it.
+	if _, err := os.Lstat(want); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("PreviewDir must not be created: %v", err)
 	}
 }
 

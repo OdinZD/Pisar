@@ -96,6 +96,30 @@ const (
 	//     xterm.js in one write call) stays small enough not to stall the UI.
 	DefaultTermFlushInterval = 8 * time.Millisecond
 	DefaultTermMaxChunk      = 16 << 10
+
+	// The preview numbers (see internal/preview):
+	//   - DefaultPreviewDebounce: quiet time after the last keystroke before the
+	//     preview is rendered again. 300 ms is the design's value: short enough to
+	//     feel live, long enough that a burst of typing costs one pandoc run
+	//     (about 125 ms for a small document) and not one per key.
+	//   - DefaultPreviewTimeout: one pandoc run. A small document takes 125 ms, so
+	//     10 s is far above any real page and still ends a run that hangs on a
+	//     pathological input before the next refresh is due.
+	//   - DefaultMaxPreviewSource: the text of one buffer that is converted. 8 MiB
+	//     is a long book in Markdown; a larger text is not a page anyone previews,
+	//     and every refresh would re-convert all of it.
+	//   - DefaultMaxPreviewHTML: the output of one conversion. Pictures are
+	//     embedded as base64, which is a third bigger than the file, so a document
+	//     with a few photographs needs far more than its source; 64 MiB is
+	//     generous for that and still bounds what the app keeps and sends to the
+	//     webview.
+	//   - DefaultMaxSearchResults: the hits one search returns; the list is read
+	//     by eye, and the first 50 of an ambiguous query are all that fit anyway.
+	DefaultPreviewDebounce  = 300 * time.Millisecond
+	DefaultPreviewTimeout   = 10 * time.Second
+	DefaultMaxPreviewSource = 8 << 20
+	DefaultMaxPreviewHTML   = 64 << 20
+	DefaultMaxSearchResults = 50
 )
 
 // Neovim as Pisar runs it. These are the only places the names are written down
@@ -139,6 +163,8 @@ const (
 	workDirName = "work"
 	// backupsDirName holds the backups taken before a .docx is overwritten.
 	backupsDirName = "backups"
+	// previewDirName holds the files the preview needs next to pandoc (its filter).
+	previewDirName = "preview"
 )
 
 // Project is one registered folder.
@@ -169,6 +195,12 @@ type Limits struct {
 	TermMaxChunk      int           // pending terminal output bytes that force an immediate send
 
 	MaxColorscheme int // largest colorscheme text, in bytes, the editor accepts from the frontend
+
+	PreviewDebounce  time.Duration // quiet time after an edit before the preview is rendered again
+	PreviewTimeout   time.Duration // one conversion of the preview
+	MaxPreviewSource int           // largest Markdown text, in bytes, that is converted for the preview
+	MaxPreviewHTML   int           // largest HTML, in bytes, one conversion may produce
+	MaxSearchResults int           // hits a search by name returns
 }
 
 var (
@@ -326,6 +358,12 @@ func (s *Store) Limits() Limits {
 		TermMaxChunk:      DefaultTermMaxChunk,
 
 		MaxColorscheme: DefaultMaxColorscheme,
+
+		PreviewDebounce:  DefaultPreviewDebounce,
+		PreviewTimeout:   DefaultPreviewTimeout,
+		MaxPreviewSource: DefaultMaxPreviewSource,
+		MaxPreviewHTML:   DefaultMaxPreviewHTML,
+		MaxSearchResults: DefaultMaxSearchResults,
 	}
 }
 
@@ -384,6 +422,10 @@ func (s *Store) WorkDir() string { return filepath.Join(s.home, workDirName) }
 
 // BackupsDir returns the folder that holds the backups. It creates nothing.
 func (s *Store) BackupsDir() string { return filepath.Join(s.home, backupsDirName) }
+
+// PreviewDir returns the folder for the files the preview keeps next to pandoc.
+// It is Pisar's own; the user's documents are never there. It creates nothing.
+func (s *Store) PreviewDir() string { return filepath.Join(s.home, previewDirName) }
 
 // Recovered returns the path the damaged file was moved to by Open, or "".
 func (s *Store) Recovered() string { return s.recovered }
