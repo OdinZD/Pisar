@@ -4,16 +4,17 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–5 gotovi, pregled plana u tijeku). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12); čeka se
+  vlasnikova ručna provjera, odluka o granici oko `user.lua` i prihvaćanje faze. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 6 (`plan-reviewer`, sažetak)
+- Sljedeći korak: vlasnikova ručna provjera faze 5 (popis u odjeljku faze); zatim plan faze 6
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, ispravci nakon pregleda, krug 2)
+- Zadnja izmjena: 2026-11-12 (faza 5 dovršena, čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -1639,7 +1640,8 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
       u logu. Tipke idu samo Neovimu kroz socket; nakon svake se čeka učinak s rokom.
       - Nije pokriveno skriptom: `⌘B` / `⌘I` iz izbornika (tražilo bi slanje tipki aplikaciji) i izgled
         valovite crte u prozoru.
-- [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+- [x] 6. Kraj faze: dokazi po kriterijima, popis za ručnu provjeru, `plan-reviewer` (krug 1 FAIL, krug 2 FAIL,
+      krug 3 **PASS**), sažetak vlasniku
 
 ### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
 
@@ -1680,7 +1682,8 @@ Nalazi kruga 1 potvrđeni kao riješeni, osim jednog dijela prvog:
    `VimEnter` → Pisarov `VimEnter` → zakazani pozivi iz `user.lua` i `vim.defer_fn` → ono što je
    zakazao vlasnikov `VimEnter` → Pisarov zakazani prolaz → spajanje Go-a. Kasniji prolazi ne diraju
    `g:pisar_channel` ni `g:pisar_preview`. Testovi `TestULate` (7 slučajeva), `TestULateAnn`.
-   - **Prihvaćena granica (zapisana i u komentaru u `init.lua`, tvrdi je `TestULimit`):** `user.lua` je
+   - **Predložena granica, čeka odluku vlasnika (zapisana i u komentaru u `init.lua`, tvrdi je
+     `TestULimit`):** `user.lua` je
      vlasnikov kod. Zaštita pokriva učitavanje i kraj pokretanja, ne kasniji rad: autocmd koji
      postavku promijeni kasnije (npr. na `BufWinEnter`), `vim.defer_fn` s duljim kašnjenjem, dvostruko
      zakazan poziv koji stigne nakon spajanja Go-a, ili zamjena Neovimovih funkcija (`vim.rpcnotify`)
@@ -1692,6 +1695,15 @@ predložio „Međuspremnik”, što na hrvatskom znači clipboard, pa je glavna
 ostatkom sučelja); u `nvimUserLuaError` uputa je sada ispred razloga, jer se na 80 stupaca uvijek
 odrezala; Lua i Go predložak poruke ispunjavaju jednako (sva pojavljivanja). Nedostižan engleski tekst
 `"unknown format: "` u `init.lua` ostaje (korisnik ga ne može vidjeti).
+
+### Pregled plana — krug 3 (2026-11-12): PASS
+
+Reviewer je ponovio svoje pokuse s odgođenim izmjenama iz `user.lua` (obavijesti stižu, nisu
+dvostruke, stanje se ne gubi), provjerio da uklanjanje zasebne registracije kanala nije ništa
+pokvarilo, i sam izmjerio brojeve u zapisu. Jedini nalaz: preostalu granicu oko `user.lua` zapis je
+zvao „prihvaćenom”, a vlasnik je nije prihvatio — ispravljeno u „predložena, čeka odluku vlasnika”
+(i u komentarima u `init.lua` i testu). Napomena: u poruci o grešci u `user.lua` okvir ima 52 znaka,
+pa na 80 stupaca za razlog ostaje oko 16 znakova; puni tekst je u `g:pisar_user_error` i u logu.
 
 ### Dokazi po kriterijima (2026-11-12)
 
@@ -1755,7 +1767,9 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
   beskrajnom petljom; `Start` tada istekne nakon `NvimStartTimeout`.
 - `user.lua` koji postavke o kojima Go ovisi promijeni NAKON pokretanja (kasniji autocmd, tajmer) ili
   zamijeni Neovimove funkcije i dalje može utišati Pisarove obavijesti; tada `:w` na Wordovom
-  dokumentu ne pokreće izvoz. Prihvaćena granica: to je vlasnikov kod.
+  dokumentu ne pokreće izvoz. **Predložena granica, čeka odluku vlasnika**: iznutra se ne može
+  zatvoriti jer je `user.lua` proizvoljan kod, ali plan je obećao da `user.lua` „može mijenjati sve
+  osim” onoga o čemu Go ovisi.
 - Tipke utipkane nakon `⌘B`, a prije nego događaj izbornika stigne u frontend (nekoliko ms), mogu
   proći prije oblikovanja.
 - U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
