@@ -536,7 +536,9 @@ func TestTextState(t *testing.T) {
 	snapshot := func() string {
 		var s string
 		err := p.execLua(ctx, "snapshot", &s, `
-			return vim.json.encode({
+			-- vim.inspect, not vim.json.encode: inspect sorts the keys, encode does not,
+			-- and two snapshots of the same state must be the same string.
+			return vim.inspect({
 				cursor = vim.api.nvim_win_get_cursor(0),
 				mode = vim.api.nvim_get_mode().mode,
 				regs = { vim.fn.getreg("a"), vim.fn.getreg('"'), vim.fn.getreg("0"), vim.fn.getreg("/") },
