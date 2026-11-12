@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan faze u izradi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, u tijeku korak 1). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 4 i vlasnikovo odobrenje
+- Sljedeći korak: faza 4, korak 1 (`internal/preview`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3 prihvaćena)
+- Zadnja izmjena: 2026-11-12 (plan faze 4 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -1132,6 +1132,58 @@ pakiranje, automatsko pokretanje Worda.
       2026-11-12 („testirano i radi sve”)
 
 ## Faza 4 — Pregled i tražilica
+
+Effort high. Plan faze odobren 2026-11-12.
+
+### Odluke vlasnika (2026-11-12)
+
+- Okvir pregleda ima `sandbox="allow-same-origin"` i nema `allow-scripts`; aplikacija mijenja sadržaj
+  okvira na mjestu (pregled ne skače na vrh pri osvježavanju).
+- Font pregleda: Source Serif 4 (četiri woff2 datoteke iz službenog Adobeovog izdanja + OFL).
+- Pregled je samo za Markdown i Wordove dokumente; za `.txt` ploča to kaže.
+
+### Ovisnosti (odobrene)
+
+- Nema novih Go ni npm ovisnosti. Novi resurs: font Source Serif 4. Nove pandocove zastavice:
+  `--embed-resources`, `--math-method=mathml`, `--syntax-highlighting=none`.
+
+### Izmjereno prije plana (pandoc 3.13)
+
+- Čitač `markdown-smart-raw_html-raw_tex-raw_attribute`: `<script>` i `<img onerror=…>` iz Markdowna
+  izlaze kao doslovan tekst.
+- Lua filter zamjenjuje sliku s adresom (`http:`, `//`, apsolutna putanja, `..`, `data:`) njezinim
+  opisom, a poveznicu pretvara u `span`; `--embed-resources` radi i bez `--standalone` (lokalna slika
+  postaje `data:` URI). `--sandbox` onemogući i lokalne slike, pa se ne koristi.
+- `--no-highlight` i `--mathml` su zastarjeli. Jedno osvježavanje malog dokumenta: oko 125 ms.
+
+### Ugovor Go ↔ frontend
+
+```go
+EditorService.SetPreview(enabled bool) error
+event "preview:content"  PreviewContent{ Path, State ("html" | "unsupported" | "error"), HTML, Code }
+event "ui:toggle-preview" ""   // ␣p
+ProjectService.SearchDocuments(query, projectID string) ([]SearchHit, error)   // "" = svi projekti
+SearchHit{ ProjectID, ProjectName, Rel, Name, Kind string; Matches [][2]int }  // rasponi u Name, UTF-16
+event "ui:open-search" ""      // ␣f
+event "menu:search" ""         // ⌘P
+```
+
+### Koraci
+
+- [ ] 1. `internal/config` + `internal/preview`: `Render(ctx, markdown, resourceDir)` s Lua filtrom
+- [ ] 2. `internal/project`: pretraga po imenu (bez dijakritika i veličine slova, rasponi podudaranja)
+- [ ] 3. Neovim: obavijest o izmjeni, mapiranja `␣p` i `␣f`, čitanje teksta buffera
+- [ ] 4. Usluge: petlja pregleda u `EditorService`, `SearchDocuments`, meni `⌘P`, `main.go`
+- [ ] 5. Frontend — pregled: font, tokeni, `Preview.svelte`, gumb „Pregled”, raspored
+- [ ] 6. Frontend — tražilica: `SearchPanel.svelte`, tipke, fokus, opseg
+- [ ] 7. Dimna provjera (`scripts/smoke.sh`)
+- [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
+
+### Izvan opsega
+
+Pretraga sadržaja, pregled za `.txt`, sinkronizirano pomicanje pregleda, bojanje koda, ispis i PDF,
+uređivanje u pregledu, klikabilne poveznice u pregledu, fuzzy podudaranje, povijest pretraga,
+postavke za prozu i pravopis, pakiranje, tamna tema.
 
 ### Kriteriji prihvaćanja
 
