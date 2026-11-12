@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–5 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–6 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 6 (frontend — tražilica)
+- Sljedeći korak: faza 4, korak 7 (dimna provjera)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 5)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 6)
 
 ## Priprema (2026-11-11)
 
@@ -1281,7 +1281,27 @@ event "menu:search" ""         // ⌘P
         broja obitelji fonta; nove varijable pregleda), `fonts.test.ts` (lica i datoteke Source Serif 4).
       - Nije provjereno okom: učitava li okvir font uz ovaj CSP u Wails prozoru, izgled stranice,
         ponašanje pri osvježavanju, fokus.
-- [ ] 6. Frontend — tražilica: `SearchPanel.svelte`, tipke, fokus, opseg
+- [x] 6. Frontend — tražilica. `SearchPanel.svelte` na dnu stupca editora, iznad zadnja dva retka terminala
+      (statusna traka i naredbeni redak; pomak javlja `Terminal.svelte` nakon svakog `fit()`);
+      `lib/searchState.ts` (čisto stanje, prijelazi vraćaju stanje + učinke), `searchKeys.ts` (`↓` `↑`
+      `↵` `Esc` `⌃P`; ništa s `⌘`), `searchHighlight.ts` (ime bez ekstenzije kao tekstualni segmenti,
+      otporno na neispravne raspone), `searchController.svelte.ts` (događaji `ui:open-search` i
+      `menu:search`, čekanje 80 ms, samo najnoviji odgovor vrijedi). Popis je `listbox`, broj rezultata
+      se objavljuje kroz `aria-live`. Vitest 794.
+      - „Samo najnoviji”: svaki upit ili promjena opsega dobiva token u stanju; odgovor s drugim
+        tokenom se odbacuje, i nakon zatvaranja ploče (`lib/latest.ts` nije korišten jer je token u
+        čistom stanju, što se testira bez Sveltea).
+      - Fokus: otvaranje daje fokus polju; `Esc` i uspješno otvaranje vraćaju ga terminalu, a kad
+        Neovim ne radi stablu; klik ili `Tab` izvan ploče je zatvara bez premještanja fokusa;
+        neuspjelo otvaranje ostavlja ploču i vraća fokus u polje. `Terminal.svelte` ima `keepsFocus`
+        da kraj pokretanja Neovima ne otme fokus polju.
+      - Odluke `coder`-a izvan briefa: `↵` se ignorira dok se čeka odgovor (da se ne otvori rezultat
+        starog upita); zatvaranje vraća opseg na „svi projekti”; tekstovi `searchCountOne/Few/Many`
+        za hrvatsku množinu.
+      - Pretpostavka: `laststatus=2` i `cmdheight=1` (Neovimove zadane vrijednosti; `init.lua` ih ne
+        mijenja), pa su rezervirana dva retka (`tokens.search.reservedRows`).
+      - Nije provjereno okom: poravnanje s statusnom trakom, pomicanje popisa, `⌘P` dok je fokus u
+        ploči, `⌃P` u polju, zatvaranje klikom.
 - [ ] 7. Dimna provjera (`scripts/smoke.sh`)
 - [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
 

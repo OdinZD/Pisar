@@ -8,15 +8,29 @@
   import { PtyData } from '../../bindings/events'
   import { Resize, Start, Write } from '../../bindings/Pisar/editorservice'
   import { noTerminalFocus, type TerminalFocus } from '../lib/focus'
+  import { statusInset } from '../lib/searchLayout'
   import { createSerialSender } from '../lib/serialSender'
   import { fontStack } from '../theme/cssVars'
   import { nvimColorscheme } from '../theme/nvimColorscheme'
   import { terminalTheme } from '../theme/terminalTheme'
-  import { fontWeights, typography } from '../theme/tokens'
+  import { fontWeights, search, typography } from '../theme/tokens'
 
   // The controller learns the outcome of Start here; the terminal is unmounted by the parent when
-  // the editor stops, and no callback fires after that.
-  let { onstarted, onfailed }: { onstarted: () => void; onfailed: (err: unknown) => void } = $props()
+  // the editor stops, and no callback fires after that. `onlayout` reports, after every fit, how far
+  // above the bottom of the terminal Neovim's status line starts (the search panel sits there).
+  let {
+    onstarted,
+    onfailed,
+    onlayout,
+    keepsFocus,
+  }: {
+    onstarted: () => void
+    onfailed: (err: unknown) => void
+    onlayout?: (statusInsetPx: number) => void
+    // True while something else (the open search panel) has the keyboard on purpose: a start that
+    // finishes then must not pull it into the terminal.
+    keepsFocus?: () => boolean
+  } = $props()
 
   let container: HTMLDivElement
   let term: Terminal | undefined
@@ -124,6 +138,11 @@
       }
       calibrateLineHeight()
 
+      function reportLayout(): void {
+        const cell = cellHeight()
+        onlayout?.(cell === null ? 0 : statusInset(container.clientHeight, t.rows, cell, search.reservedRows))
+      }
+
       // fit() needs the renderer's cell size, which can be zero for a moment right after open().
       for (let attempt = 0; !fit.proposeDimensions(); attempt++) {
         if (attempt >= 30) throw new Error('terminal has no size to fit to')
@@ -131,6 +150,7 @@
         if (disposed) return
       }
       fit.fit()
+      reportLayout()
 
       // Output first: subscribe before Start, so nothing Neovim draws is missed.
       cleanups.push(Events.On(PtyData, (ev) => t.write(ev.data)))
@@ -183,6 +203,7 @@
         frame = requestAnimationFrame(() => {
           frame = 0
           fit.fit()
+          reportLayout()
           void pushSize()
         })
       })
@@ -203,7 +224,7 @@
       sent = { cols, rows }
       running = true
       onstarted()
-      t.focus()
+      if (!keepsFocus?.()) t.focus()
       void pushSize() // the window may have changed size while Start was running
     }
   })

@@ -94,3 +94,15 @@ export const spacing = {
   xl: 24,
 } as const
 export type SpacingToken = keyof typeof spacing
+
+// Behaviour of the search panel (DESIGN.md "Tražilica"). Not CSS variables: the row count reaches the
+// stylesheet as a component-local variable, the rest is read by code.
+export const search = {
+  // Results shown without scrolling.
+  visibleRows: 8,
+  // Quiet time after the last keystroke before the service is called.
+  debounceMs: 80,
+  // Rows at the bottom of the terminal that Neovim keeps for itself: the status line and the command
+  // line (laststatus=2 and cmdheight=1 are Neovim's defaults and init.lua does not change them).
+  reservedRows: 2,
+} as const
