@@ -28,6 +28,8 @@ export type ColorToken = keyof typeof colors
 export const fontFamilyNames = {
   ui: 'Inter',
   mono: 'JetBrains Mono',
+  // The preview page only; it lives in the preview frame, which has its own @font-face rules.
+  preview: 'Source Serif 4',
 } as const
 export type FontRole = keyof typeof fontFamilyNames
 
@@ -35,6 +37,7 @@ export type FontRole = keyof typeof fontFamilyNames
 export const fontFallbacks = {
   ui: 'system-ui, sans-serif',
   mono: 'monospace',
+  preview: 'ui-serif, Georgia, serif',
 } as const
 
 export const fontWeights = {
@@ -54,6 +57,12 @@ export const typography = {
   editorSize: 13,
   editorLineHeight: 21,
   docKindSize: 10,
+  previewSize: 14,
+  previewLineHeight: 22,
+  previewH1Size: 26,
+  previewH1LineHeight: 32,
+  previewH2Size: 18,
+  previewH2LineHeight: 24,
 } as const
 export type TypographyToken = keyof typeof typography
 
@@ -66,6 +75,14 @@ export const sizes = {
   radius: 6,
   // 2 px stays visible next to the 1 px borders and is the common minimum for a focus indicator.
   focusRingWidth: 2,
+  // Preview pane (DESIGN.md "Raspored" and "Pregled"). The pane is fixed; the editor takes the rest and
+  // never gets narrower than editorMinWidth. The preview closes itself below previewCollapseWidth
+  // (= treeWidth + previewWidth + editorMinWidth).
+  previewWidth: 400,
+  previewPageMaxWidth: 420,
+  previewPagePadding: 40,
+  previewCollapseWidth: 1100,
+  editorMinWidth: 460,
 } as const
 export type SizeToken = keyof typeof sizes
 

@@ -2,9 +2,10 @@
   import { strings } from '../strings'
   import { documentStatus, toolbarInfo } from '../lib/activeDocument'
   import type { EditorController } from '../lib/editorController.svelte'
+  import type { PreviewController } from '../lib/previewController.svelte'
   import type { TreeController } from '../lib/treeController.svelte'
 
-  let { tree, editor }: { tree: TreeController; editor: EditorController } = $props()
+  let { tree, editor, preview }: { tree: TreeController; editor: EditorController; preview: PreviewController } = $props()
 
   const conversion = $derived({ exports: editor.exports, opening: editor.opening, copyError: editor.copyError })
   const info = $derived(toolbarInfo(tree.projects, editor.active, editor.modified, strings.appName, conversion))
@@ -33,6 +34,20 @@
       <button type="button" disabled={editor.savingCopy} onclick={() => void editor.saveCopy()}>{strings.saveCopy}</button>
     {/if}
     <button type="button" disabled={!tree.canCreate} onclick={() => tree.startCreate()}>{strings.menuNewDocument}</button>
+    <!-- A toggle: pressed (filled with the accent) while the pane is open. The keyboard goes back to the terminal. -->
+    <button
+      type="button"
+      class="toggle"
+      aria-pressed={preview.open}
+      disabled={preview.narrow}
+      title={preview.narrow ? strings.previewTooNarrow : undefined}
+      onclick={() => {
+        preview.toggle()
+        editor.focusTerminal()
+      }}
+    >
+      {strings.previewToggle}
+    </button>
   </div>
 </header>
 
@@ -114,6 +129,11 @@
     background: var(--bg-chrome);
     color: var(--text);
     font: inherit;
+  }
+  button.toggle[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-text);
   }
   button:disabled {
     color: var(--text-muted);

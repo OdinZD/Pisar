@@ -2,7 +2,7 @@ import { colors, fontFallbacks, fontFamilyNames, fontWeights, sizes, spacing, ty
 
 // Naming rule: `--<group>-<token>` in kebab-case.
 //   colours      --bg-app, --border-strong, --accent-text   (dots become dashes)
-//   font stacks  --font-ui, --font-mono
+//   font stacks  --font-ui, --font-mono, --font-preview
 //   weights      --font-weight-regular (unitless)
 //   typography   --font-size-ui, --font-line-height-editor, --font-letter-spacing-section-title
 //   sizes        --size-toolbar-height   (px)
@@ -28,6 +28,7 @@ export function cssVariables(): Record<string, string> {
   for (const [k, v] of Object.entries(colors)) add(`--${kebab(k)}`, v)
   add('--font-ui', fontStack('ui'))
   add('--font-mono', fontStack('mono'))
+  add('--font-preview', fontStack('preview'))
   for (const [k, v] of Object.entries(fontWeights)) add(`--font-weight-${kebab(k)}`, String(v))
 
   const typeName: Record<keyof typeof typography, string> = {
@@ -38,6 +39,12 @@ export function cssVariables(): Record<string, string> {
     editorSize: '--font-size-editor',
     editorLineHeight: '--font-line-height-editor',
     docKindSize: '--font-size-doc-kind',
+    previewSize: '--font-size-preview',
+    previewLineHeight: '--font-line-height-preview',
+    previewH1Size: '--font-size-preview-h1',
+    previewH1LineHeight: '--font-line-height-preview-h1',
+    previewH2Size: '--font-size-preview-h2',
+    previewH2LineHeight: '--font-line-height-preview-h2',
   }
   for (const [k, v] of Object.entries(typography) as [keyof typeof typography, number | string][]) {
     add(typeName[k], typeof v === 'number' ? px(v) : v)

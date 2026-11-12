@@ -2,6 +2,10 @@ import interRegular from '../assets/fonts/Inter-Regular.woff2'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.woff2'
 import jetBrainsMonoBold from '../assets/fonts/JetBrainsMono-Bold.woff2'
 import jetBrainsMonoRegular from '../assets/fonts/JetBrainsMono-Regular.woff2'
+import sourceSerifBold from '../assets/fonts/SourceSerif4-Bold.woff2'
+import sourceSerifBoldItalic from '../assets/fonts/SourceSerif4-BoldItalic.woff2'
+import sourceSerifItalic from '../assets/fonts/SourceSerif4-Italic.woff2'
+import sourceSerifRegular from '../assets/fonts/SourceSerif4-Regular.woff2'
 import { fontFamilyNames, fontWeights, type FontRole, type FontWeightToken } from './tokens'
 
 export interface FontFaceSpec {
@@ -21,6 +25,28 @@ export function fontFaceSpecs(): FontFaceSpec[] {
     spec('ui', 'semibold', interSemiBold),
     spec('mono', 'regular', jetBrainsMonoRegular),
     spec('mono', 'bold', jetBrainsMonoBold),
+  ]
+}
+
+export interface PreviewFaceSpec extends FontFaceSpec {
+  style: 'normal' | 'italic'
+}
+
+/**
+ * The faces of the preview page. They are not loaded into the application's document: the preview
+ * frame declares them itself (previewFrame.ts), so they are not part of fontFaceSpecs().
+ * `url` is what the bundler made of the file, relative to the application's origin.
+ */
+export function previewFontFaceSpecs(): PreviewFaceSpec[] {
+  const face = (weight: FontWeightToken, style: PreviewFaceSpec['style'], url: string): PreviewFaceSpec => ({
+    ...spec('preview', weight, url),
+    style,
+  })
+  return [
+    face('regular', 'normal', sourceSerifRegular),
+    face('regular', 'italic', sourceSerifItalic),
+    face('bold', 'normal', sourceSerifBold),
+    face('bold', 'italic', sourceSerifBoldItalic),
   ]
 }
 

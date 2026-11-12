@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–4 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–5 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 5 (frontend — pregled)
+- Sljedeći korak: faza 4, korak 6 (frontend — tražilica)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 4)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 5)
 
 ## Priprema (2026-11-11)
 
@@ -1256,7 +1256,31 @@ event "menu:search" ""         // ⌘P
         može stići jedan zakašnjeli događaj (ignorirati kad je ploča zatvorena); nakon ponovnog
         učitavanja stranice treba pozvati `SetPreview` s trenutačnim stanjem; na `nvim:exit` prikaz
         briše frontend.
-- [ ] 5. Frontend — pregled: font, tokeni, `Preview.svelte`, gumb „Pregled”, raspored
+- [x] 5. Frontend — pregled. `Preview.svelte` s okvirom `sandbox="allow-same-origin"` (jedina dozvola);
+      `lib/previewFrame.ts` gradi dokument ljuske koji ide u `srcdoc` jednom: CSP `default-src 'none';
+      img-src data:; style-src 'unsafe-inline'; font-src <podrijetlo>; form-action 'none'; base-uri
+      'none'`, stil iz tokena, `@font-face` za četiri lica; `lib/previewWrite.ts` je jedino mjesto s
+      `innerHTML` i piše u spremnik `#page` u dokumentu okvira; `lib/previewState.ts` (prekidač,
+      ignoriranje sadržaja kad je ploča zatvorena, `nvim:exit`, gašenje ispod 1100 px bez
+      samopaljenja); gumb „Pregled” (`aria-pressed`, ispunjen akcentom; onemogućen ispod 1100 px);
+      raspored `Sidebar | EditorPane | Preview`. Font Source Serif 4 (4.005R, četiri woff2 + OFL) u
+      `assets/fonts`. Vitest 620.
+      - Pomak ostaje jer se okvir nikad ne učitava ponovno; dok se nove slike dekodiraju, spremnik
+        drži staru visinu (najviše 1 s). Isti HTML se ne piše dvaput. Pozivi `SetPreview` idu serijski.
+      - Podrijetlo za `font-src` je `protocol//host` (ne `location.origin`, koji je za prilagođenu
+        shemu u nekim motorima „null”); sve što nije točno `scheme://host[:port]` se odbija, a tada
+        okvir dobiva `font-src 'none'` i rezervni font.
+      - Zaštitni test `previewGuard.test.ts` pada na `{@html`, na `innerHTML` / `outerHTML` / `DOMParser`
+        / `document.write` izvan `previewWrite.ts` i na svaku `sandbox` dozvolu osim `allow-same-origin`.
+      - Klik u pregled vraća fokus terminalu (pravilo „terminal dobiva tipke”); tekst se može označiti
+        mišem, ali `⌘C` iz pregleda ne radi (meni „Kopiraj” poznaje samo terminal i polja za unos).
+      - Odluke `coder`-a izvan briefa: zatvaranje ploče briše sadržaj; ploča se montira samo dok je
+        otvorena (pri otvaranju pomak kreće od vrha); oko stranice je 16 px podloge, pa je stranica u
+        ploči od 400 px široka oko 368 px.
+      - Prošireni postojeći testovi (samo dodavanje): `cssVars.test.ts` (broj varijabli se računa iz
+        broja obitelji fonta; nove varijable pregleda), `fonts.test.ts` (lica i datoteke Source Serif 4).
+      - Nije provjereno okom: učitava li okvir font uz ovaj CSP u Wails prozoru, izgled stranice,
+        ponašanje pri osvježavanju, fokus.
 - [ ] 6. Frontend — tražilica: `SearchPanel.svelte`, tipke, fokus, opseg
 - [ ] 7. Dimna provjera (`scripts/smoke.sh`)
 - [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak

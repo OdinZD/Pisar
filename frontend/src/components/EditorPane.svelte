@@ -31,7 +31,9 @@
     display: flex;
     flex: 1;
     position: relative;
-    min-width: 0;
+    /* The preview takes its fixed width first; the editor keeps at least this much (the window is
+       never narrower than tree + preview + this while the preview is open). */
+    min-width: var(--size-editor-min-width);
     background: var(--bg-editor);
   }
 </style>
