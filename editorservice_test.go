@@ -750,6 +750,271 @@ func TestEdScheme(t *testing.T) {
 	}
 }
 
+// themeBlocks is where each theme's palette starts in tokens.ts.
+var themeBlocks = map[string]string{
+	"pisar":            `const pisar = {`,
+	"catppuccin-mocha": `const catppuccinMocha: Palette = {`,
+	"dracula":          `const dracula: Palette = {`,
+}
+
+// tokenColorIn is tokenColor limited to the palette of one theme.
+func tokenColorIn(t *testing.T, theme, token string) string {
+	t.Helper()
+	start, ok := themeBlocks[theme]
+	if !ok {
+		t.Fatalf("unknown theme %q", theme)
+	}
+	src := readString(t, filepath.Join("frontend", "src", "theme", "tokens.ts"))
+	i := strings.Index(src, "\n"+start)
+	if i < 0 {
+		t.Fatalf("palette of %q not found in tokens.ts", theme)
+	}
+	block := src[i+1:]
+	if end := regexp.MustCompile(`(?m)^\}`).FindStringIndex(block); end != nil {
+		block = block[:end[0]]
+	}
+	re := regexp.MustCompile(`(?m)^\s*'?` + regexp.QuoteMeta(token) + `'?:\s*'(#[0-9A-Fa-f]{6})'`)
+	m := re.FindStringSubmatch(block)
+	if m == nil {
+		t.Fatalf("token %q not found in the palette of %q", token, theme)
+	}
+	return m[1]
+}
+
+func TestEdSetSchemeTokens(t *testing.T) {
+	seen := map[string]string{}
+	for theme := range themeBlocks {
+		c := tokenColorIn(t, theme, "bg.editor")
+		if !regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`).MatchString(c) {
+			t.Errorf("%s: bg.editor = %q", theme, c)
+		}
+		if other, dup := seen[c]; dup {
+			t.Errorf("%s and %s have the same bg.editor %s", theme, other, c)
+		}
+		seen[c] = theme
+	}
+	if got, want := tokenColorIn(t, "pisar", "bg.editor"), tokenColor(t, "bg.editor"); got != want {
+		t.Errorf("tokenColorIn(pisar) = %s, tokenColor = %s", got, want)
+	}
+}
+
+// themeSample is the generator's real output for one theme.
+func themeSample(t *testing.T, theme string) string {
+	t.Helper()
+	return readString(t, filepath.Join("testdata", "colorscheme", theme+".lua"))
+}
+
+// normalNow reads Normal's fg and bg (decimal, as Neovim reports them) and
+// 'background' from the running Neovim.
+func (e *edEnv) normalNow() (fg, bg, background string) {
+	e.t.Helper()
+	got := e.eval(`[string(nvim_get_hl(0, {'name': 'Normal'}).fg), string(nvim_get_hl(0, {'name': 'Normal'}).bg), &background]`)
+	return got[0], got[1], got[2]
+}
+
+// decimal is a #RRGGBB colour the way Neovim reports it.
+func decimal(t *testing.T, c string) string {
+	t.Helper()
+	n, err := strconv.ParseUint(strings.TrimPrefix(c, "#"), 16, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strconv.FormatUint(n, 10)
+}
+
+// wantTheme checks that Neovim shows the colours of the theme.
+func (e *edEnv) wantTheme(theme, background string) {
+	e.t.Helper()
+	fg, bg, bgd := e.normalNow()
+	if want := decimal(e.t, tokenColorIn(e.t, theme, "text")); fg != want {
+		e.t.Errorf("%s: Normal fg = %s, want %s", theme, fg, want)
+	}
+	if want := decimal(e.t, tokenColorIn(e.t, theme, "bg.editor")); bg != want {
+		e.t.Errorf("%s: Normal bg = %s, want %s", theme, bg, want)
+	}
+	if bgd != background {
+		e.t.Errorf("%s: &background = %q, want %q", theme, bgd, background)
+	}
+}
+
+func TestEdSetSchemeBad(t *testing.T) {
+	needNvim(t)
+	good := sample(t)
+	const group = `vim.api.nvim_set_hl(0, "X", `
+	cases := []struct{ name, text string }{
+		{"extra code line", good + "os.execute(\"x\")\n"},
+		{"unknown key", good + group + "{ foo = true })\n"},
+		{"background dark with code after it", withBackground(good, `vim.o.background = "dark"; os.exit()`)},
+		{"NUL", good + "\x00"},
+		{"invalid UTF-8", good + "\xff\xfe\n"},
+		{"too large", good + strings.Repeat("\n", config.DefaultMaxColorscheme)},
+		{"empty", ""},
+	}
+	t.Run("not started", func(t *testing.T) {
+		for _, c := range cases {
+			e := newEd(t)
+			err := e.svc.SetColorscheme(context.Background(), c.text)
+			if !errors.Is(err, errInvalidColorscheme) {
+				t.Errorf("%s: error = %v, want errInvalidColorscheme", c.name, err)
+			}
+			if exists(filepath.Join(e.home, "nvim")) {
+				t.Errorf("%s: something was written under <home>/nvim", c.name)
+			}
+			if e.svc.session.Running() {
+				t.Errorf("%s: Neovim was started", c.name)
+			}
+		}
+	})
+	t.Run("running", func(t *testing.T) {
+		e := startEd(t)
+		file := e.paths().ColorschemeFile
+		before := readString(t, file)
+		for _, c := range cases {
+			err := e.svc.SetColorscheme(context.Background(), c.text)
+			if !errors.Is(err, errInvalidColorscheme) {
+				t.Errorf("%s: error = %v, want errInvalidColorscheme", c.name, err)
+			}
+			if got := readString(t, file); got != before {
+				t.Errorf("%s: the colorscheme file changed", c.name)
+			}
+		}
+		e.wantTheme("pisar", "light")
+	})
+}
+
+func TestEdSetSchemeStopped(t *testing.T) {
+	e := newEd(t) // Start is never called
+	dark := themeSample(t, "dracula")
+	if err := e.svc.SetColorscheme(context.Background(), dark); err != nil {
+		t.Fatalf("SetColorscheme: %v", err)
+	}
+	file := e.paths().ColorschemeFile
+	if got := readString(t, file); got != dark {
+		t.Error("the colorscheme file differs from the text given")
+	}
+	if info, err := os.Stat(file); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("%s: %v %v", file, info, err)
+	}
+	if info, err := os.Stat(filepath.Dir(file)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("folder: %v %v", info, err)
+	}
+	if exists(e.paths().InitLua) {
+		t.Error("init.lua was written")
+	}
+	if e.svc.session.Running() {
+		t.Error("Neovim was started")
+	}
+	// A second call replaces the file.
+	if err := e.svc.SetColorscheme(context.Background(), sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if got := readString(t, file); got != sample(t) {
+		t.Error("the file was not replaced")
+	}
+}
+
+func TestEdSetScheme(t *testing.T) {
+	e := startEd(t)
+	e.wantTheme("pisar", "light")
+	for _, c := range []struct{ theme, background string }{
+		{"dracula", "dark"},
+		{"pisar", "light"},
+		{"catppuccin-mocha", "dark"},
+	} {
+		text := themeSample(t, c.theme)
+		if err := e.svc.SetColorscheme(context.Background(), text); err != nil {
+			t.Fatalf("SetColorscheme(%s): %v", c.theme, err)
+		}
+		if got := readString(t, e.paths().ColorschemeFile); got != text {
+			t.Errorf("%s: the file differs from the text given", c.theme)
+		}
+		e.wantTheme(c.theme, c.background)
+	}
+}
+
+// A call made while Neovim waits at a hit-enter prompt is not an error: the file
+// is written and Neovim applies the change when the prompt closes.
+func TestEdSetSchemePrompt(t *testing.T) {
+	const short = 400 * time.Millisecond
+	e := startEd(t, func(d *editorServiceDeps) { d.Limits.CommandTimeout = short })
+	e.rec.waitName(t, 0, eventPtyData)
+	e.wantTheme("pisar", "light")
+
+	from := e.rec.mark()
+	if err := e.svc.Write(":echo \"one\\ntwo\"\r"); err != nil {
+		t.Fatal(err)
+	}
+	// The prompt is on screen when its text has arrived; Neovim then waits for a key.
+	e.rec.wait(t, from, "the hit-enter prompt", func(recorded) bool {
+		var screen strings.Builder
+		for _, ev := range e.rec.since(from) {
+			if s, ok := ev.data.(string); ok && ev.name == eventPtyData {
+				screen.WriteString(s)
+			}
+		}
+		return strings.Contains(screen.String(), "ENTER")
+	})
+
+	dark := themeSample(t, "dracula")
+	start := time.Now()
+	if err := e.svc.SetColorscheme(context.Background(), dark); err != nil {
+		t.Fatalf("SetColorscheme at a prompt: %v", err)
+	}
+	if took := time.Since(start); took < short/2 {
+		t.Errorf("returned after %v: Neovim was not at a prompt", took)
+	}
+	if got := readString(t, e.paths().ColorschemeFile); got != dark {
+		t.Error("the colorscheme file was not written")
+	}
+
+	if err := e.svc.Write("\r"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(edWait)
+	for {
+		if _, _, background := e.normalNow(); background == "dark" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Neovim did not apply the colorscheme after the prompt closed")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	e.wantTheme("dracula", "dark")
+}
+
+// Start and SetColorscheme may run at the same time (a theme switch while the
+// page loads): no race, and the file ends up as one of the two texts.
+func TestEdSetSchemeRace(t *testing.T) {
+	needNvim(t)
+	e := newEd(t)
+	light, dark := themeSample(t, "pisar"), themeSample(t, "dracula")
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs <- e.svc.Start(context.Background(), 100, 30, light)
+	}()
+	go func() {
+		defer wg.Done()
+		errs <- e.svc.SetColorscheme(context.Background(), dark)
+	}()
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("a call failed: %v", err)
+		}
+	}
+	if got := readString(t, e.paths().ColorschemeFile); got != light && got != dark {
+		t.Error("the colorscheme file is neither of the two texts")
+	}
+	if entries, err := os.ReadDir(filepath.Dir(e.paths().ColorschemeFile)); err != nil || len(entries) != 1 {
+		t.Errorf("colors folder: %v %v", entries, err)
+	}
+}
+
 // docFixture is a project with one file of each kind.
 func docFixture(t *testing.T, e *edEnv) (config.Project, string) {
 	t.Helper()

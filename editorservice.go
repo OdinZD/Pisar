@@ -456,7 +456,8 @@ func (e *EditorService) writeConfig(colorscheme string) error {
 
 // Start launches Neovim at the given size with the colorscheme the frontend
 // generated, or, when Neovim already runs (the page was reloaded), only resizes
-// it and repaints; the colorscheme is then left as it is.
+// it and repaints; the colorscheme of the running Neovim is then left as it is
+// (a theme switch while Neovim runs goes through SetColorscheme).
 func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme string) error {
 	slog.Debug("service call", "method", "Start", "cols", cols, "rows", rows, "colorscheme_bytes", len(colorscheme))
 	// Checked first: Neovim executes this text, so nothing is written and nothing
@@ -527,6 +528,64 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 		if err := e.session.OpenFile(ctx, file); err != nil {
 			return failEditor("open initial document", err)
 		}
+	}
+	return nil
+}
+
+// SetColorscheme replaces the colorscheme while the application runs (a theme switch).
+// The text is checked like Start's, then colors/pisar.lua is rewritten atomically
+// and, when Neovim runs, it is told to load the file again. Without a running
+// Neovim only the file changes: the next Start writes the colorscheme it is given.
+// A Neovim that waits at a prompt does not answer, but keeps the call queued and
+// applies it when the prompt is closed (see nvim.Process.Colorscheme), so that
+// is not reported as a failure.
+func (e *EditorService) SetColorscheme(ctx context.Context, colorscheme string) error {
+	slog.Debug("service call", "method", "SetColorscheme", "colorscheme_bytes", len(colorscheme))
+	// Checked first, for the same reason as in Start: Neovim executes this text.
+	if err := checkColorscheme(colorscheme, e.limits.MaxColorscheme); err != nil {
+		return failEditor("set colorscheme", err)
+	}
+	if e.isClosed() {
+		return failEditor("set colorscheme", term.ErrClosed)
+	}
+	if err := e.replaceColorscheme(colorscheme); err != nil {
+		return failEditor("set colorscheme", err)
+	}
+	if !e.session.Running() {
+		return nil // the file is in place; Start writes its own text anyway
+	}
+
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	err := e.session.Colorscheme(ctx)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.DeadlineExceeded):
+		// Neovim does not answer while it waits for a key, but the call stays in
+		// its queue and runs when the prompt closes; the file is already written.
+		slog.Info("editor: Neovim is at a prompt; the new colorscheme is applied when it closes")
+		return nil
+	case errors.Is(err, nvim.ErrNotRunning):
+		// Neovim ended in the meantime; the next Start uses the file or rewrites it.
+		slog.Info("editor: Neovim ended before it loaded the new colorscheme")
+		return nil
+	}
+	return failEditor("set colorscheme", err)
+}
+
+// replaceColorscheme writes colors/pisar.lua under startMu, so that the write
+// does not interleave with Start's. init.lua and the dictionary are not touched.
+// The lock is not held while Neovim reloads the file: that may wait for a prompt.
+func (e *EditorService) replaceColorscheme(colorscheme string) error {
+	e.startMu.Lock()
+	defer e.startMu.Unlock()
+	dir := filepath.Dir(e.paths.ColorschemeFile)
+	if err := os.MkdirAll(dir, nvimDirPerm); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	if err := writeFileAtomic(e.paths.ColorschemeFile, []byte(colorscheme), nvimFilePerm); err != nil {
+		return fmt.Errorf("write colorscheme: %w", err)
 	}
 	return nil
 }

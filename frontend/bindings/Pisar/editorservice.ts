@@ -83,6 +83,19 @@ export function SaveCopy(): $CancellablePromise<void> {
 }
 
 /**
+ * SetColorscheme replaces the colorscheme while the application runs (a theme switch).
+ * The text is checked like Start's, then colors/pisar.lua is rewritten atomically
+ * and, when Neovim runs, it is told to load the file again. Without a running
+ * Neovim only the file changes: the next Start writes the colorscheme it is given.
+ * A Neovim that waits at a prompt does not answer, but keeps the call queued and
+ * applies it when the prompt is closed (see nvim.Process.Colorscheme), so that
+ * is not reported as a failure.
+ */
+export function SetColorscheme(colorscheme: string): $CancellablePromise<void> {
+    return $Call.ByID(3722465148, colorscheme);
+}
+
+/**
  * SetPreview tells the editor whether the preview pane is open. While it is,
  * the editor sends preview:content after the first change and after every
  * pause in typing; the call itself gives one refresh. It may be repeated (a
@@ -98,7 +111,8 @@ export function SetPreview(enabled: boolean): $CancellablePromise<void> {
 /**
  * Start launches Neovim at the given size with the colorscheme the frontend
  * generated, or, when Neovim already runs (the page was reloaded), only resizes
- * it and repaints; the colorscheme is then left as it is.
+ * it and repaints; the colorscheme of the running Neovim is then left as it is
+ * (a theme switch while Neovim runs goes through SetColorscheme).
  */
 export function Start(cols: number, rows: number, colorscheme: string): $CancellablePromise<void> {
     return $Call.ByID(4057299268, cols, rows, colorscheme);
