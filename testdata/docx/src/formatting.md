@@ -23,4 +23,11 @@ Odlomak s **podebljanim**, *nagnutim* i `neproporcionalnim` tekstom te [poveznic
 <w:p><w:r><w:t xml:space="preserve">Crta slijedi: </w:t></w:r><w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice Requires="wps"><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="1440000" cy="0"/><wp:docPr id="78" name="Straight Connector 1"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvCnPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1440000" cy="0"/></a:xfrm><a:prstGeom prst="line"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:line id="Straight Connector 1" o:spid="_x0000_s1026" style="position:absolute" from="0,0" to="113pt,0"/></w:pict></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t xml:space="preserve"> i tekst iza nje.</w:t></w:r></w:p>
 ```
 
+Voda je H~2~O, a energija je $E = mc^2$.
+
+```{=openxml}
+<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>Odlomak sa stilom Title.</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Quote"/></w:pPr><w:r><w:t>Odlomak sa stilom Quote.</w:t></w:r></w:p>
+```
+
 Završni odlomak.

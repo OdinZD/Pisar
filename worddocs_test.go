@@ -149,6 +149,17 @@ func (h *hookFiles) Replace(ctx context.Context, src, dst string, expect docsafe
 	return res, err
 }
 
+// failBackupFiles makes the saving of the user's text fail, as a full disk would.
+type failBackupFiles struct {
+	wordFiles
+	calls atomic.Int32
+}
+
+func (f *failBackupFiles) BackupText(context.Context, string, string) (string, error) {
+	f.calls.Add(1)
+	return "", errors.New("disk full")
+}
+
 type wordEnv struct {
 	t       *testing.T
 	user    string
@@ -995,12 +1006,59 @@ func TestWordDocsExportConflict(t *testing.T) {
 		if err != nil || serr != nil || wc.Meta.Dirty || !wc.Meta.Snapshot.Same(snap) {
 			t.Errorf("meta.json = %+v (%v, %v)", wc.Meta, err, serr)
 		}
-		if len(backupFiles(t, e)) != 0 {
-			t.Error("reloading must not back anything up")
+		// The text survives the closing of the document: it is a Markdown copy in
+		// the backup folder, and nothing else is backed up (the file on disk is
+		// not touched by a reload).
+		copies := backupFiles(t, e)
+		if len(copies) != 1 || !strings.HasSuffix(copies[0], "-basic.docx.md") {
+			t.Fatalf("backups after a reload = %q, want one Markdown copy", copies)
 		}
+		sameBytes(t, copies[0], mine)
+		if err := e.docs.close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		mustNotExist(t, d.dir)        // nothing unsaved: the working folder is gone ...
+		sameBytes(t, copies[0], mine) // ... the copy is not
+		m2 := e.manager(nil, nil)
+		if err := m2.sweep(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		sameBytes(t, copies[0], mine)
 		// A second reload replaces doc.prev.md.
 		if _, err := e.docs.export(t.Context(), d); !errors.Is(err, docsafe.ErrReadOnly) {
 			t.Errorf("export of the read-only reload: %v", err)
+		}
+	})
+	t.Run("reload without a saved copy of the text does not happen", func(t *testing.T) {
+		e := newWordEnv(t)
+		p := fixture(t, "basic.docx", e.user)
+		hc := &hookConverter{wordConverter: e.conv}
+		bf := &failBackupFiles{}
+		m := e.manager(hc, func(f wordFiles) wordFiles { bf.wordFiles = f; return bf })
+		d := mustOpen(t, m, p)
+		edit(t, m, d, newText)
+		external := replaceWith(t, p, "comments.docx")
+		mine := readFile(t, d.markdownPath())
+		convCalls := hc.docxToMdCalls.Load()
+		e.dlg.conflicts = []conflictChoice{conflictReload}
+		if _, err := m.export(t.Context(), d); err == nil {
+			t.Fatal("expected an error")
+		}
+		if bf.calls.Load() != 1 {
+			t.Errorf("BackupText called %d times", bf.calls.Load())
+		}
+		if hc.docxToMdCalls.Load() != convCalls {
+			t.Error("the file was loaded although the text was not saved")
+		}
+		sameBytes(t, d.markdownPath(), mine)
+		mustNotExist(t, filepath.Join(d.dir, "doc.prev.md"))
+		mustExist(t, filepath.Join(d.dir, "reference.docx"))
+		if !d.view().Dirty {
+			t.Error("Dirty was cleared")
+		}
+		sameBytes(t, p, external)
+		if got := backupFiles(t, e); len(got) != 0 {
+			t.Errorf("backups = %q", got)
 		}
 	})
 	t.Run("reload fails", func(t *testing.T) {

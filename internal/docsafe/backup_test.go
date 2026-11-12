@@ -2,6 +2,7 @@ package docsafe
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -288,5 +289,157 @@ func TestBackup_RejectsACopyThatDoesNotMatch(t *testing.T) {
 	}
 	if got := backupFiles(t, e.backups); len(got) != 0 {
 		t.Errorf("a bad backup was left behind: %q", got)
+	}
+}
+
+// textCopies are the Markdown copies of the user's text in the backup folder of dst.
+func textCopies(t *testing.T, e *env, dst string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range backupFiles(t, e.ops.backupDirFor(dst)) {
+		if strings.HasSuffix(f, textBackupExt) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func TestBackupText_CopyIsMadeLikeABackup(t *testing.T) {
+	e := newEnv(t, 5)
+	dst := e.doc("Pismo.docx", "word")
+	src := e.src("my # text")
+
+	got, err := e.ops.BackupText(context.Background(), src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read(t, got) != "my # text" {
+		t.Errorf("content = %q", read(t, got))
+	}
+	if want := "20261111T120000.000000000-Pismo.docx.md"; filepath.Base(got) != want {
+		t.Errorf("name = %q, want %q", filepath.Base(got), want)
+	}
+	if !strings.HasSuffix(got, ".md") {
+		t.Errorf("name %q does not end in .md", got)
+	}
+	if filepath.Dir(got) != e.ops.backupDirFor(dst) {
+		t.Errorf("copy in %q, want the folder of the document's backups %q", filepath.Dir(got), e.ops.backupDirFor(dst))
+	}
+	fi, err := os.Stat(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("file mode = %v, want 0600", fi.Mode().Perm())
+	}
+	if read(t, src) != "my # text" {
+		t.Error("the source was changed")
+	}
+}
+
+func TestBackupText_RotationIsSeparateFromDocxBackups(t *testing.T) {
+	e := newEnv(t, 2)
+	dst := e.doc("Pismo.docx", "v0")
+	ctx := context.Background()
+
+	// Interleave both kinds; each keeps its own 2 newest.
+	for i := 1; i <= 4; i++ {
+		external(t, dst, "ext"+string(rune('0'+i)))
+		if _, err := e.replace(dst, "own"+string(rune('0'+i))); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.ops.BackupText(ctx, e.src("text"+string(rune('0'+i))), dst); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var docx []string
+	for _, f := range backupFiles(t, e.ops.backupDirFor(dst)) {
+		if strings.HasSuffix(f, "-Pismo.docx") {
+			docx = append(docx, f)
+		}
+	}
+	if got := contents(t, docx); !reflect.DeepEqual(got, []string{"ext3", "ext4"}) {
+		t.Errorf("docx backups = %q, want the 2 newest", got)
+	}
+	if got := contents(t, textCopies(t, e, dst)); !reflect.DeepEqual(got, []string{"text3", "text4"}) {
+		t.Errorf("text copies = %q, want the 2 newest", got)
+	}
+}
+
+func TestBackupText_TextCopiesDoNotCountAgainstDocxBackups(t *testing.T) {
+	e := newEnv(t, 1)
+	dst := e.doc("Pismo.docx", "v0")
+	if _, err := e.replace(dst, "own"); err != nil { // backs up v0
+		t.Fatal(err)
+	}
+	for _, c := range []string{"a", "b", "c"} {
+		if _, err := e.ops.BackupText(context.Background(), e.src(c), dst); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := contents(t, backupFiles(t, e.backups)); len(got) != 2 {
+		t.Errorf("files = %q, want the docx backup and one text copy", got)
+	}
+	var docx []string
+	for _, f := range backupFiles(t, e.ops.backupDirFor(dst)) {
+		if !strings.HasSuffix(f, textBackupExt) {
+			docx = append(docx, f)
+		}
+	}
+	if got := contents(t, docx); !reflect.DeepEqual(got, []string{"v0"}) {
+		t.Errorf("docx backups = %q, want [v0]", got)
+	}
+}
+
+func TestBackupText_NeedsBackupsDir(t *testing.T) {
+	e := newEnv(t, 5)
+	src := e.src("text")
+	for _, c := range []struct {
+		name string
+		opts Options
+	}{
+		{"no BackupsDir", Options{TrashBin: "t", Timeout: time.Second, MaxBackups: 3}},
+		{"no MaxBackups", Options{TrashBin: "t", Timeout: time.Second, BackupsDir: e.backups}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ops, err := New(c.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ops.BackupText(context.Background(), src, filepath.Join(e.user, "Pismo.docx")); err == nil {
+				t.Fatal("want an error")
+			}
+			if got := backupFiles(t, e.backups); len(got) != 0 {
+				t.Errorf("files were made: %q", got)
+			}
+		})
+	}
+}
+
+func TestBackupText_FailureLeavesNoPartialFile(t *testing.T) {
+	e := newEnv(t, 5)
+	dst := e.doc("Pismo.docx", "v0")
+	src := e.src(strings.Repeat("y", 3*copyBufSize))
+
+	e.ops.fail = func(stage string) error {
+		if stage == stageBackupText {
+			return errors.New("injected")
+		}
+		return nil
+	}
+	if _, err := e.ops.BackupText(context.Background(), src, dst); err == nil {
+		t.Fatal("want an error")
+	}
+	if got := backupFiles(t, e.backups); len(got) != 0 {
+		t.Errorf("leftovers: %q", got)
+	}
+
+	// A missing source fails before anything is made.
+	e.ops.fail = nil
+	if _, err := e.ops.BackupText(context.Background(), filepath.Join(e.work, "nope.md"), dst); err == nil {
+		t.Fatal("want an error for a missing source")
+	}
+	if got := backupFiles(t, e.backups); len(got) != 0 {
+		t.Errorf("leftovers: %q", got)
 	}
 }

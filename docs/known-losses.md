@@ -24,7 +24,9 @@ izvornik ostaje netaknut).
 | komentari | tekst komentara i oznaka raspona nestaju | `comments.docx` |
 | praćene izmjene | umetnuti tekst se prihvati, obrisani nestane; zapis izmjene nestaje | `tracked-changes.docx` |
 | tekstualni okvir | tekst okvira postaje običan odlomak, okvir nestaje | `textbox.docx` |
-| graf, SmartArt, ugrađeni objekt | nestaje, ostaje samo okolni tekst | `chart.docx` |
+| graf | nestaje, ostaje samo okolni tekst | `chart.docx` |
+| SmartArt | nestaje, ostaje samo okolni tekst | mjereno na ručno složenom XML-u (pandoc 3.13); nema probnog dokumenta |
+| ugrađeni objekt (OLE) | podaci objekta nestaju; ako objekt ima sliku pregleda, ona ostaje kao obična slika | mjereno na ručno složenom XML-u; nema probnog dokumenta |
 | tablica koju Markdown ne može zapisati | izlazi kao sirovi HTML, koji se pri spremanju gubi | zaštita u kodu; pandoc 3.13 u grid tablicama podnosi i spojene ćelije, pa se nije dogodilo ni na jednom dokumentu |
 
 Samo za čitanje su i dokumenti koje se ne smije prepisati iz drugih razloga: datoteka bez dozvole
@@ -92,7 +94,7 @@ prenose se:
 - ACL-ovi, vlasnik i grupa (nova datoteka pripada korisniku koji sprema)
 - vrijeme stvaranja
 - identitet datoteke (inode): alias ili zabilješka koja pokazuje na staru datoteku može puknuti
-- BSD zastavice osim zaključanosti (npr. „skriveno”)
+- BSD zastavice (npr. „skriveno”). Zaključana datoteka se uopće ne prepisuje: otvara se samo za čitanje
 - atribut `com.apple.provenance`, koji sustav postavlja sam
 
 ## 6. Što ostaje sačuvano

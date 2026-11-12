@@ -116,6 +116,8 @@ func TestUITextSaveFailures(t *testing.T) {
 	for name, v := range map[string]string{
 		"errorConflict": text.ErrorConflict, "errorConvertFailed": text.ErrorConvertFailed,
 		"errorPandocMissing": text.ErrorPandocMissing, "errorReadOnly": text.ErrorReadOnly,
+		"errorDamagedWork": text.ErrorDamagedWork, "errorDocumentTooLarge": text.ErrorDocumentTooLarge,
+		"errorNotWord": text.ErrorNotWord,
 	} {
 		if strings.TrimSpace(v) == "" {
 			t.Errorf("%s is empty", name)

@@ -486,8 +486,14 @@ func TestWdConflict(t *testing.T) {
 	if unsaved, err := w.svc.unsaved(context.Background(), path); err != nil || unsaved {
 		t.Errorf("unsaved after Reload = %v, %v", unsaved, err)
 	}
-	if w.backupCount() != 0 {
-		t.Error("a backup was made although nothing was overwritten")
+	// Nothing was overwritten, so the file is not backed up; the only copy is
+	// the Markdown of the user's text, which has to outlive the working folder.
+	copies, err := filepath.Glob(filepath.Join(w.store.BackupsDir(), "*", "*-basic.docx.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := w.backupCount(); n != 1 || len(copies) != 1 {
+		t.Errorf("backups = %d, of them Markdown copies of the text = %d; want just that one copy", n, len(copies))
 	}
 }
 

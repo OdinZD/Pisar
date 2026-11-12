@@ -169,6 +169,12 @@ func (g *quitGate) saveFailure(err error) string {
 		return g.text.ErrorPandocMissing
 	case codeReadOnly:
 		return g.text.ErrorReadOnly
+	case codeDamagedWork:
+		return g.text.ErrorDamagedWork
+	case codeDocumentTooLarge:
+		return g.text.ErrorDocumentTooLarge
+	case codeNotWord:
+		return g.text.ErrorNotWord
 	}
 	if ae.cause != nil {
 		return ae.cause.Error()

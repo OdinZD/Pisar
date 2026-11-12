@@ -11,7 +11,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 3, korak 10 (dokazi, ručna provjera, `plan-reviewer`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, korak 8c)
+- Zadnja izmjena: 2026-11-12 (faza 3, ispravci nakon pregleda, krug 1)
 
 ## Priprema (2026-11-11)
 
@@ -921,7 +921,7 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       da pandoc bez filtra stvarno da ugniježđenu poveznicu; test to dokumentira). U krugu `toc.docx`
       prvi i drugi Markdown razlikuju se samo klasom `.TOC-Heading` na naslovu sadržaja; drugi, treći i
       četvrti su isti. Novi kod pojednostavljenja `drawings` (`wps:wsp`, `wpg:wgp`); `formatting.docx`
-      ima crtanu liniju. Skripta ima 38 provjera; vitest 538.
+      ima crtanu liniju. Skripta ispisuje 65 redaka `ok` (57 poziva `check`); vitest 538.
       - Izmijenjeni postojeći testovi: `TestDocxToMarkdownCalls` (argumenti imaju `--lua-filter=`);
         `TestRoundTrip` (dodan `toc` s jednom dopuštenom razlikom prvog kruga); `TestExamineSimplified`,
         `TestExamineKeepsReadingAfterTheLosses`, `TestExamineFixtures` (deseti kod); u glavnom paketu
@@ -945,13 +945,69 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         retka) pandoc čita kao nastavak fusnote. Svojstvo Markdowna; ide u `docs/known-losses.md`.
 - [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
 
+### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
+
+`plan-reviewer` je sam pokrenuo sve provjere (sve prolaze) i našao pet stavki za ispravak:
+
+1. Tekst koji „Učitaj ponovno” ostavlja kao `doc.prev.md` brisao se pri zatvaranju dokumenta (radna
+   kopija nakon učitavanja nije `Dirty`), a dijalog je tvrdio da ostaje. **Ispravak u kodu:** novi
+   `docsafe.BackupText` sprema korisnikov Markdown u mapu sigurnosnih kopija dokumenta
+   (`<vrijeme>-<ime>.md`, vlastita rotacija, odvojena od `.docx` kopija) PRIJE učitavanja; ako to ne
+   uspije, učitavanje se ne radi. Tekst dijaloga sada to i kaže. `doc.prev.md` ostaje u radnoj mapi
+   do zatvaranja, kako piše u planu. Namjerno izmijenjene tvrdnje: `TestWdConflict` i podtest „reload”
+   u `worddocs_test.go` su tvrdili da „Učitaj ponovno” ne radi nikakvu kopiju; sada traže točno jednu
+   `.md` kopiju s korisnikovim tekstom.
+2. Dijalog pri gašenju imao je hrvatski tekst samo za četiri koda Wordovih grešaka. Dodani su
+   `damaged-work`, `document-too-large`, `not-word`. Greške Neovima i `internal` i dalje pokazuju
+   tekst uzroka (kao u fazi 2); tvrdnja „s hrvatskom porukom” u koraku 6b vrijedi za kodove Wordovih
+   grešaka, ne za sve.
+3. `docs/known-losses.md` je za ugrađeni objekt tvrdio da nestaje; ispravljeno (slika pregleda
+   ostaje, podaci nestaju), a za SmartArt i OLE piše da su mjereni na ručno složenom XML-u, bez
+   probnog dokumenta.
+4. Krug za uvezeni `.doc`: `legacy` je dodan u `TestRoundTrip` (Markdown stabilan).
+5. Datoteke izvan tablice plana nisu bile zapisane kao odstupanje: zapisane su niže.
+
+Uz to, iz napomena pregleda: `TestFormattingIsLostInSave` sada dokazuje i crtani oblik, indeks i
+formulu (ostaju) te stilove `Title` i `Quote` (postaju `BodyText`); podtest u `TestRealToolFailures`
+čije je ime tvrdilo da pokreće `textutil` preimenovan je u ono što stvarno provjerava; ispravljen je
+broj provjera skripte i redak o BSD zastavicama.
+
+### Odstupanja od plana faze (datoteke i ponašanje)
+
+Uz odstupanja zapisana uz pojedine korake:
+
+- **Datoteke izvan tablice „Datoteke” u planu:** novi `worddocs.go`, `editorwords.go` (i testovi) u
+  glavnom paketu (plan je naveo samo „uredi `editorservice.go`”; logika je izdvojena da datoteka
+  usluge ne naraste i da se dio bez Neovima može testirati sam); `internal/term/session.go` (+ test)
+  za `SetReadOnly` i `Reload`; generirani `frontend/bindings/**`; `internal/convert/filters/`.
+- **`internal/nvim`:** plan je dopustio izmjene „samo za buffer samo-za-čitanje”. Dodan je i `Reload`
+  (treba ga „Učitaj ponovno”), a traženje buffera po putanji izdvojeno je iz `Wipe` u zajednički
+  `findLua` da ga koriste sve tri metode (mala izmjena postojećeg koda, bez promjene ponašanja).
+- **Planirane, a nedirane datoteke:** `menu.go` (nema nove stavke menija; „Spremi kao kopiju” je gumb u
+  traci), `Sidebar.svelte` (otvaranje je u kontrolerima), `nvim/init.lua` (stanje samo-za-čitanje
+  postavlja Go kroz RPC).
+- **Krug `.docx → .md → .docx → .md`** nije na „svim probnim dokumentima”, kako piše u koraku 3 plana,
+  nego na onima koji se smiju spremati; dokumenti samo za čitanje (`comments`, `tracked-changes`,
+  `textbox`, `chart`) nikad se ne spremaju, pa za njih postoji samo golden čitanja.
+- **Konstante izvan `internal/config`:** tehničke granice u paketima (`maxXMLDepth`, `maxToolOutput`,
+  `killGrace`, `maxFieldDepth`, `maxInstrBytes`, `maxLabelBytes`, `copyBufSize`, `maxWorkMetaBytes`,
+  `xattrRetries`, deset pokušaja slučajnog imena) nisu u `config`-u; tamo su granice koje imaju
+  smisla kao postavke (rokovi, broj backupa, veličine arhive, broj pokušaja izvoza). Isti je presedan
+  u ranijim fazama (`maxNameBytes`). `CLAUDE.md` kaže „nema hardkodiranih limita”, pa je ovo za
+  vlasnikovu odluku.
+- **`CreateNew` bez tvrdih linkova:** na volumenu koji ih ne podržava ime se zauzima provjerom pa
+  preimenovanjem; datoteka nastala između ta dva koraka bila bi prepisana (mali prozor, samo na takvom
+  volumenu; isto vrijedi za `Rename` iz faze 1).
+- **Preimenovanje `.docx` → `.doc`:** `docsafe.Rename` odbija promjenu vrste dokumenta, pa otvoreni
+  `.docx` ne može dobiti nastavak `.doc` kroz Pisar; `wordDocs.renamed` zato nema vlastitu zaštitu.
+
 ### Dokazi po kriterijima (2026-11-12)
 
-Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit `9eb43fe`).
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (nakon ispravaka iz kruga 1 pregleda).
 
 - `go test -count=1 -race ./...` → svi paketi `ok`; `task test` → exit 0 (vitest `Tests 538 passed`);
   `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`; `task build` → exit 0;
-  `bash scripts/make-fixtures.sh` → `all checks passed` (38 provjera, izlaz bajt-stabilan);
+  `bash scripts/make-fixtures.sh` → `all checks passed` (65 redaka `ok`, izlaz bajt-stabilan);
   `bash scripts/smoke.sh` → `smoke: all checks passed` (63 provjere); `bash scripts/shutdown.sh` →
   `shutdown: all checks passed`.
 - Go testovi (`go test -list`): `Pisar` 127, `config` 28, `convert` 55, `docsafe` 87, `nvim` 55,
@@ -973,8 +1029,9 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit `9
    `TestWdSave`, `smoke.sh`.
 3. Golden round-trip i `docs/known-losses.md`: `go test ./internal/convert/...` (golden za 10 probnih
    dokumenata, krug za `basic`, `complex-table`, `header-image`, `formatting`, `toc`);
-   `TestFormattingIsLostInSave`, `TestChartIsLostInSave` dokazuju stavke iz dokumenta;
-   `docs/known-losses.md` uz to nosi mjerenje na pet vlasnikovih dokumenata.
+   `TestFormattingIsLostInSave` i `TestChartIsLostInSave` dokazuju stavke koje imaju probni dokument
+   (ostale su mjerene ručno i tako označene u dokumentu);
+   `docs/known-losses.md` uz to nosi mjerenje na pet vlasnikovih dokumenata. Krug je i za uvezeni `legacy`.
 4. Komentari i praćene izmjene samo za čitanje, s razlogom: `TestInspectFixtures`,
    `TestWordDocsOpenReadOnlyReasons`, `TestWdReadOnly` (buffer se ne da mijenjati, `Save` →
    `read-only`, `:w!` ne mijenja datoteku), `smoke.sh` (slučaj B); razlog u traci `documentStatus`

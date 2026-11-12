@@ -41,6 +41,9 @@ type uiText struct {
 	ErrorConvertFailed    string `json:"errorConvertFailed"`
 	ErrorPandocMissing    string `json:"errorPandocMissing"`
 	ErrorReadOnly         string `json:"errorReadOnly"`
+	ErrorDamagedWork      string `json:"errorDamagedWork"`
+	ErrorDocumentTooLarge string `json:"errorDocumentTooLarge"`
+	ErrorNotWord          string `json:"errorNotWord"`
 	ChooseFolderTitle     string `json:"chooseFolderTitle"`
 	TrashTitle            string `json:"trashTitle"`
 	TrashMessage          string `json:"trashMessage"` // placeholder {name}

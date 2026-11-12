@@ -469,6 +469,9 @@ func TestQuitSaveFailsWord(t *testing.T) {
 		{"conversion", &apiError{code: codeConvertFailed, cause: errors.New("pandoc: exit status 1")}, text.ErrorConvertFailed},
 		{"no pandoc", &apiError{code: codePandocMissing, cause: errors.New("exec: not found")}, text.ErrorPandocMissing},
 		{"read only", &apiError{code: codeReadOnly, cause: errors.New("docsafe: read-only: /p/a.docx (comments)")}, text.ErrorReadOnly},
+		{"damaged work copy", &apiError{code: codeDamagedWork, cause: errors.New("docsafe: damaged: /p/work/x/meta.json")}, text.ErrorDamagedWork},
+		{"too large", &apiError{code: codeDocumentTooLarge, cause: errors.New("convert: too large: /p/a.docx")}, text.ErrorDocumentTooLarge},
+		{"not word", &apiError{code: codeNotWord, cause: errors.New("convert: not a docx: /p/a.docx")}, text.ErrorNotWord},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			g, _ := newTestGate(t, &fakeQuitEditor{}, &fakeQuitDialogs{})
@@ -476,7 +479,7 @@ func TestQuitSaveFailsWord(t *testing.T) {
 			if got != c.want || strings.TrimSpace(got) == "" {
 				t.Errorf("saveFailure = %q, want %q", got, c.want)
 			}
-			if strings.Contains(got, "/p/a.docx") || strings.Contains(got, "exit status") {
+			if strings.Contains(got, "/p/") || strings.Contains(got, "exit status") {
 				t.Errorf("the text shows technical detail: %q", got)
 			}
 		})

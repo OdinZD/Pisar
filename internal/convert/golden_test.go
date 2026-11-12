@@ -319,11 +319,12 @@ var firstSaveChanges = map[string]struct{ before, after string }{
 }
 
 func TestRoundTrip(t *testing.T) {
-	for _, name := range []string{"basic", "complex-table", "header-image", "formatting", "toc"} {
+	for _, name := range []string{"basic", "complex-table", "header-image", "formatting", "toc", "legacy"} {
 		t.Run(name, func(t *testing.T) {
 			fixedDate(t)
-			c, rec, _ := realConverter(t, false)
-			src := fixturePath(name)
+			// legacy is the .docx that importing the .doc gives, so it needs textutil.
+			c, rec, _ := realConverter(t, name == "legacy")
+			src := toDocx(t, c, name)
 
 			// docx -> md
 			work1 := t.TempDir()
@@ -356,7 +357,7 @@ func TestRoundTrip(t *testing.T) {
 			// The pictures of the body: as many, and the same bytes.
 			wantImages, gotImages := bodyImages(t, src), bodyImages(t, out1)
 			wantCount := 1
-			if name == "complex-table" || name == "formatting" || name == "toc" {
+			if name == "complex-table" || name == "formatting" || name == "toc" || name == "legacy" {
 				wantCount = 0 // no picture in those documents
 			}
 			if len(wantImages) != wantCount || len(gotImages) != len(wantImages) {
@@ -458,6 +459,22 @@ func roundTripDocx(t *testing.T, c *Converter, src string) (out, document string
 	return out, strings.ReplaceAll(string(zipContents(t, out)["word/document.xml"]), " />", "/>")
 }
 
+// paragraphWith returns the w:p element of document that holds text, "" if none.
+func paragraphWith(document, text string) string {
+	for _, p := range strings.SplitAfter(document, "</w:p>") {
+		if strings.Contains(p, text) {
+			if i := strings.LastIndex(p, "<w:p>"); i >= 0 {
+				return p[i:]
+			}
+			if i := strings.LastIndex(p, "<w:p "); i >= 0 {
+				return p[i:]
+			}
+			return p
+		}
+	}
+	return ""
+}
+
 // The proof for docs/known-losses.md: what Examine says a save simplifies is
 // really gone from the saved document, and what it does not mention is still
 // there. If pandoc changes and a line here fails, the documentation of the
@@ -466,7 +483,9 @@ func TestFormattingIsLostInSave(t *testing.T) {
 	c, _, _ := realConverter(t, false)
 	src := fixturePath("formatting")
 	// Before: everything is in the source, or the test proves nothing.
-	before := string(zipContents(t, src)["word/document.xml"])
+	// Spelled like after (see roundTripDocx): pandoc wrote the parts of the
+	// source that come from Markdown, such as the subscript, with a space before "/>".
+	before := strings.ReplaceAll(string(zipContents(t, src)["word/document.xml"]), " />", "/>")
 	out, after := roundTripDocx(t, c, src)
 
 	gone := []struct{ name, needle string }{
@@ -484,6 +503,7 @@ func TestFormattingIsLostInSave(t *testing.T) {
 		{"field instruction", `<w:instrText`},
 		{"cell shading", `<w:shd `},
 		{"table borders", `<w:tblBorders>`},
+		{"drawn shape", `<wps:wsp`},
 	}
 	for _, g := range gone {
 		t.Run("lost: "+g.name, func(t *testing.T) {
@@ -502,6 +522,8 @@ func TestFormattingIsLostInSave(t *testing.T) {
 		{"strikethrough", `<w:strike/>`},
 		{"superscript", `<w:vertAlign w:val="superscript"/>`},
 		{"small caps", `<w:smallCaps/>`},
+		{"subscript", `<w:vertAlign w:val="subscript"/>`},
+		{"formula in a line", `<m:oMath`},
 	}
 	for _, k := range kept {
 		t.Run("kept: "+k.name, func(t *testing.T) {
@@ -511,6 +533,28 @@ func TestFormattingIsLostInSave(t *testing.T) {
 			if !strings.Contains(after, k.needle) {
 				t.Errorf("%s did not survive the save", k.needle)
 			}
+		})
+	}
+
+	// The paragraph styles Title and Quote become plain paragraphs: the text is
+	// still there, the style is not. Styles are not reported by Examine.
+	for _, st := range []struct{ style, text string }{
+		{"Title", "Odlomak sa stilom Title."},
+		{"Quote", "Odlomak sa stilom Quote."},
+	} {
+		t.Run("lost: paragraph style "+st.style, func(t *testing.T) {
+			needle := `<w:pStyle w:val="` + st.style + `"/>`
+			was, now := paragraphWith(before, st.text), paragraphWith(after, st.text)
+			if !strings.Contains(was, needle) {
+				t.Fatalf("the source paragraph %q does not have %s:\n%s", st.text, needle, was)
+			}
+			if now == "" {
+				t.Fatalf("the text %q is gone from the saved document", st.text)
+			}
+			if strings.Contains(now, needle) {
+				t.Errorf("%s survived the save:\n%s", needle, now)
+			}
+			t.Logf("the saved paragraph: %s", now)
 		})
 	}
 
@@ -960,8 +1004,10 @@ func TestRealToolFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("textutil on a missing file succeeds with exit code 0 and no output", func(t *testing.T) {
-		// textutil answers "The file doesn't exist" with exit code 0; the file check is the only thing that notices.
+	t.Run("a source that no longer exists is refused before textutil is called", func(t *testing.T) {
+		// DocToDocx checks the source first (checkRegular), so textutil never sees
+		// the missing file. That textutil itself exits 0 without an output file is
+		// covered by the case with the fake Runner.
 		src := filepath.Join(dir, "x.doc")
 		writeAt(t, src, []byte("x"))
 		if err := os.Remove(src); err != nil {

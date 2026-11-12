@@ -31,4 +31,10 @@ Stranica 1
 
 Crta slijedi: i tekst iza nje.
 
+Voda je H~2~O, a energija je $E = mc^{2}$.
+
+Odlomak sa stilom Title.
+
+Odlomak sa stilom Quote.
+
 Završni odlomak.

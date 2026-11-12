@@ -75,6 +75,7 @@ type wordFiles interface {
 	SweepWork(ctx context.Context) ([]docsafe.WorkCopy, error)
 	Replace(ctx context.Context, src, dst string, expect docsafe.Snapshot) (docsafe.ReplaceResult, error)
 	CreateNew(ctx context.Context, src, dst string) (docsafe.Snapshot, error)
+	BackupText(ctx context.Context, src, forPath string) (string, error)
 }
 
 type wordDocsDeps struct {
@@ -798,6 +799,16 @@ func (w *wordDocs) reload(ctx context.Context, d *wordDoc) (exportResult, error)
 		}
 		return exportResult{}, err
 	}
+
+	// doc.prev.md lives in the working folder, which is discarded when the
+	// document is closed without unsaved text (and this reload clears Dirty).
+	// The user's text must outlive that, so it goes to the backup folder first;
+	// if that fails nothing has been moved yet and the reload does not happen.
+	copyPath, err := w.files.BackupText(ctx, d.markdownPath(), meta.Target)
+	if err != nil {
+		return exportResult{}, fmt.Errorf("reload %q: save the text before reloading: %w", name, err)
+	}
+	slog.Info("word documents: the text was saved as a Markdown backup before reloading", "file", filepath.Base(copyPath))
 
 	for _, a := range asides {
 		from, prev := filepath.Join(d.dir, a.name), filepath.Join(d.dir, a.prev)

@@ -33,7 +33,7 @@
   "recoverUse": "Oporavi",
   "recoverDiscard": "Odbaci izmjene",
   "conflictTitle": "Dokument je promijenjen izvan Pisara",
-  "conflictMessage": "„{name}” je u međuvremenu promijenio drugi program.\n\nPrepiši: datoteka dobiva tekst iz Pisara, a dosadašnji sadržaj ide u sigurnosnu kopiju.\nUčitaj ponovno: Pisar učitava datoteku s diska, a tekst iz Pisara ostaje samo u radnoj kopiji.",
+  "conflictMessage": "„{name}” je u međuvremenu promijenio drugi program.\n\nPrepiši: datoteka dobiva tekst iz Pisara, a dosadašnji sadržaj ide u sigurnosnu kopiju.\nUčitaj ponovno: Pisar učitava datoteku s diska, a tekst iz Pisara sprema se kao Markdown u sigurnosne kopije.",
   "conflictOverwrite": "Prepiši",
   "conflictReload": "Učitaj ponovno",
   "saveCopyTitle": "Spremi kao kopiju",

@@ -264,6 +264,10 @@ check "formatting.docx: superscript" has "$F" word/document.xml '<w:vertAlign w:
 check "formatting.docx: small caps" has "$F" word/document.xml '<w:smallCaps/>'
 check "formatting.docx: a drawn shape (wps:wsp)" has "$F" word/document.xml '<wps:wsp '
 check "formatting.docx: the shape has no text" lacks "$F" word/document.xml 'wps:txbx'
+check "formatting.docx: subscript" has "$F" word/document.xml 'w:vertAlign w:val="subscript"'
+check "formatting.docx: formula in a line (m:oMath)" has "$F" word/document.xml '<m:oMath>'
+check "formatting.docx: paragraph style Title" has "$F" word/document.xml '<w:pStyle w:val="Title"/>'
+check "formatting.docx: paragraph style Quote" has "$F" word/document.xml '<w:pStyle w:val="Quote"/>'
 
 # toc.docx: a table of contents as Word writes it. Every entry is a
 # w:hyperlink to a bookmark on a heading and holds a PAGEREF field. pandoc puts
