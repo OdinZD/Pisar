@@ -2137,7 +2137,14 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Nuspojava: `:mode` briše tekst u retku za poruke (kao i `Redraw`).
       - Nije provjereno: prompt „-- More --” (dugi izlaz); njega `Enter` ne zatvara, treba `q` ili `Esc`.
       - `internal/nvim` sada uvozi `internal/config` (zbog `NvimColorscheme`).
-- [ ] 6. `EditorService.SetColorscheme`
+- [x] 6. `EditorService.SetColorscheme(ctx, colorscheme)`: provjera kao u `Start`, atomski zapis pod `startMu`,
+      zatim `session.Colorscheme` ako Neovim radi. `DeadlineExceeded` (prompt) i `ErrNotRunning` vraćaju nil
+      uz zapis u logu. Testovi `TestEdSetScheme*` (6), među njima prompt (`CommandTimeout` 400 ms) i utrka
+      sa `Start`; nova pomoćna `tokenColorIn(t, tema, token)` čita blok palete iz `tokens.ts`.
+      - Odstupanje od briefa (prihvaćeno): `startMu` se drži samo za zapis datoteke, ne i za RPC, da prompt
+        ne zaključa `Start` do `CommandTimeout`.
+      - Neispravan colorscheme stiže frontendu s kodom `internal` (kao i kod `Start`; `codeOf` nema granu).
+      - Prompt test prepoznaje prompt po tekstu „ENTER” u izlazu PTY-ja (10 od 10 uz `-race`).
 - [ ] 7. `SettingsService`, meni „Prikaz → Tema”, boja prozora, događaj `theme:changed`
 - [ ] 8. Promjena uživo u frontendu (`themeController`, terminal, pregled)
 - [ ] 9. Dimna provjera s tamnom temom, dokumenti, `plan-reviewer`
