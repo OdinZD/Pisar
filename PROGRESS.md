@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, korak 1 gotov). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–2 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 2 (pretraga po imenu u `internal/project`)
+- Sljedeći korak: faza 4, korak 3 (Neovim: obavijest o izmjeni, mapiranja, tekst buffera)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 1)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 2)
 
 ## Priprema (2026-11-11)
 
@@ -1196,7 +1196,18 @@ event "menu:search" ""         // ⌘P
         (pandoc je slijedi; iz Markdowna se ne vidi); folder s `:` u imenu dobiva pregled bez slika
         (pandoc dijeli `--resource-path` po `:`); u pregledu ostaju pandocova sidra fusnota
         (`href="#fn1"`) i slike kao `data:` URI.
-- [ ] 2. `internal/project`: pretraga po imenu (bez dijakritika i veličine slova, rasponi podudaranja)
+- [x] 2. `internal/project`: `Search(sources []SearchSource, query, limit) []Hit`. Traži samo dokumente, po imenu
+      bez ekstenzije; svaka riječ upita mora biti podniz imena; bez razlike velikih i malih slova i
+      bez dijakritika (kombinirajući znakovi U+0300–036F, `đ` → `d`, Latin-1 i Latin Extended-A po
+      tablici); `Matches` su rasponi u izvornom imenu u UTF-16 jedinicama i ne zalaze u ekstenziju.
+      Poredak: ime počinje upitom → riječ imena počinje upitom → ostalo; zatim kraće, abecedno,
+      projekt, `Rel`. Pokrivenost paketa 96,0 %; fuzz 20 s (2,7 milijuna izvršavanja) bez nalaza.
+      - Izmjereno: 100 000 čvorova u 5 projekata, upit od dvije riječi oko 11 ms; najgori slučaj
+        (upit `a`, svih 100 000 pogodaka) 27,6 ms.
+      - Odstupanje od briefa: tip izvora se zove `SearchSource`, jer `Source` u paketu već postoji
+        (izvor promjena u `watch.go`).
+      - Ograničenja: `dj` ne nalazi `đ` i obrnuto; predsloženi vijetnamski znakovi, grčki i ćirilica se
+        samo pretvaraju u mala slova.
 - [ ] 3. Neovim: obavijest o izmjeni, mapiranja `␣p` i `␣f`, čitanje teksta buffera
 - [ ] 4. Usluge: petlja pregleda u `EditorService`, `SearchDocuments`, meni `⌘P`, `main.go`
 - [ ] 5. Frontend — pregled: font, tokeni, `Preview.svelte`, gumb „Pregled”, raspored
