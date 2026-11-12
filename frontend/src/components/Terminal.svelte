@@ -10,10 +10,11 @@
   import { noTerminalFocus, type TerminalFocus } from '../lib/focus'
   import { statusInset } from '../lib/searchLayout'
   import { createSerialSender, type SerialSender } from '../lib/serialSender'
+  import { activeTheme } from '../theme/active'
   import { fontStack } from '../theme/cssVars'
   import { nvimColorscheme } from '../theme/nvimColorscheme'
   import { terminalTheme } from '../theme/terminalTheme'
-  import { fontWeights, search, typography } from '../theme/tokens'
+  import { fontWeights, search, themes, typography } from '../theme/tokens'
 
   // The controller learns the outcome of Start here; the terminal is unmounted by the parent when
   // the editor stops, and no callback fires after that. `onlayout` reports, after every fit, how far
@@ -98,7 +99,7 @@
         fontWeightBold: fontWeights.bold,
         lineHeight: 1, // replaced by calibrateLineHeight() once the cell is measured
         // The colours come from the tokens; `satisfies` fails the build if the shape stops fitting xterm.js.
-        theme: terminalTheme() satisfies ITheme,
+        theme: terminalTheme(themes[activeTheme()].colors) satisfies ITheme,
         // Neovim draws on the alternate screen; there is nothing to scroll back to.
         scrollback: 0,
         // Explicitly false: on the Croatian layout Option composes characters (Option+key types
@@ -230,7 +231,7 @@
 
       const { cols, rows } = t
       try {
-        await Start(cols, rows, nvimColorscheme())
+        await Start(cols, rows, nvimColorscheme(themes[activeTheme()]))
       } catch (err) {
         if (!disposed) onfailed(err)
         return

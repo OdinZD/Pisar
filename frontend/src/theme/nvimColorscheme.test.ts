@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio } from './contrast'
 import { highlights, nvimColorscheme, type Highlight } from './nvimColorscheme'
-import { colors, type ColorToken } from './tokens'
+import { themeIds, themes, type ColorToken } from './tokens'
 
-const text = nvimColorscheme()
 const entries = Object.entries(highlights)
 
-describe('nvimColorscheme text', () => {
+describe.each(themeIds)('nvimColorscheme text, theme %s', (id) => {
+  const theme = themes[id]
+  const colors = theme.colors
+  const text = nvimColorscheme(theme)
+
   it('is deterministic', () => {
-    expect(nvimColorscheme()).toBe(text)
+    expect(nvimColorscheme(theme)).toBe(text)
   })
 
   it('names itself pisar and starts from a clean slate', () => {
     expect(text).toContain('vim.g.colors_name = "pisar"')
-    expect(text).toContain('vim.o.background = "light"')
+    expect(text).toContain(`vim.o.background = "${theme.background}"`)
     expect(text).toContain('vim.cmd("highlight clear")')
     // The clear must come before any group is defined, or it would wipe them.
     expect(text.indexOf('highlight clear')).toBeLessThan(text.indexOf('nvim_set_hl'))
@@ -50,14 +53,15 @@ describe('nvimColorscheme text', () => {
   })
 })
 
-describe('shared sample for the Go tests', () => {
+describe.each(themeIds)('shared sample for the Go tests, theme %s', (id) => {
+  const text = nvimColorscheme(themes[id])
   // The Go side validates this text before Neovim executes it (colorscheme.go). Its tests read this
   // file instead of running Node, so a generator change fails here until the sample is renewed with
   // `npx vitest run -u src/theme/nvimColorscheme.test.ts`. In CI vitest never writes a snapshot: a
   // missing or different file is a failure. The path is relative to this test file (vitest resolves
   // it with path.resolve(dirname(testFile), path)): up to the repository root.
-  it('matches testdata/colorscheme/pisar.lua', async () => {
-    await expect(text).toMatchFileSnapshot('../../../testdata/colorscheme/pisar.lua')
+  it(`matches testdata/colorscheme/${id}.lua`, async () => {
+    await expect(text).toMatchFileSnapshot(`../../../testdata/colorscheme/${id}.lua`)
   })
 })
 
@@ -129,7 +133,8 @@ describe('required groups', () => {
   })
 })
 
-describe('colorscheme contrast (computed from highlights)', () => {
+describe.each(themeIds)('colorscheme contrast (computed from highlights), theme %s', (id) => {
+  const colors = themes[id].colors
   const normalBg = highlights.Normal.bg as ColorToken
   const cursorline: ColorToken = 'bg.cursorline'
   const ratio = (a: ColorToken, b: ColorToken) => contrastRatio(colors[a], colors[b])

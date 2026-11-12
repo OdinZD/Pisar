@@ -1,9 +1,14 @@
 // The only place in the frontend where colours, sizes, spacing and font families are written down.
 // Components read them as CSS variables (see cssVars.ts). Values mirror docs/design/DESIGN.md;
-// tokens.test.ts fails if the colour table there and `colors` here drift apart.
+// tokens.test.ts fails if the colour table there and the `pisar` palette here drift apart.
 
-// Colour name is the key so a dark theme can later be a second object with the same keys.
-export const colors = {
+// A palette is one object per theme with the same keys, the colour name being the key. Adding a theme
+// means a new palette below, a new entry in `themes` and in `themeIds`.
+//
+// The `pisar` palette must stay the FIRST palette in this file with one `'name': '#RRGGBB',` per line:
+// editorservice_test.go (tokenColor) and scripts/smoke.sh (token) read tokens.ts with a regular
+// expression and take the first match. tokens.test.ts checks the order.
+const pisar = {
   'bg.app': '#F5F6F7',
   'bg.chrome': '#ECEEF0',
   'bg.editor': '#FFFFFF',
@@ -22,7 +27,22 @@ export const colors = {
   'syntax.code': '#0F6B3C',
   danger: '#B42318',
 } as const
-export type ColorToken = keyof typeof colors
+export type ColorToken = keyof typeof pisar
+export type Palette = Readonly<Record<ColorToken, string>>
+
+export const themeIds = ['pisar'] as const
+export type ThemeId = (typeof themeIds)[number]
+
+export interface Theme {
+  /** What Neovim's 'background' is set to; the colorscheme and some plugins decide on it. */
+  readonly background: 'light' | 'dark'
+  readonly colors: Palette
+}
+
+export const themes: Readonly<Record<ThemeId, Theme>> = {
+  pisar: { background: 'light', colors: pisar },
+}
+export const defaultTheme: ThemeId = 'pisar'
 
 // Family names are used by fonts.ts to register the faces and must not appear anywhere else.
 export const fontFamilyNames = {

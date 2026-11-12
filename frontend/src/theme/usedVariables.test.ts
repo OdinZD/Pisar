@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cssVariables } from './cssVars'
+import { defaultTheme, themes } from './tokens'
 
 // Catches a misspelled variable name, which otherwise only shows up as a missing style on screen.
 // import.meta.glob instead of node:fs: the project has no @types/node.
@@ -18,7 +19,7 @@ function names(text: string, pattern: RegExp): string[] {
 }
 
 describe('CSS variable guard', () => {
-  const known = new Set(Object.keys(cssVariables()))
+  const known = new Set(Object.keys(cssVariables(themes[defaultTheme].colors)))
   const files = Object.keys(sources)
 
   it('scans the stylesheet and the components', () => {

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { cssVariables } from '../theme/cssVars'
 import { previewFontFaceSpecs } from '../theme/fonts'
-import { colors, sizes } from '../theme/tokens'
+import { sizes, themeIds, themes, type Palette } from '../theme/tokens'
 import { appOrigin, previewCsp, previewFrameDocument, previewPageId, previewSandbox, type FrameFace } from './previewFrame'
 
 const origin = 'http://127.0.0.1:9245'
 const faces: FrameFace[] = previewFontFaceSpecs().map((f) => ({ ...f, url: `${origin}${f.url.startsWith('/') ? '' : '/'}${f.url}` }))
-const build = (o: Partial<{ origin: string | null; faces: FrameFace[] }> = {}) => previewFrameDocument({ origin, faces, ...o })
+// The builder for one theme's palette; every block that builds a frame runs once per theme.
+const builderFor =
+  (palette: Palette) =>
+  (o: Partial<{ origin: string | null; faces: FrameFace[] }> = {}) =>
+    previewFrameDocument({ origin, faces, palette, ...o })
 
 function cspOf(doc: string): Map<string, string> {
   const m = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(doc)
@@ -25,7 +29,8 @@ describe('previewSandbox', () => {
   })
 })
 
-describe('previewFrameDocument: CSP', () => {
+describe.each(themeIds)('previewFrameDocument: CSP, theme %s', (id) => {
+  const build = builderFor(themes[id].colors)
   it('allows nothing but inline styles, data: images and fonts from the origin', () => {
     expect(Object.fromEntries(cspOf(build()))).toEqual({
       'default-src': "'none'",
@@ -83,7 +88,9 @@ describe('appOrigin', () => {
   })
 })
 
-describe('previewFrameDocument: content', () => {
+describe.each(themeIds)('previewFrameDocument: content, theme %s', (id) => {
+  const palette = themes[id].colors
+  const build = builderFor(palette)
   const doc = build()
 
   it('has no script and no javascript: address', () => {
@@ -118,18 +125,18 @@ describe('previewFrameDocument: content', () => {
 
   it('writes every token variable into :root', () => {
     const root = /:root \{([^}]*)\}/.exec(doc)?.[1] ?? ''
-    for (const [name, value] of Object.entries(cssVariables())) expect(root).toContain(`${name}: ${value};`)
+    for (const [name, value] of Object.entries(cssVariables(palette))) expect(root).toContain(`${name}: ${value};`)
   })
 
   it('uses only variables that :root defines', () => {
-    const defined = new Set(Object.keys(cssVariables()))
+    const defined = new Set(Object.keys(cssVariables(palette)))
     const used = [...doc.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
     expect(used.length).toBeGreaterThan(0)
     expect(used.filter((n) => !defined.has(n))).toEqual([])
   })
 
   it('follows the tokens: another token value gives another document', () => {
-    const c = colors as Record<string, string>
+    const c = palette as Record<string, string>
     const s = sizes as Record<string, number>
     const [oldColor, oldPadding] = [c['bg.desk'], s.previewPagePadding]
     try {
@@ -187,7 +194,8 @@ describe('previewFrameDocument: content', () => {
   })
 })
 
-describe('previewFrameDocument: hostile values', () => {
+describe.each(themeIds)('previewFrameDocument: hostile values, theme %s', (id) => {
+  const build = builderFor(themes[id].colors)
   it('cannot be broken out of by a font address', () => {
     const evil: FrameFace = {
       family: 'A"; } </style><script>alert(1)</script>',

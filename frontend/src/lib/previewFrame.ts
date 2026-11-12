@@ -9,6 +9,7 @@
 //   3. this CSP forbids everything except inline styles, `data:` images and the application's fonts,
 //      so even a script that slipped through could not load or send anything.
 import { cssVariables } from '../theme/cssVars'
+import type { Palette } from '../theme/tokens'
 
 /** The `sandbox` attribute of the frame: exactly this one permission (scripts, forms and popups stay off). */
 export const previewSandbox = 'allow-same-origin'
@@ -32,6 +33,8 @@ export interface FrameOptions {
    */
   origin: string | null
   faces: readonly FrameFace[]
+  /** the colours of the active theme: the frame is a separate document and has its own :root */
+  palette: Palette
 }
 
 // scheme://host[:port] and nothing else: no path, no wildcard, no quote or space that could add a source
@@ -76,8 +79,8 @@ export function previewCsp(origin: string | null): string {
   return `default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src ${origin ?? "'none'"}; form-action 'none'; base-uri 'none'`
 }
 
-function rootVariables(): string {
-  const lines = Object.entries(cssVariables()).map(([name, value]) => {
+function rootVariables(palette: Palette): string {
+  const lines = Object.entries(cssVariables(palette)).map(([name, value]) => {
     if (!/^--[a-z0-9-]+$/.test(name) || /[<>{};]/.test(value)) throw new Error(`variable ${name} cannot be written into the frame`)
     return `  ${name}: ${value};`
   })
@@ -197,7 +200,7 @@ export function previewFrameDocument(opts: FrameOptions): string {
     '<meta charset="utf-8">',
     `<meta http-equiv="Content-Security-Policy" content="${csp}">`,
     '<style>',
-    rootVariables(),
+    rootVariables(opts.palette),
     fontFaces(opts.origin === null ? [] : opts.faces),
     pageCss,
     '</style>',

@@ -1,4 +1,4 @@
-import { colors, type ColorToken } from './tokens'
+import { type ColorToken, type Palette, type Theme } from './tokens'
 
 export interface Highlight {
   fg?: ColorToken
@@ -11,7 +11,8 @@ export interface Highlight {
   link?: string
 }
 
-// Design notes that explain the choices below:
+// Design notes that explain the choices below (the ratios are measured on the pisar palette; the
+// contrast tests repeat the checks for every theme):
 // - Every text colour is one of text, text.muted, accent, syntax.list, syntax.code, danger, which all
 //   reach 4.5:1 on bg.editor AND on bg.cursorline (the cursor line lies under any text), so a group
 //   without its own background never needs a contrast exception. text.linenr is only 4.25 on
@@ -186,12 +187,12 @@ function luaGroupName(name: string): string {
 }
 
 // `link` is written alone: Neovim ignores every other attribute next to it (:help nvim_set_hl()).
-function luaDefinition(h: Highlight): string {
+function luaDefinition(h: Highlight, palette: Palette): string {
   if (h.link !== undefined) return `{ link = ${luaGroupName(h.link)} }`
   const parts: string[] = []
   for (const key of ['fg', 'bg', 'sp'] as const) {
     const token = h[key]
-    if (token !== undefined) parts.push(`${key} = "${colors[token]}"`)
+    if (token !== undefined) parts.push(`${key} = "${palette[token]}"`)
   }
   for (const key of ['bold', 'italic', 'underline', 'undercurl'] as const) {
     if (h[key]) parts.push(`${key} = true`)
@@ -199,21 +200,21 @@ function luaDefinition(h: Highlight): string {
   return `{ ${parts.join(', ')} }`
 }
 
-/** Lua source of colors/pisar.lua. */
-export function nvimColorscheme(): string {
+/** Lua source of colors/pisar.lua for the given theme; only the colours and 'background' differ between themes. */
+export function nvimColorscheme(theme: Theme): string {
   const lines = [
     '-- Generated from frontend/src/theme/tokens.ts by Pisar. Do not edit: the file is rewritten at start.',
     '',
     '-- Drop a previous colorscheme first: changing \'background\' while g:colors_name is set',
     '-- would reload that scheme.',
     'vim.g.colors_name = nil',
-    'vim.o.background = "light"',
+    `vim.o.background = "${theme.background}"`,
     'vim.cmd("highlight clear")',
     'vim.g.colors_name = "pisar"',
     '',
   ]
   for (const [name, h] of Object.entries(highlights)) {
-    lines.push(`vim.api.nvim_set_hl(0, ${luaGroupName(name)}, ${luaDefinition(h)})`)
+    lines.push(`vim.api.nvim_set_hl(0, ${luaGroupName(name)}, ${luaDefinition(h, theme.colors)})`)
   }
   return lines.join('\n') + '\n'
 }

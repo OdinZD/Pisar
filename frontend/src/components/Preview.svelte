@@ -5,7 +5,9 @@
   import { previewView } from '../lib/previewState'
   import { createPageWriter, type FrameDocument } from '../lib/previewWrite'
   import { strings } from '../strings'
+  import { activeTheme } from '../theme/active'
   import { previewFontFaceSpecs } from '../theme/fonts'
+  import { themes } from '../theme/tokens'
 
   let { preview, editor }: { preview: PreviewController; editor: EditorController } = $props()
 
@@ -13,6 +15,7 @@
   const origin = appOrigin(window.location)
   const srcdoc = previewFrameDocument({
     origin,
+    palette: themes[activeTheme()].colors,
     faces: previewFontFaceSpecs().map((f) => ({ ...f, url: new URL(f.url, window.location.href).href })),
   })
 

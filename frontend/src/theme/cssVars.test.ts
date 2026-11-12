@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { applyTheme, cssVariables, fontStack } from './cssVars'
-import { colors, fontFamilyNames, fontWeights, sizes, spacing, typography } from './tokens'
+import { fontFamilyNames, fontWeights, sizes, spacing, themeIds, themes, typography } from './tokens'
 
-describe('cssVariables', () => {
-  const vars = cssVariables()
+describe.each(themeIds)('cssVariables, theme %s', (id) => {
+  const colors = themes[id].colors
+  const vars = cssVariables(colors)
 
   it.each([
     ['bg.app', '--bg-app'],
@@ -69,10 +70,17 @@ describe('cssVariables', () => {
   })
 })
 
-describe('applyTheme', () => {
+describe.each(themeIds)('applyTheme, theme %s', (id) => {
   it('sets exactly what cssVariables returns', () => {
     const set: Record<string, string> = {}
-    applyTheme({ style: { setProperty: (n, v) => void (set[n] = v) } })
-    expect(set).toEqual(cssVariables())
+    applyTheme({ style: { setProperty: (n, v) => void (set[n] = v) } }, themes[id].colors)
+    expect(set).toEqual(cssVariables(themes[id].colors))
+  })
+})
+
+describe('cssVariables across themes', () => {
+  it('gives every theme the same variable names', () => {
+    const names = (id: (typeof themeIds)[number]) => Object.keys(cssVariables(themes[id].colors)).sort()
+    for (const id of themeIds) expect(names(id)).toEqual(names(themeIds[0]))
   })
 })

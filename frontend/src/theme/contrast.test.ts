@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio } from './contrast'
-import { colors, type ColorToken } from './tokens'
+import { themeIds, themes, type ColorToken } from './tokens'
 
 describe('contrastRatio', () => {
   it('knows the extremes', () => {
@@ -32,7 +32,8 @@ const pairs: [ColorToken, ColorToken[]][] = [
   ['danger', ['bg.editor', 'bg.chrome', 'bg.app', 'bg.cursorline']],
 ]
 
-describe('text contrast of the colour tokens', () => {
+describe.each(themeIds)('text contrast of the colour tokens, theme %s', (id) => {
+  const colors = themes[id].colors
   for (const [fg, bgs] of pairs) {
     for (const bg of bgs) {
       it(`${fg} on ${bg} is at least 4.5`, () => {

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio } from './contrast'
 import { terminalTheme, terminalThemeTokens, type TerminalTheme } from './terminalTheme'
-import { colors } from './tokens'
+import { themeIds, themes } from './tokens'
 
 const keys = Object.keys(terminalThemeTokens) as (keyof TerminalTheme)[]
 
-describe('terminalTheme', () => {
-  const theme = terminalTheme()
+describe.each(themeIds)('terminalTheme, theme %s', (id) => {
+  const colors = themes[id].colors
+  const theme = terminalTheme(colors)
 
   it('has the 22 keys xterm.js needs here: 6 base keys and 16 ANSI colours', () => {
     expect(keys).toHaveLength(22)
@@ -31,8 +32,8 @@ describe('terminalTheme', () => {
   })
 })
 
-describe('terminalTheme contrast', () => {
-  const theme = terminalTheme()
+describe.each(themeIds)('terminalTheme contrast, theme %s', (id) => {
+  const theme = terminalTheme(themes[id].colors)
   const ratio = (a: keyof TerminalTheme, b: keyof TerminalTheme) => contrastRatio(theme[a], theme[b])
 
   it('text on background', () => expect(ratio('foreground', 'background')).toBeGreaterThanOrEqual(4.5))

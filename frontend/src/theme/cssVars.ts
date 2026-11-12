@@ -1,4 +1,4 @@
-import { colors, fontFallbacks, fontFamilyNames, fontWeights, sizes, spacing, typography } from './tokens'
+import { fontFallbacks, fontFamilyNames, fontWeights, sizes, spacing, typography, type Palette } from './tokens'
 
 // Naming rule: `--<group>-<token>` in kebab-case.
 //   colours      --bg-app, --border-strong, --accent-text   (dots become dashes)
@@ -17,15 +17,15 @@ export function fontStack(role: keyof typeof fontFamilyNames): string {
   return `"${fontFamilyNames[role]}", ${fontFallbacks[role]}`
 }
 
-/** Pure: every token as a CSS custom property, e.g. { '--bg-app': <bg.app value>, '--size-toolbar-height': '48px', … } */
-export function cssVariables(): Record<string, string> {
+/** Pure: every token as a CSS custom property, e.g. { '--bg-app': <bg.app of the palette>, '--size-toolbar-height': '48px', … } */
+export function cssVariables(palette: Palette): Record<string, string> {
   const vars: Record<string, string> = {}
   const add = (name: string, value: string) => {
     if (name in vars) throw new Error(`duplicate CSS variable ${name}`)
     vars[name] = value
   }
 
-  for (const [k, v] of Object.entries(colors)) add(`--${kebab(k)}`, v)
+  for (const [k, v] of Object.entries(palette)) add(`--${kebab(k)}`, v)
   add('--font-ui', fontStack('ui'))
   add('--font-mono', fontStack('mono'))
   add('--font-preview', fontStack('preview'))
@@ -56,6 +56,6 @@ export function cssVariables(): Record<string, string> {
 }
 
 /** Sets them on the given element (the document root in the app). */
-export function applyTheme(root: { style: { setProperty(name: string, value: string): void } }): void {
-  for (const [name, value] of Object.entries(cssVariables())) root.style.setProperty(name, value)
+export function applyTheme(root: { style: { setProperty(name: string, value: string): void } }, palette: Palette): void {
+  for (const [name, value] of Object.entries(cssVariables(palette))) root.style.setProperty(name, value)
 }
