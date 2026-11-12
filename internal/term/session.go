@@ -25,7 +25,7 @@ const maxDim = 1<<16 - 1
 // method: Close waits for a call in progress to return.
 //
 // The order between terminal output (Data) and Neovim's notifications (Saved,
-// Active, Modified, FocusTree) is not defined, because they travel on two
+// Active, Modified, FocusTree, Changed, TogglePreview, OpenSearch) is not defined, because they travel on two
 // separate channels. Exited is always the last call for a process.
 type Emitter interface {
 	Data(chunk string)                   // terminal output; always valid UTF-8 on its own
@@ -33,6 +33,9 @@ type Emitter interface {
 	Active(path string, modified bool)   // another buffer became current ("" = no file)
 	Modified(path string, modified bool) // the 'modified' state of a buffer changed
 	FocusTree()                          // <leader>e
+	Changed()                            // text of the current buffer changed or another buffer became current (only while the preview is on)
+	TogglePreview()                      // <leader>p
+	OpenSearch()                         // <leader>f
 	Exited()                             // Neovim quit on its own; all output has been delivered
 }
 
@@ -238,6 +241,12 @@ func (s *Session) forwardEvents(r *run) {
 			s.deliver(func(e Emitter) { e.Modified(ev.Path, ev.Modified) })
 		case nvim.EventFocusTree:
 			s.deliver(func(e Emitter) { e.FocusTree() })
+		case nvim.EventChanged:
+			s.deliver(func(e Emitter) { e.Changed() })
+		case nvim.EventTogglePreview:
+			s.deliver(func(e Emitter) { e.TogglePreview() })
+		case nvim.EventOpenSearch:
+			s.deliver(func(e Emitter) { e.OpenSearch() })
 		}
 	}
 	close(r.evDone)
@@ -404,6 +413,28 @@ func (s *Session) Reload(ctx context.Context, path string) error {
 		return err
 	}
 	return p.Reload(ctx, path)
+}
+
+// SetPreview switches Neovim's change notifications on or off; see
+// nvim.Process.SetPreview. Without a process it fails with nvim.ErrNotRunning
+// (wrapped), like the other methods that change Neovim.
+func (s *Session) SetPreview(ctx context.Context, on bool) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.SetPreview(ctx, on)
+}
+
+// BufferText returns the unsaved text of the current buffer and its
+// description in one step; see nvim.Process.BufferText. Without a process it
+// fails with nvim.ErrNotRunning (wrapped).
+func (s *Session) BufferText(ctx context.Context, maxBytes int) ([]byte, nvim.Buffer, error) {
+	p, err := s.proc()
+	if err != nil {
+		return nil, nvim.Buffer{}, err
+	}
+	return p.BufferText(ctx, maxBytes)
 }
 
 // Save writes the current buffer to its file.

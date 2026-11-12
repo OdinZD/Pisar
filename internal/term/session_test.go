@@ -29,12 +29,15 @@ const (
 
 // Names of the Emitter methods, as recorded.
 const (
-	evData     = "data"
-	evSaved    = "saved"
-	evActive   = "active"
-	evModified = "modified"
-	evFocus    = "focus"
-	evExited   = "exited"
+	evData          = "data"
+	evSaved         = "saved"
+	evActive        = "active"
+	evModified      = "modified"
+	evFocus         = "focus"
+	evChanged       = "changed"
+	evTogglePreview = "toggle-preview"
+	evOpenSearch    = "open-search"
+	evExited        = "exited"
 )
 
 // call is one recorded Emitter call. s is the chunk for Data and the path for
@@ -75,6 +78,9 @@ func (r *recorder) Saved(path string)             { r.record(call{name: evSaved,
 func (r *recorder) Active(path string, on bool)   { r.record(call{name: evActive, s: path, on: on}) }
 func (r *recorder) Modified(path string, on bool) { r.record(call{name: evModified, s: path, on: on}) }
 func (r *recorder) FocusTree()                    { r.record(call{name: evFocus}) }
+func (r *recorder) Changed()                      { r.record(call{name: evChanged}) }
+func (r *recorder) TogglePreview()                { r.record(call{name: evTogglePreview}) }
+func (r *recorder) OpenSearch()                   { r.record(call{name: evOpenSearch}) }
 func (r *recorder) Exited()                       { r.record(call{name: evExited}) }
 
 func (r *recorder) snapshot() []call {
@@ -474,6 +480,65 @@ func TestFocus(t *testing.T) {
 	}
 }
 
+func TestPreview(t *testing.T) {
+	s, rec, ctx := started(t)
+	a := writeFile(t, "a.md", "one\n")
+	if err := s.OpenFile(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Active(a, false)", func() bool { return rec.index(t, evActive, a, false) >= 0 })
+
+	if err := s.Write(" p"); err != nil { // <leader>p in normal mode
+		t.Fatal(err)
+	}
+	eventually(t, "TogglePreview", func() bool { return rec.count(evTogglePreview) > 0 })
+	if err := s.Write(" f"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "OpenSearch", func() bool { return rec.count(evOpenSearch) > 0 })
+
+	// Off: an edit gives no Changed.
+	if err := s.Write("x"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Modified(a, true)", func() bool { return rec.index(t, evModified, a, true) >= 0 })
+	time.Sleep(300 * time.Millisecond)
+	if n := rec.count(evChanged); n != 0 {
+		t.Fatalf("%d Changed calls with the preview off", n)
+	}
+
+	// On: the first one comes from SetPreview itself, the next from the edit.
+	if err := s.SetPreview(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Changed after SetPreview", func() bool { return rec.count(evChanged) == 1 })
+	if err := s.Write("x"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Changed after an edit", func() bool { return rec.count(evChanged) == 2 })
+	text, buf, err := s.BufferText(ctx, 1<<20)
+	if err != nil || string(text) != "e\n" || realPath(t, buf.Path) != realPath(t, a) || !buf.Modified {
+		t.Errorf("BufferText = %q, %+v, %v; want the unsaved \"e\" of a", text, buf, err)
+	}
+	if _, _, err := s.BufferText(ctx, 1); !errors.Is(err, nvim.ErrBufferTooLarge) {
+		t.Errorf("BufferText over the limit: %v, want ErrBufferTooLarge", err)
+	}
+
+	if err := s.SetPreview(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Write("x"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := rec.count(evChanged); n != 2 {
+		t.Errorf("%d Changed calls in all, want 2", n)
+	}
+	if n, m := rec.count(evTogglePreview), rec.count(evOpenSearch); n != 1 || m != 1 {
+		t.Errorf("TogglePreview %d, OpenSearch %d calls, want 1 each", n, m)
+	}
+}
+
 func TestForward(t *testing.T) {
 	s, _, ctx := started(t)
 	a := writeFile(t, "a.md", "a\n")
@@ -602,8 +667,10 @@ func TestNoProc(t *testing.T) {
 			"Resize":      s.Resize(80, 24),
 			"SetReadOnly": s.SetReadOnly(ctx, "x", true),
 			"Reload":      s.Reload(ctx, "x"),
+			"SetPreview":  s.SetPreview(ctx, true),
 		}
 		_, errs["CopyVisual"] = s.CopyVisual(ctx)
+		_, _, errs["BufferText"] = s.BufferText(ctx, 100)
 		for name, err := range errs {
 			if !errors.Is(err, want) {
 				t.Errorf("%s: %v, want %v", name, err, want)

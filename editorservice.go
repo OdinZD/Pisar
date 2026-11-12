@@ -837,6 +837,20 @@ func (v editorEvents) FocusTree() {
 	v.e.notify(eventFocusTree, "")
 }
 
+// The three methods below are only logged for now: the service starts using
+// them when the preview and the search are wired in.
+func (v editorEvents) Changed() {
+	slog.Debug("editor event", "event", "changed")
+}
+
+func (v editorEvents) TogglePreview() {
+	slog.Debug("editor event", "event", "toggle-preview")
+}
+
+func (v editorEvents) OpenSearch() {
+	slog.Debug("editor event", "event", "open-search")
+}
+
 func (v editorEvents) Exited() {
 	slog.Debug("editor event", "event", eventNvimExit)
 	v.e.notify(eventNvimExit, "")

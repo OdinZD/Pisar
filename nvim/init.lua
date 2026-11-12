@@ -53,6 +53,15 @@ local function path_of(buf)
   return vim.api.nvim_buf_get_name(buf)
 end
 
+-- Go sets g:pisar_preview while the preview is on. The notification carries no
+-- text (a buffer can be large): Go asks for it with BufferText when it needs it.
+-- With the preview off nothing is sent, so typing costs no RPC traffic.
+local function changed()
+  if vim.g.pisar_preview then
+    notify("pisar_changed")
+  end
+end
+
 -- Last 'modified' state sent to Go per buffer (absent = unmodified). BufModifiedSet
 -- does not fire when a buffer that is not current is written (:wall, or nvim_buf_call
 -- from SaveAll; measured with Neovim 0.12), so BufWritePost reports the new state
@@ -84,12 +93,23 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 -- the old name, which the user never enters.
 local current = { buf = nil, path = nil }
 local function entered(buf)
+  -- Go's Reload runs :edit! inside nvim_buf_call, which makes a background
+  -- buffer "current" for a moment and fires BufEnter for it. The user never
+  -- entered it, and announcing it would also leave `current` on the wrong
+  -- buffer, hiding the next real switch. Reload sets this variable around the
+  -- call and clears it again, whether or not :edit! succeeded (internal/nvim).
+  if vim.g.pisar_reloading then
+    return
+  end
   local path = path_of(buf)
   if current.buf == buf and current.path == path then
     return
   end
   current.buf, current.path = buf, path
   notify("pisar_entered", path, vim.bo[buf].modified)
+  -- The text the preview shows is that of the current buffer, so a different
+  -- one is a change too.
+  changed()
 end
 
 vim.api.nvim_create_autocmd({ "BufEnter", "BufFilePost" }, {
@@ -97,6 +117,27 @@ vim.api.nvim_create_autocmd({ "BufEnter", "BufFilePost" }, {
   callback = function(args)
     if args.buf == vim.api.nvim_get_current_buf() then
       entered(args.buf)
+    end
+  end,
+})
+
+-- The text of the current buffer changed: TextChanged in normal mode,
+-- TextChangedI in insert mode, TextChangedP in insert mode while the completion
+-- menu is open (:help TextChanged).
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
+  group = group,
+  callback = changed,
+})
+
+-- Loading the current buffer again from disk (:edit!, a reload after the file
+-- changed outside) replaces its text without TextChanged (measured with
+-- Neovim 0.12). Only the buffer already announced as current counts: a buffer
+-- that is just being opened is announced by BufEnter, through entered().
+vim.api.nvim_create_autocmd("BufReadPost", {
+  group = group,
+  callback = function(args)
+    if args.buf == current.buf then
+      changed()
     end
   end,
 })
@@ -121,6 +162,15 @@ vim.api.nvim_create_autocmd("BufWipeout", {
 vim.keymap.set("n", "<leader>e", function()
   notify("pisar_focus")
 end, { silent = true, desc = "Pisar: focus the project tree" })
+
+-- Normal mode only, like <leader>e: in insert mode these are plain text.
+vim.keymap.set("n", "<leader>p", function()
+  notify("pisar_preview")
+end, { silent = true, desc = "Pisar: toggle the preview" })
+
+vim.keymap.set("n", "<leader>f", function()
+  notify("pisar_search")
+end, { silent = true, desc = "Pisar: open the document search" })
 
 -- Notifications on one channel are ordered, so "pisar_bye" reaches Go after
 -- every event sent before it. That lets Go close its event stream without

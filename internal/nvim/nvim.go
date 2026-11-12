@@ -55,6 +55,10 @@ const (
 	modifiedMethod = "pisar_modified"
 	focusMethod    = "pisar_focus"
 	byeMethod      = "pisar_bye"
+	changedMethod  = "pisar_changed"
+	previewMethod  = "pisar_preview"
+	searchMethod   = "pisar_search"
+	previewVar     = "pisar_preview"
 	socketPrefix   = "nvim-"
 )
 
@@ -66,6 +70,9 @@ const (
 	EventBufferEntered                        // another buffer became current; Path is its file, "" if it has none
 	EventModifiedChanged                      // the 'modified' state of a buffer changed; Path, Modified
 	EventFocusTree                            // the user asked for the project tree (<leader>e)
+	EventChanged                              // the text of the current buffer changed, or another buffer became current; only while SetPreview(true)
+	EventTogglePreview                        // the user asked to switch the preview (<leader>p)
+	EventOpenSearch                           // the user asked for the document search (<leader>f)
 )
 
 // Event is a notification from Neovim.
@@ -90,6 +97,8 @@ var (
 	ErrUnnamedBuffer = errors.New("nvim: a modified buffer has no file name")
 	// ErrBufferModified is returned (wrapped) by Wipe for a buffer with unsaved changes.
 	ErrBufferModified = errors.New("nvim: buffer has unsaved changes")
+	// ErrBufferTooLarge is returned (wrapped) by BufferText when the text is over the limit it was given.
+	ErrBufferTooLarge = errors.New("nvim: buffer text is too large")
 	// ErrNoBuffer is returned (wrapped) by SetReadOnly and Reload when Neovim has no buffer for the file.
 	ErrNoBuffer = errors.New("nvim: no buffer for that file")
 )
@@ -299,8 +308,11 @@ func (p *Process) connect(ctx context.Context, timeout time.Duration) error {
 		modifiedMethod: func(path string, modified bool) {
 			p.emit(Event{Kind: EventModifiedChanged, Path: path, Modified: modified})
 		},
-		focusMethod: func() { p.emit(Event{Kind: EventFocusTree}) },
-		byeMethod:   p.closeEvents,
+		focusMethod:   func() { p.emit(Event{Kind: EventFocusTree}) },
+		changedMethod: func() { p.emit(Event{Kind: EventChanged}) },
+		previewMethod: func() { p.emit(Event{Kind: EventTogglePreview}) },
+		searchMethod:  func() { p.emit(Event{Kind: EventOpenSearch}) },
+		byeMethod:     p.closeEvents,
 	}
 	for method, h := range handlers {
 		if err := nv.RegisterHandler(method, h); err != nil {
@@ -733,6 +745,10 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 			error("Neovim is waiting for an answer to a prompt; nothing was reloaded", 0)
 		end
 		local hits = buffersOf((...))
+		-- nvim_buf_call makes a background buffer current for a moment; init.lua
+		-- must not announce that as the user entering it. Cleared right after the
+		-- pcall, so a failed :edit! cannot leave it set.
+		vim.g.pisar_reloading = true
 		local ok, err = pcall(function()
 			for _, b in ipairs(hits) do
 				-- :edit! of a buffer that is not modifiable fails with E21.
@@ -745,6 +761,7 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 				if not eok then error(eerr, 0) end
 			end
 		end)
+		vim.g.pisar_reloading = false
 		vim.cmd.redraw()
 		if not ok then
 			error(err, 0)

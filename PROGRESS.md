@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–2 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–3 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 3 (Neovim: obavijest o izmjeni, mapiranja, tekst buffera)
+- Sljedeći korak: faza 4, korak 4 (usluge: petlja pregleda, `SearchDocuments`, meni)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 2)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 3)
 
 ## Priprema (2026-11-11)
 
@@ -1208,7 +1208,27 @@ event "menu:search" ""         // ⌘P
         (izvor promjena u `watch.go`).
       - Ograničenja: `dj` ne nalazi `đ` i obrnuto; predsloženi vijetnamski znakovi, grčki i ćirilica se
         samo pretvaraju u mala slova.
-- [ ] 3. Neovim: obavijest o izmjeni, mapiranja `␣p` i `␣f`, čitanje teksta buffera
+- [x] 3. Neovim. `init.lua`: `<leader>p` → `pisar_preview`, `<leader>f` → `pisar_search` (samo normal mod);
+      `pisar_changed` bez sadržaja, samo dok je `g:pisar_preview` istinit, na `TextChanged`,
+      `TextChangedI`, `TextChangedP`, pri prelasku na drugi buffer i na `BufReadPost` trenutačnog
+      buffera. `internal/nvim` + `term`: `EventChanged`, `EventTogglePreview`, `EventOpenSearch`,
+      `SetPreview(ctx, on)` (pri uključivanju Go sam daje jedan `EventChanged`), `BufferText(ctx,
+      maxBytes)` (tekst i opis buffera iz istog Lua bloka; `ErrBufferTooLarge`). `Emitter` ima
+      `Changed`, `TogglePreview`, `OpenSearch` (u glavnom paketu zasad samo `slog.Debug`).
+      - Izmjereno (Neovim 0.12): `:edit!` i `Reload` ne okidaju `TextChanged*`, zato `BufReadPost`;
+        `TextChangedP` je potreban dok je otvoren popup dovršavanja; u insert modu jedna obavijest po
+        znaku pri sporom tipkanju, jedna za cijeli zalijepljeni tekst.
+      - `BufferText` veličinu provjerava u Neovimu prije čitanja (`nvim_buf_get_offset`): preveliki
+        tekst se ne prenosi (odbijanje 93 µs; prijenos 8 MiB 9,6 ms). Završni novi redak je tu točno
+        kad bi ga `:w` zapisao. Poziv ne mijenja kursor, mod, registre ni poruke.
+      - **Ispravak greške iz faze 3 (nađena u ovom koraku):** `Reload` pozadinskog buffera slao je
+        lažni `pisar_entered` (unutar `nvim_buf_call` taj je buffer na trenutak „trenutačan”), pa bi
+        nakon „Učitaj ponovno” za dokument koji nije na ekranu frontend dobio `document:active` za
+        krivi dokument, a sljedeći pravi prelazak mogao je ostati neprijavljen. `Reload` sada oko
+        poziva postavlja `g:pisar_reloading`, a `entered()` ga poštuje; zastavica se vraća i kad
+        `:edit!` ne uspije. Četiri nova testa (`reload_test.go`); mutacije ih ruše.
+      - Događaji iz Neovima idu kroz kanal od 256 mjesta s odbacivanjem najstarijih (postojeće
+        ponašanje); petlja pregleda zato mora stalno čitati i sama tražiti tekst.
 - [ ] 4. Usluge: petlja pregleda u `EditorService`, `SearchDocuments`, meni `⌘P`, `main.go`
 - [ ] 5. Frontend — pregled: font, tokeni, `Preview.svelte`, gumb „Pregled”, raspored
 - [ ] 6. Frontend — tražilica: `SearchPanel.svelte`, tipke, fokus, opseg
