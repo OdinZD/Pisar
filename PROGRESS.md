@@ -2145,7 +2145,21 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
         ne zaključa `Start` do `CommandTimeout`.
       - Neispravan colorscheme stiže frontendu s kodom `internal` (kao i kod `Start`; `codeOf` nema granu).
       - Prompt test prepoznaje prompt po tekstu „ENTER” u izlazu PTY-ja (10 od 10 uz `-race`).
-- [ ] 7. `SettingsService`, meni „Prikaz → Tema”, boja prozora, događaj `theme:changed`
+- [x] 7. `settingsservice.go` (`SettingsService.Theme`, neizvezeni `setTheme`: store → boja prozora → događaj),
+      `menu.go` (`themeItems`, izbornik „Prikaz” između „Oblikovanje” i Window, podizbornik „Tema” s tri
+      radio stavke), `main.go` (`theme:changed`, `BackgroundColour` i `URL` `/?theme=<id>` iz zapamćene
+      teme), `config.ThemeWindowBackground`, pet novih tekstova. Testovi `TestSettings*` (8),
+      `TestMenuThemeItems*` (2), `TestThemeWindowBackground`.
+      - Boja `bg.app` je namjerno ponovljena u Go-u; `TestSettingsTokens` pada ako se ID-evi tema ili te
+        tri boje raziđu s `tokens.ts`.
+      - Potvrđeno u izvoru Wailsa v3.1.0: radio grupe rade i u podizborniku (`processRadioGroups`
+        rekurzira), `handleClick` pomiče kvačicu prije callbacka, `SetChecked` i `SetBackgroundColour` smiju
+        se zvati iz bilo koje goroutine, poslužitelj datoteka gleda samo putanju (query ne smeta;
+        `TestSettingsWindowURL` s `httptest`).
+      - Klikovi na temu idu jedan po jedan (mutex); nakon svakog se kvačica postavlja na zadnju stvarno
+        primijenjenu temu, pa neuspjeli zapis vraća kvačicu.
+      - Dimna provjera agenta bez klikanja: aplikacija se diže s praznim homeom i s v2 `"theme":"dracula"`.
+        Klik, boja prozora i kvačica NISU viđeni (ručna provjera).
 - [ ] 8. Promjena uživo u frontendu (`themeController`, terminal, pregled)
 - [ ] 9. Dimna provjera s tamnom temom, dokumenti, `plan-reviewer`
 
