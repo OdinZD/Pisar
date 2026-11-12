@@ -2103,7 +2103,15 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Prazan `"theme": ""` vrijedi kao izostavljeno polje (bez upozorenja). Tekst upozorenja u logu
         nema test.
       - `ThemeWindowBackground` dolazi u koraku 7, zajedno s testom koji ga veže uz `tokens.ts`.
-- [ ] 2. Registar tema s jednom temom; čiste funkcije primaju paletu (`theme/*`, `lib/previewFrame.ts`)
+- [x] 2. Registar tema s jednom temom: `tokens.ts` (`themeIds`, `themes`, `Palette`, `Theme`, `defaultTheme`; izvoz
+      `colors` je uklonjen), `cssVariables(palette)`, `applyTheme(root, palette)`, `terminalTheme(palette)`,
+      `nvimColorscheme(theme)`, `previewFrameDocument({…, palette})`, novi `theme/active.ts`; `main.ts` čita
+      `?theme=`. Testovi vezani uz paletu idu kroz `describe.each(themeIds)` s istim tvrdnjama; vitest 863.
+      - `pisar` mora ostati prva paleta u `tokens.ts` (Go `tokenColor` i `smoke.sh` uzimaju prvi pogodak);
+        čuva to novi test. `testdata/colorscheme/pisar.lua` je bajt-identičan.
+      - Izvan popisa datoteka iz plana dirnut je `theme/usedVariables.test.ts` (samo argument palete u
+        pozivu `cssVariables`; greška u briefu glavne sesije).
+      - Komponente (`Terminal`, `Preview`) i `main.ts` provjereni su samo tipovima; aplikacija nije pokretana.
 - [ ] 3. Palete Catppuccin Mocha i Dracula, tablice u `DESIGN.md`, snimke colorschemea
 - [ ] 4. Validator colorschemea prihvaća `dark` (`colorscheme.go`)
 - [ ] 5. Ponovno učitavanje colorschemea u pokrenutom Neovimu (`internal/nvim`, `internal/term`)
