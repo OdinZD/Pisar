@@ -4,17 +4,18 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12); čeka se
-  vlasnikova ručna provjera, odluka o granici oko `user.lua` i prihvaćanje faze. Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 6 — Pakiranje (plan faze u izradi). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+  provjeru i potvrdio da sve radi (o predloženoj granici oko `user.lua` se nije izričito izjasnio; pitanje ide uz
+  plan faze 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faze 5 (popis u odjeljku faze); zatim plan faze 6
+- Sljedeći korak: plan faze 6 i vlasnikovo odobrenje
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5 dovršena, čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-12 (faza 5 prihvaćena)
 
 ## Priprema (2026-11-11)
 
