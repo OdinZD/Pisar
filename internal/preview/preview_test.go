@@ -589,6 +589,51 @@ func splitNotes(html string) (body string, notes []string, ok bool) {
 	return body, notes, true
 }
 
+var listTagRe = regexp.MustCompile(`</?(?:ol|ul|li)\b`)
+
+// requireNotesMatch checks the property that makes the list trustworthy: the
+// page has as many numbers in the text as items in the list of notes, and the
+// numbers are 1..n, each once. Only the items of the list itself are counted,
+// not those of a list inside a note.
+func requireNotesMatch(tb testing.TB, html string) {
+	tb.Helper()
+	seen := map[int]bool{}
+	refs := 0
+	for _, m := range refRe.FindAllStringSubmatch(html, -1) {
+		var n int
+		if _, err := fmt.Sscan(m[1], &n); err != nil {
+			tb.Fatal(err)
+		}
+		if seen[n] {
+			tb.Fatalf("the number %d is in the page twice:\n%s", n, html)
+		}
+		seen[n] = true
+		refs++
+	}
+	for n := 1; n <= refs; n++ {
+		if !seen[n] {
+			tb.Fatalf("the numbers of the page are not 1..%d:\n%s", refs, html)
+		}
+	}
+	items := 0
+	if _, list, ok := strings.Cut(html, `<div class="footnotes">`); ok {
+		depth := 0
+		for _, tag := range listTagRe.FindAllString(list, -1) {
+			switch {
+			case tag == "<ol" || tag == "<ul":
+				depth++
+			case tag == "</ol" || tag == "</ul":
+				depth--
+			case tag == "<li" && depth == 1:
+				items++
+			}
+		}
+	}
+	if refs != items {
+		tb.Fatalf("%d numbers in the page, %d items in the list of notes:\n%s", refs, items, html)
+	}
+}
+
 // TestRenderFootnotes: a note is a number in the text and an item of a list at
 // the end, in the same order, and there is no link between them.
 func TestRenderFootnotes(t *testing.T) {
@@ -693,6 +738,50 @@ func TestRenderFootnotes(t *testing.T) {
 		},
 		// Dropped content leaves an empty item rather than moving every later number.
 		{name: "a note of raw html only is an empty item", md: "a^[<script>alert(1)</script>] b^[dva]\n", refs: []int{1, 2}, notes: []string{"", "dva"}, absent: []string{"alert"}},
+		{
+			// pandoc keeps the description in the Image (the alt text) and in the
+			// caption of the Figure: the note is counted where it is shown, once.
+			name:   "a note in the description of a figure",
+			md:     "![slika^[o slici]](a.png)\n",
+			refs:   []int{1},
+			notes:  []string{"o slici"},
+			want:   []string{`alt="slika"`, `<figcaption>slika<span class="footnote-ref"><sup>1</sup></span></figcaption>`},
+			absent: []string{`alt="slika1`, `alt="slika2`, "o slici</figcaption>"},
+		},
+		{
+			// A picture in a line has no caption, so its note has nowhere to be shown.
+			// Pandoc without the filter drops it as well.
+			name:   "a note in the description of a picture in a line",
+			md:     "tekst ![slika^[o slici]](a.png) kraj\n",
+			want:   []string{`alt="slika"`},
+			absent: []string{"o slici", "footnotes", "<ol", "footnote-ref"},
+		},
+		{
+			name:   "a note in the description of a removed figure",
+			md:     "![slika^[o slici]](" + base + "/x.png)\n",
+			refs:   []int{1},
+			notes:  []string{"o slici"},
+			want:   []string{`<span class="missing-image">slika<span class="footnote-ref"><sup>1</sup></span></span>`},
+			absent: []string{"<img", "<figure"},
+		},
+		{
+			name:   "a note in the description of a removed picture in a line",
+			md:     "a ![slika^[o slici]](../tajna.png) b\n",
+			refs:   []int{1},
+			notes:  []string{"o slici"},
+			want:   []string{`<span class="missing-image">slika<span class="footnote-ref"><sup>1</sup></span></span>`},
+			absent: []string{"<img", "data:image"},
+		},
+		{
+			name: "pictures with notes and a note in the text",
+			md: "a^[prva]\n\n![prva slika^[o prvoj]](a.png)\n\ntekst ![u retku^[nestaje]](a.png) i ![daleka^[o dalekoj]](" + base + "/x.png)\n\n" +
+				"![druga^[o drugoj]](a.png)\n\nkraj[^k]\n\n[^k]: zadnja\n",
+			refs:     []int{1, 2, 3, 4, 5},
+			textRefs: 5,
+			notes:    []string{"prva", "o prvoj", "o dalekoj", "o drugoj", "zadnja"},
+			want:     []string{`alt="prva slika"`, `alt="u retku"`, `alt="druga"`},
+			absent:   []string{"nestaje"},
+		},
 		{name: "twelve", md: twelve.String(), refs: twelveRefs, notes: twelveNotes},
 		{name: "a note that is not used leaves nothing", md: "tekst\n\n[^1]: nekorišteno\n", absent: []string{"nekorišteno", "footnotes", "<hr", "<ol"}},
 		{name: "no notes, no list", md: "tekst\n", absent: []string{"footnotes", "<hr", "<ol"}},
@@ -742,6 +831,7 @@ func TestRenderFootnotes(t *testing.T) {
 			if strings.Join(notes, "|") != strings.Join(tc.notes, "|") {
 				t.Fatalf("notes = %q, want %q:\n%s", notes, tc.notes, html)
 			}
+			requireNotesMatch(t, html)
 		})
 	}
 }
@@ -1711,6 +1801,7 @@ func FuzzRender(f *testing.F) {
 		"| a | b |\n|---|---|\n| 1 | 2 |\n",
 		"[^1]: x\n\ntext[^1]\n",
 		"![x](a.png)\n",
+		"![x^[y]](a.png)\n\n![z^[w]](nema.png)\n\ntekst ![u^[v]](a.png) a[^1]\n\n[^1]: n\n",
 		"[x]{.a onclick=1}\n![](a.png){onerror=1}\n",
 	} {
 		f.Add(md)
@@ -1726,5 +1817,10 @@ func FuzzRender(f *testing.F) {
 		}
 		requireSafe(t, html)
 		s.requireNoLeak(t, html)
+		// A class of the document can spell what the filter writes for a note
+		// ({.footnote-ref}), which would only confuse the count.
+		if !strings.Contains(strings.ToLower(md), "footnote") {
+			requireNotesMatch(t, string(html))
+		}
 	})
 }

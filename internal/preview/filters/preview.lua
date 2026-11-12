@@ -81,11 +81,25 @@ end
 local images_on = false
 local resource_dir = ""
 
+-- A note in the description of a picture that stays: pandoc keeps the
+-- description in two places, the Image (which the writer turns into the alt
+-- text) and, for a picture alone in a paragraph, the caption of the Figure
+-- around it. The caption is where the description is shown, so a note is
+-- numbered there and nowhere else. In the alt text, which nobody sees, it would
+-- be counted again and its number would end up in the text. Plain pandoc leaves
+-- the note out of the alt text too, and a picture in a line has no caption, so
+-- its note is not shown at all.
+local function without_notes(inlines)
+  return inlines:walk({ Note = function() return {} end })
+end
+
 local function Image(el)
   if not images_on or not is_local_image(el.src)
       or not readable(pandoc.path.join({ resource_dir, unescape(el.src) })) then
+    -- The description is what is shown now, so a note in it is numbered once, here.
     return pandoc.Span(el.caption, { class = "missing-image" })
   end
+  el.caption = without_notes(el.caption)
   local kv = {}
   for _, k in ipairs({ "width", "height" }) do
     local v = el.attributes[k]
