@@ -232,9 +232,13 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 	if d.Preview != nil {
 		// Last: nothing after this can fail, so the goroutine is never left behind.
 		e.preview = newPreviewLoop(previewLoopDeps{
-			Source:      e.session,
-			Renderer:    d.Preview,
-			Emit:        func(c PreviewContent) { e.notify(eventPreviewContent, c) },
+			Source:   e.session,
+			Renderer: d.Preview,
+			Emit: func(c PreviewContent) {
+				// The size only, never the HTML: it is the user's document.
+				slog.Debug("editor event", "event", eventPreviewContent, "file", filepath.Base(c.Path), "state", c.State, "code", c.Code, "html_bytes", len(c.HTML))
+				e.notify(eventPreviewContent, c)
+			},
 			Target:      e.previewTargetOf,
 			Debounce:    d.Limits.PreviewDebounce,
 			ReadTimeout: d.Limits.CommandTimeout,
