@@ -1,7 +1,9 @@
 version: '3'
 
 vars:
+  # APP_NAME is the executable (bin/pisar, used by scripts/); BUNDLE_NAME is the .app shown to the user.
   APP_NAME: "pisar"
+  BUNDLE_NAME: "Pisar"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
@@ -28,6 +30,34 @@ tasks:
     summary: Packages a production build of the application
     cmds:
       - task: "{{.GOOS}}:package"
+
+  icon:
+    summary: Regenerates build/appicon.png, icons.icns and Assets.car from build/appicon.svg
+    desc: |
+      build/appicon.svg is the full icon (with backing); build/appicon.icon holds the Icon Composer layers.
+      The PNG is drawn by sips, so another macOS version may produce different bytes.
+    platforms: [darwin]
+    preconditions:
+      - sh: test -f build/appicon.svg
+        msg: "build/appicon.svg is missing."
+    cmds:
+      - sips -s format png build/appicon.svg --out build/appicon.png
+      - task: common:generate:icons
+
+  sign:
+    summary: Signs bin/{{.BUNDLE_NAME}}.app with the stable identity in $SIGN_IDENTITY (never ad-hoc)
+    desc: |
+      Usage: SIGN_IDENTITY="<name of a code-signing identity>" task sign
+      List identities with: security find-identity -v -p codesigning
+    deps: [package]
+    platforms: [darwin]
+    preconditions:
+      - sh: test -n "$SIGN_IDENTITY"
+        msg: "SIGN_IDENTITY is not set. Export the name of a code-signing identity (see `security find-identity -v -p codesigning`)."
+    cmds:
+      - xattr -cr "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
+      - codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
+      - codesign --verify --deep --strict "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
 
   # Go packages embed frontend/dist, so every Go check needs the frontend built first.
   test:
