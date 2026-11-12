@@ -437,6 +437,18 @@ func (s *Session) BufferText(ctx context.Context, maxBytes int) ([]byte, nvim.Bu
 	return p.BufferText(ctx, maxBytes)
 }
 
+// Format runs a Markdown formatting action ("bold", "italic", "heading" or
+// "list") on the current buffer; see nvim.Process.Format. An unknown kind fails
+// with nvim.ErrUnknownFormat, no process with nvim.ErrNotRunning (both
+// wrapped).
+func (s *Session) Format(ctx context.Context, kind string) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.Format(ctx, kind)
+}
+
 // Save writes the current buffer to its file.
 func (s *Session) Save(ctx context.Context) error {
 	p, err := s.proc()

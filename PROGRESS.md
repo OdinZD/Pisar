@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, korak 1 gotov). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–2 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 2 (oblikovanje u Neovimu)
+- Sljedeći korak: faza 5, korak 3 (`user.lua`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, korak 1)
+- Zadnja izmjena: 2026-11-12 (faza 5, korak 2)
 
 ## Priprema (2026-11-11)
 
@@ -1562,7 +1562,26 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
         `nvim-<pid>-<redni broj>.sock`; redni broj je zajednički za cijeli testni program, pa kasniji
         testovi s dugim imenom mogu prijeći 103 bajta. Novi `writing_test.go` se zato po imenu sortira
         zadnji. Nije ispravljeno (ispravak bi socket stavio izvan `t.TempDir()`).
-- [ ] 2. Oblikovanje u Neovimu: Lua funkcije, `␣b` `␣i` `␣h` `␣l`, `Format(ctx, kind)`
+- [x] 2. Oblikovanje u Neovimu. Sav Lua je u `init.lua` (sada oko 835 redaka; zaseban modul bi tražio izmjene
+      `writeConfig`-a i testnog okruženja); ulazna točka `pisar_format(kind)`; mapiranja `␣b` `␣i` `␣h`
+      `␣l` u normal i visual modu. `nvim.Process.Format(ctx, kind)` (+ `term.Session.Format`),
+      `ErrUnknownFormat`. 12 testova s oko 170 slučajeva, svaki kroz mapiranje i kroz `Format`.
+      - Podebljano i kurziv: visual omota označeno (rubni razmaci se režu), a već omotano odmota;
+        normal djeluje na riječ pod kursorom (interpunkcija ostaje izvan oznaka); insert umeće par i
+        stavlja kursor između, a ista radnja ispred zatvarajuće oznake je preskače („izađi”). `V`
+        omata redak po redak. Blokovski odabir se odbija bez promjene.
+      - Naslov: bez oznake → `#` → `##` → `###` → bez oznake (razine 4–6 → bez oznake); zamjenjuje
+        oznaku liste (`- a` → `# a`), numerirana stavka zadržava broj. Lista: `- ` se dodaje ili skida
+        (`*`, `+` se skidaju); numerirana stavka i naslov se ne diraju; uvlaka se čuva; u više redaka
+        skida samo ako svi imaju oznaku.
+      - Svaka radnja u normal i visual modu je jedan korak za `u`; u insert modu je dio tekućeg unosa
+        (`u` nakon „tekst, ⌘B, tekst, ⌘B” vraća cijeli unos). Registri, pretraga, poruke netaknuti.
+      - Mod koji čeka unos: `Format` vraća nil i ne mijenja ništa. Izmjereno: Lua poziv se NE vraća dok
+        je otvoren hit-enter prompt, pa Go prvo pita `nvim_get_mode` (uvijek odgovara) i odustaje kad je
+        `blocking`. Buffer s `modifiable=false`: ništa, bez greške.
+      - Riječ je niz znakova razreda 2 (`charclass`) bez `_`: `\k` u regexu hvata i emoji.
+      - Krhkost s duljinom putanje socketa u testovima paketa `nvim` i dalje vrijedi: najdulja je 100
+        od 103 bajta.
 - [ ] 3. `user.lua`: učitavanje na kraju, hvatanje greške, ponovno postavljanje onoga o čemu Go ovisi
 - [ ] 4. Usluga, izbornik „Oblikovanje” (`⌘B`, `⌘I`), frontend
 - [ ] 5. Dimna provjera (`scripts/smoke.sh`)

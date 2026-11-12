@@ -939,3 +939,29 @@ func TestConc(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestFmt(t *testing.T) {
+	idle, _ := newSession(t)
+	if err := idle.Format(testCtx(t), "bold"); !errors.Is(err, nvim.ErrNotRunning) {
+		t.Errorf("Format before Start: %v, want ErrNotRunning", err)
+	}
+
+	s, _, ctx := started(t)
+	a := writeFile(t, "a.md", "jedna riječ\n")
+	if err := s.OpenFile(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Format(ctx, "underline"); !errors.Is(err, nvim.ErrUnknownFormat) {
+		t.Errorf("Format(underline): %v, want ErrUnknownFormat", err)
+	}
+	if err := s.Format(ctx, "list"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Format(ctx, "heading"); err != nil {
+		t.Fatal(err)
+	}
+	text, _, err := s.BufferText(ctx, 1<<20)
+	if err != nil || string(text) != "# jedna riječ\n" {
+		t.Errorf("text after list and heading = %q, %v; want the heading", text, err)
+	}
+}
