@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 4, korak 8 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, ispravci nakon pregleda, krug 1)
+- Zadnja izmjena: 2026-11-12 (faza 4, ispravci nakon pregleda, krug 2)
 
 ## Priprema (2026-11-11)
 
@@ -1330,7 +1330,7 @@ filter (ništa izvršivo ni mrežno ne prolazi). Četiri stavke za ispravak:
    kraj kao obična numerirana lista (`<div class="footnotes">`), istim redoslijedom i s istim
    brojevima; sadržaj bilješke prolazi isto čišćenje. Test sigurnosti je pooštren: izlaz ne smije
    imati NIJEDNU oznaku `<a` ni atribut `href` (iznimka za `#…` je uklonjena). `TestRenderFootnotes`
-   (15 slučajeva: tablica, lista, naslov, bilješka u bilješci, 12 bilješki…). Namjerno izmijenjeni
+   (16 slučajeva nakon kruga 1: tablica, lista, naslov, bilješka u bilješci, 12 bilješki…). Namjerno izmijenjeni
    testovi: slučaj `plain` u `TestUnsafeInFindsWhatItShould` i slučaj `footnote` u
    `TestRenderMarkup` (oba su očekivala pandocov oblik s poveznicama). Fuzz 20 s bez nalaza.
 2. Tvrdnja u dokazima da izlaz „nema `href`-a” nije bila točna dok su sidra postojala; sada jest.
@@ -1343,6 +1343,30 @@ Iz napomena: prazno stanje sada, kako traži `DESIGN.md`, uz „Otvori dokument�
 `⌘P` (`EmptyState.svelte`, tekst `emptySearchHint`); broj provjera u dimnoj skripti ispravljen je na
 28; ime tipa `Hit`, dodatno mjerilo poretka, preširoka tvrdnja o atributima i konstante izvan
 `config`-a zapisani su niže.
+
+### Pregled plana — krug 2 (2026-11-12): FAIL; nalazi kruga 1 riješeni, dva nova ispravljena
+
+1. Bilješka u opisu slike brojila se dvaput (pandoc opis slike drži i kao `alt` i kao naslov
+   figure), a broj je završio u `alt` tekstu. **Ispravak u filtru:** iz teksta koji postaje `alt`
+   bilješke se uklanjaju; broji se samo ona u vidljivom naslovu. Slika u retku gubi bilješku iz opisa,
+   kao i u čistom pandocu. Novi slučajevi u `TestRenderFootnotes` i svojstvo „broj oznaka u tekstu =
+   broj stavki popisa” na svakom slučaju i u fuzzu.
+2. `TestWdQuitDeclined/reload` je reviewer-u pao jednom pod `-race` (`saveAll = nil`). **Uzrok je
+   stvarna greška iz faze 3**, potvrđena determinističnom reprodukcijom: obavijest o zapisu koji radi
+   `SaveAll` stavi vlastiti zadatak izvoza, koji može krenuti prije izričitog zadatka gašenja. Tada
+   je kod „Učitaj ponovno” izričiti zadatak zaključio da nema što izvesti, `saveAll` je vratio `nil` i
+   aplikacija bi se ugasila; kod „Odustani” se dijalog konflikta pojavio dvaput. **Ispravak**
+   (`editorwords.go`): `saveAllWords` prije `SaveAll` počinje pratiti ishode svih izvoza svojih
+   dokumenata (`exportWatch`) i zbraja ih bez obzira na to koji ih je zadatak obavio; izričiti zadatak
+   istog kruga ne pita ponovno nakon odbijanja; obavijest o zapisu za koji je izvoz već odbijen ne
+   pita ponovno (novi zapis ima drugi otisak). Novi testovi `TestWdOrder` (oba redoslijeda × Odustani
+   / Učitaj ponovno), `TestWdOrderGate`, `TestWorkQueueWatch`, `TestWorkQueueRound`; postojeći nisu
+   mijenjani. `go test -count=30 -race` nad testovima gašenja i reda prolazi; četiri puna `go test
+   -count=1 -race ./...` prolaze.
+
+Napomene: `TestRenderFootnotes` ima više slučajeva nego što je pisalo (ispravljeno); točka 13 ručne
+provjere kaže da u praznom stanju radi samo `⌘P`; commit `588c64a` je spojio četiri ispravka (od
+kruga 2 svaki ispravak je zaseban commit).
 
 ### Odstupanja od plana faze (datoteke i ponašanje)
 
@@ -1367,15 +1391,15 @@ Uz odstupanja zapisana uz pojedine korake:
 
 ### Dokazi po kriterijima (2026-11-12)
 
-Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci iz kruga 1 pregleda).
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci iz kruga 2 pregleda).
 
 - `go test -count=1 -race ./...` → svih 8 paketa `ok`; `task test` → exit 0 (vitest `Test Files 27
   passed`, `Tests 796 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0; `bash scripts/smoke.sh` → `smoke: all checks passed` (91 provjera, dvaput
   zaredom); `bash scripts/shutdown.sh` → `shutdown: all checks passed`.
-- Go testovi (`go test -list`): `Pisar` 166, `config` 30, `convert` 55, `docsafe` 92, `nvim` 68,
+- Go testovi (`go test -list`): `Pisar` 170, `config` 30, `convert` 55, `docsafe` 92, `nvim` 68,
   `preview` 24, `project` 44, `term` 35. Pokrivenost (`go test -count=1 -cover ./...`, nakon
-  ispravaka iz kruga 1): `Pisar` 83,8 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim`
+  ispravaka iz kruga 2): `Pisar` 84,3 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim`
   88,7 %, `preview` 92,2 %, `project` 96,0 %, `term` 93,9 % (`Pisar` i `nvim` se mijenjaju između
   pokretanja za nekoliko desetinki).
 
@@ -1387,7 +1411,7 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci 
    ispod 1100 px, bez samopaljenja); `smoke.sh` (cijeli lanac kroz pravi frontend).
 2. Pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava: `TestRenderSafety` i `FuzzRender`
    (za svaki neprijateljski ulaz izlaz nema oznake skripte, obrađivača događaja, oznake `<a`, atributa
-   `href` ni adrese), `TestRenderFootnotes` (fusnote bez poveznica),
+   `href` ni adrese), `TestRenderFootnotes` (fusnote bez poveznica; bilješka u opisu slike jednom),
    `TestRenderDoesNotFetch` (lokalni poslužitelj broji 0 zahtjeva), `TestRenderAttributes`,
    `TestRenderImages` (bijeg iz foldera, neprijateljski SVG), `TestPvPandoc` (pravi Neovim i pandoc:
    `.md` sa `<script>` daje stranicu bez oznake skripte); vitest `previewFrame.test.ts` (`sandbox` je
@@ -1427,7 +1451,8 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci 
     `⌘P` dok je ploča otvorena samo vraća fokus u polje.
 12. `Esc` u normal modu Neovima (ploča zatvorena) ne zatvara ništa.
 13. Bez otvorenog dokumenta stupac editora pokazuje „Otvori dokument” i ispod toga `␣f` / `⌘P` s
-    natuknicom.
+    natuknicom. Prazno stanje se vidi samo dok Neovim ne radi, pa tada stvarno radi samo `⌘P` (`␣f`
+    je Neovimovo mapiranje); natuknica doslovno slijedi `DESIGN.md`. Presudi treba li je promijeniti.
 
 ### Otvoreno nakon faze 4
 
