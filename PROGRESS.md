@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 7 — Teme (plan faza 7 i 8 odobren 2026-11-12, u izvedbi). Faza 6 — Pakiranje: svi koraci
+- Trenutna faza: 7 — Teme (plan faza 7 i 8 odobren 2026-11-12; koraci izvedeni, čeka ručnu provjeru). Faza 6 — Pakiranje: svi koraci
   izvedeni, čeka vlasnikovu ručnu provjeru. Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
@@ -13,10 +13,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: `plan-reviewer` za fazu 7, zatim vlasnikova ručna provjera faza 6 i 7
+- Sljedeći korak: vlasnikova ručna provjera faza 6 i 7 i odluka o prihvaćanju; faza 8 kreće nakon „kreni”
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 7: svi koraci izvedeni, dokazi upisani)
+- Zadnja izmjena: 2026-11-12 (faza 7: svi koraci izvedeni, `plan-reviewer` PASS u krugu 3; čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -2232,6 +2232,9 @@ pregleda, commit `6a00607`).
   nalaza: ispravak iz kruga 1 otvorio je simetričnu utrku (zakašnjeli odgovor `Theme()` mogao je pregaziti
   noviji događaj) — ispravljeno zastavicom u `ThemeController.start()`; rečenica o tome kada su dokazi
   pokrenuti bila je zastarjela — dokazi su ponovljeni nakon ispravka i rečenica je ispravljena.
+- Krug 3: PASS. Nema preostalih odstupanja; reviewer je ponovio `task test`, `task lint`, `task build`,
+  vitest tema i `smoke.sh` (157 `ok`) i prošao slučajeve utrke u `ThemeController.start()`. Otvoren je samo
+  ručni kriterij **[R]**.
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
