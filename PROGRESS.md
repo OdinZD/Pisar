@@ -11,7 +11,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 3, korak 10 (dokazi, ručna provjera, `plan-reviewer`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, ispravci nakon pregleda, krug 1)
+- Zadnja izmjena: 2026-11-12 (faza 3, ispravci nakon pregleda, krug 2)
 
 ## Priprema (2026-11-11)
 
@@ -921,7 +921,7 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       da pandoc bez filtra stvarno da ugniježđenu poveznicu; test to dokumentira). U krugu `toc.docx`
       prvi i drugi Markdown razlikuju se samo klasom `.TOC-Heading` na naslovu sadržaja; drugi, treći i
       četvrti su isti. Novi kod pojednostavljenja `drawings` (`wps:wsp`, `wpg:wgp`); `formatting.docx`
-      ima crtanu liniju. Skripta ispisuje 65 redaka `ok` (57 poziva `check`); vitest 538.
+      ima crtanu liniju. Skripta je tada ispisivala 65 redaka `ok` (nakon kruga 1 pregleda: 69); vitest 538.
       - Izmijenjeni postojeći testovi: `TestDocxToMarkdownCalls` (argumenti imaju `--lua-filter=`);
         `TestRoundTrip` (dodan `toc` s jednom dopuštenom razlikom prvog kruga); `TestExamineSimplified`,
         `TestExamineKeepsReadingAfterTheLosses`, `TestExamineFixtures` (deseti kod); u glavnom paketu
@@ -972,6 +972,13 @@ formulu (ostaju) te stilove `Title` i `Quote` (postaju `BodyText`); podtest u `T
 čije je ime tvrdilo da pokreće `textutil` preimenovan je u ono što stvarno provjerava; ispravljen je
 broj provjera skripte i redak o BSD zastavicama.
 
+### Pregled plana — krug 2 (2026-11-12): kod u redu, FAIL samo zbog zapisa; ispravljeno
+
+Svi nalazi kruga 1 potvrđeni kao riješeni ili zabilježeni. Novo: brojevi u „Dokazi po kriterijima”
+bili su od prije ispravaka (ispravljeni su prema svježem mjerenju); ograničenje „Učitaj ponovno” za
+neupisani tekst i točka u ručnoj provjeri (dodani); uvod u `docs/known-losses.md` (ublažen); pogrešan
+komentar u podtestu „reload” (ispravljen, tvrdnje iste).
+
 ### Odstupanja od plana faze (datoteke i ponašanje)
 
 Uz odstupanja zapisana uz pojedine korake:
@@ -1007,13 +1014,15 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (nakon isp
 
 - `go test -count=1 -race ./...` → svi paketi `ok`; `task test` → exit 0 (vitest `Tests 538 passed`);
   `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`; `task build` → exit 0;
-  `bash scripts/make-fixtures.sh` → `all checks passed` (65 redaka `ok`, izlaz bajt-stabilan);
+  `bash scripts/make-fixtures.sh` → `all checks passed` (69 redaka `ok`, 61 poziv `check`; izlaz
+  bajt-stabilan);
   `bash scripts/smoke.sh` → `smoke: all checks passed` (63 provjere); `bash scripts/shutdown.sh` →
   `shutdown: all checks passed`.
-- Go testovi (`go test -list`): `Pisar` 127, `config` 28, `convert` 55, `docsafe` 87, `nvim` 55,
+- Go testovi (`go test -list`): `Pisar` 127, `config` 28, `convert` 55, `docsafe` 92, `nvim` 55,
   `project` 36, `term` 34; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD` (kao u fazi 2).
-  Pokrivenost (`go test -count=1 -cover ./...`): `Pisar` 81,9 %, `config` 84,4 %, `convert` 92,8 %,
-  `docsafe` 85,1 %, `nvim` 86,8 %, `project` 94,5 %, `term` 93,5 %.
+  Pokrivenost (`go test -count=1 -cover ./...`): `Pisar` 82,0 %, `config` 84,4 %, `convert` 92,8 %,
+  `docsafe` 85,2 %, `nvim` 87,1 %, `project` 94,5 %, `term` 93,5 % (`nvim` se mijenja između
+  pokretanja, kao u fazi 2).
 
 1. Otvaranje kroz radnu kopiju, slike se izdvajaju i vraćaju: `TestWordDocsOpenBasic` (`doc.md`,
    `media/`, `reference.docx`, `meta.json`; izvornik bajt-identičan), `TestWdOpen` (pravi Neovim:
@@ -1068,7 +1077,8 @@ Pripremi kopije dokumenata; izvornike ne diraj. Backup je u `~/Library/Applicati
    `Ime.docx` već postoji, dijalog pita za ime; `.doc` ostaje isti.
 6. Konflikt: dokument otvoren u Pisaru spremi iz Worda, pa `⌘S` u Pisaru → dijalog s tri gumba.
    Isprobaj „Odustani” (ništa se ne mijenja, traka kaže „Izmjene još nisu u dokumentu”), „Prepiši”
-   (u backupu je Wordova verzija) i „Učitaj ponovno” (u Neovimu je Wordova verzija).
+   (u backupu je Wordova verzija) i „Učitaj ponovno” (u Neovimu je Wordova verzija, a u mapi backupa
+   tog dokumenta je `…-ime.docx.md` s tekstom iz Pisara).
 7. Oporavak: nakon „Odustani” u konfliktu zatvori Pisar s „Odbaci”, pokreni ga i otvori isti
    dokument → pitanje Oporavi / Odbaci izmjene / Odustani.
 8. Gašenje s nespremljenim Wordovim dokumentom: dijalog navodi ime `.docx`-a (ne `doc.md`); „Spremi”
@@ -1089,6 +1099,11 @@ Pripremi kopije dokumenata; izvornike ne diraj. Backup je u `~/Library/Applicati
 - Neovim prikazuje ime `doc.md`, ne ime dokumenta. Prljave radne kopije koje nitko ne oporavi ostaju u
   `work/`. `SaveCopy` ne uzima tekst koji je utipkan, a nije zapisan. Noviji `cx:chart` nije pokriven.
 - Nativni dijalozi (oporavak, konflikt, spremanje) provjereni su samo prevođenjem i lažnim dijalozima.
+- „Učitaj ponovno” čuva ono što je zapisano u `doc.md`; tekst utipkan nakon zadnjeg `:w` (npr. dok je
+  pretvorba trajala) odbacuje se s bufferom. Gdje je Markdown kopija, korisnik vidi samo u mapi
+  backupa (aplikacija to ne prikazuje).
+- Komentar uz `BackupsDir` i `WorkDir` u `docsafe.Options` kaže da ne smiju biti u korisnikovim
+  dokumentima, ali kod to ne provjerava; obje putanje dolaze iz `internal/config`.
 
 ### Izvan opsega
 

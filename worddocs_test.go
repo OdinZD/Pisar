@@ -1024,7 +1024,7 @@ func TestWordDocsExportConflict(t *testing.T) {
 			t.Fatal(err)
 		}
 		sameBytes(t, copies[0], mine)
-		// A second reload replaces doc.prev.md.
+		// The reloaded version is read-only (it has comments), so it is not exported.
 		if _, err := e.docs.export(t.Context(), d); !errors.Is(err, docsafe.ErrReadOnly) {
 			t.Errorf("export of the read-only reload: %v", err)
 		}

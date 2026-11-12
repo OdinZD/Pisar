@@ -5,9 +5,9 @@ Pisar Wordov dokument uređuje kao Markdown: `.docx` se pri otvaranju pretvara u
 može opisati sve što Word može, pa se dio toga pri spremanju gubi. Ovdje je popis svega što je
 izmjereno; **sve što se gubi, a nije na ovom popisu, je greška.**
 
-Izmjereno s pandocom 3.13 i `textutil`-om iz macOS-a 27.2. Dokaz uz svaku stavku je probni dokument u
-`testdata/docx/` (nastaje skriptom `scripts/make-fixtures.sh`), njegov golden Markdown u
-`testdata/docx/golden/` i testovi u `internal/convert/`.
+Izmjereno s pandocom 3.13 i `textutil`-om iz macOS-a 27.2. Dokaz je probni dokument u `testdata/docx/`
+(nastaje skriptom `scripts/make-fixtures.sh`), njegov golden Markdown u `testdata/docx/golden/` i
+testovi u `internal/convert/`; gdje probnog dokumenta nema, uz stavku piše da je mjerena ručno.
 
 Prije svakog prvog prepisivanja u sesiji Pisar sprema sigurnosnu kopiju izvornika u
 `~/Library/Application Support/Pisar/backups/` (zadnjih 10 po dokumentu), pa se svaki gubitak s ovog
