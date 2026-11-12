@@ -2160,7 +2160,17 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
         primijenjenu temu, pa neuspjeli zapis vraća kvačicu.
       - Dimna provjera agenta bez klikanja: aplikacija se diže s praznim homeom i s v2 `"theme":"dracula"`.
         Klik, boja prozora i kvačica NISU viđeni (ručna provjera).
-- [ ] 8. Promjena uživo u frontendu (`themeController`, terminal, pregled)
+- [x] 8. Promjena uživo: `lib/themeController.svelte.ts` (na `theme:changed`: `setActiveTheme`, `applyTheme`,
+      reaktivni `id`, slanje colorschemea), `lib/themeSender.ts` (jedan `SetColorscheme` u letu, pamti se
+      samo najnoviji zahtjev; 8 testova), `Terminal.svelte` (`term.options.theme` = novi objekt; `resend`
+      ako se tema promijenila dok se Neovim pokretao), `Preview.svelte` (`applyTheme` na `<html>` okvira,
+      `srcdoc` ostaje), `main.ts` (tema iz URL-a sinkrono, potvrda kroz `SettingsService.Theme()` usporedno
+      s fontovima; `startTheme`); vitest 1276.
+      - Dimna provjera agenta bez klikanja: home s `"theme":"dracula"` → log `method=Theme theme=dracula`,
+        zatim `Start`; Neovim preko socketa javlja `dark pisar`.
+      - Neuspjelo slanje colorschemea se samo logira (sučelje je tada u novoj temi, Neovim u staroj).
+      - NIJE viđeno (ručna provjera): promjena na klik u meniju, boje terminala i pregleda nakon promjene,
+        skrol pregleda, promjena teme usred pokretanja Neovima. Komponente i kontroler nemaju testove.
 - [ ] 9. Dimna provjera s tamnom temom, dokumenti, `plan-reviewer`
 
 ### Izvan opsega
