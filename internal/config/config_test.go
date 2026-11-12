@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -283,7 +284,7 @@ func TestDamagedFile(t *testing.T) {
 func TestNewerVersion(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, fileName)
-	content := `{"version":2,"projects":[],"future":{"x":1}}`
+	content := `{"version":3,"projects":[],"future":{"x":1}}`
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -691,5 +692,324 @@ func TestLimitsDocx(t *testing.T) {
 	// swapped pair of values would still pass the checks above.
 	if l.MaxDocxPartBytes < 1<<20 {
 		t.Fatalf("MaxDocxPartBytes %d is too small for a long document", l.MaxDocxPartBytes)
+	}
+}
+
+// writeConfig puts content into home/config.json as the user's file.
+func writeConfig(t *testing.T, home, content string) string {
+	t.Helper()
+	path := filepath.Join(home, fileName)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// diskFile is the decoded config.json, to check what was written.
+func diskFile(t *testing.T, home string) fileFormat {
+	t.Helper()
+	var f fileFormat
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(home, fileName))), &f); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func TestThemes(t *testing.T) {
+	want := []string{ThemePisar, ThemeCatppuccinMocha, ThemeDracula}
+	if got := Themes(); !slices.Equal(got, want) {
+		t.Fatalf("Themes = %v, want %v", got, want)
+	}
+	if !slices.Contains(Themes(), DefaultTheme) {
+		t.Fatalf("DefaultTheme %q is not in Themes", DefaultTheme)
+	}
+	first := Themes()
+	first[0] = "broken"
+	if got := Themes(); !slices.Equal(got, want) {
+		t.Fatalf("Themes returned shared storage: %v", got)
+	}
+}
+
+func TestThemeFreshHome(t *testing.T) {
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	if s.Theme() != DefaultTheme {
+		t.Fatalf("Theme = %q", s.Theme())
+	}
+	if _, err := os.Stat(filepath.Join(home, fileName)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("config.json must not exist after Open: %v", err)
+	}
+}
+
+func TestThemeSetAndReopen(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	s := mustOpen(t, home)
+	p, err := s.AddProject(mkdir(t, root, "proj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range Themes() {
+		if err := s.SetTheme(id); err != nil {
+			t.Fatalf("SetTheme(%q): %v", id, err)
+		}
+		if s.Theme() != id {
+			t.Fatalf("Theme = %q, want %q", s.Theme(), id)
+		}
+		reopened := mustOpen(t, home)
+		if reopened.Theme() != id || !slices.Equal(reopened.Projects(), []Project{p}) || reopened.Recovered() != "" {
+			t.Fatalf("round trip of %q: %q %v %q", id, reopened.Theme(), reopened.Projects(), reopened.Recovered())
+		}
+	}
+}
+
+func TestThemeSetUnknown(t *testing.T) {
+	for _, id := range []string{"nepostojeca", "", "Dracula", "pisar "} {
+		t.Run("fresh/"+id, func(t *testing.T) {
+			home := t.TempDir()
+			s := mustOpen(t, home)
+			err := s.SetTheme(id)
+			if !errors.Is(err, ErrUnknownTheme) {
+				t.Fatalf("err = %v", err)
+			}
+			if s.Theme() != DefaultTheme {
+				t.Fatalf("Theme = %q", s.Theme())
+			}
+			entries, rerr := os.ReadDir(home)
+			if rerr != nil || len(entries) != 0 {
+				t.Fatalf("home must stay empty: %v %v", entries, rerr)
+			}
+		})
+	}
+
+	t.Run("existing file", func(t *testing.T) {
+		home := t.TempDir()
+		content := `{"version":2,"theme":"dracula","projects":[]}`
+		path := writeConfig(t, home, content)
+		s := mustOpen(t, home)
+		if err := s.SetTheme("nepostojeca"); !errors.Is(err, ErrUnknownTheme) {
+			t.Fatalf("err = %v", err)
+		}
+		if s.Theme() != ThemeDracula || readFile(t, path) != content {
+			t.Fatalf("state changed: %q %q", s.Theme(), readFile(t, path))
+		}
+	})
+}
+
+func TestThemeSetSameWritesNothing(t *testing.T) {
+	t.Run("fresh home", func(t *testing.T) {
+		home := t.TempDir()
+		s := mustOpen(t, home)
+		if err := s.SetTheme(DefaultTheme); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(home, fileName)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("config.json must not exist: %v", err)
+		}
+	})
+	t.Run("existing file", func(t *testing.T) {
+		home := t.TempDir()
+		// Deliberately not what save would write, so a rewrite would show.
+		content := `{"version":2,"theme":"dracula","projects":[]}`
+		path := writeConfig(t, home, content)
+		s := mustOpen(t, home)
+		if err := s.SetTheme(ThemeDracula); err != nil {
+			t.Fatal(err)
+		}
+		if readFile(t, path) != content {
+			t.Fatalf("file rewritten: %q", readFile(t, path))
+		}
+	})
+}
+
+func TestThemeFailedWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	if err := os.Chmod(home, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(home, 0o700) })
+	if err := s.SetTheme(ThemeDracula); err == nil {
+		t.Fatal("expected write error")
+	}
+	if s.Theme() != DefaultTheme {
+		t.Fatalf("theme not rolled back: %q", s.Theme())
+	}
+}
+
+func TestThemeVersion1File(t *testing.T) {
+	root := t.TempDir()
+	proj := mkdir(t, root, "proj")
+	content := fmt.Sprintf(`{"version":1,"projects":[{"id":"abc","name":"proj","path":%q}]}`, proj)
+	want := []Project{{ID: "abc", Name: "proj", Path: proj}}
+
+	t.Run("open keeps bytes", func(t *testing.T) {
+		home := t.TempDir()
+		path := writeConfig(t, home, content)
+		s := mustOpen(t, home)
+		if s.Theme() != DefaultTheme || !slices.Equal(s.Projects(), want) || s.Recovered() != "" {
+			t.Fatalf("got %q %v %q", s.Theme(), s.Projects(), s.Recovered())
+		}
+		if readFile(t, path) != content {
+			t.Fatal("Open rewrote a version 1 file")
+		}
+	})
+
+	t.Run("SetTheme upgrades", func(t *testing.T) {
+		home := t.TempDir()
+		path := writeConfig(t, home, content)
+		if err := mustOpen(t, home).SetTheme(ThemeDracula); err != nil {
+			t.Fatal(err)
+		}
+		raw := readFile(t, path)
+		if !strings.Contains(raw, `"version": 2`) || !strings.Contains(raw, `"theme": "dracula"`) {
+			t.Fatalf("file: %s", raw)
+		}
+		reopened := mustOpen(t, home)
+		if reopened.Theme() != ThemeDracula || !slices.Equal(reopened.Projects(), want) {
+			t.Fatalf("round trip: %q %v", reopened.Theme(), reopened.Projects())
+		}
+	})
+
+	t.Run("AddProject upgrades with default theme", func(t *testing.T) {
+		home := t.TempDir()
+		writeConfig(t, home, content)
+		s := mustOpen(t, home)
+		added, err := s.AddProject(mkdir(t, root, "other"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := diskFile(t, home)
+		if f.Version != 2 || f.Theme != ThemePisar || !slices.Equal(f.Projects, append(slices.Clone(want), added)) {
+			t.Fatalf("file: %+v", f)
+		}
+	})
+
+	t.Run("RemoveProject upgrades", func(t *testing.T) {
+		home := t.TempDir()
+		writeConfig(t, home, content)
+		if err := mustOpen(t, home).RemoveProject("abc"); err != nil {
+			t.Fatal(err)
+		}
+		if f := diskFile(t, home); f.Version != 2 || f.Theme != ThemePisar || len(f.Projects) != 0 {
+			t.Fatalf("file: %+v", f)
+		}
+	})
+}
+
+func TestThemeKeptByProjectChanges(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	proj := mkdir(t, root, "proj")
+	body := fmt.Sprintf(`{"version":2,"theme":"catppuccin-mocha","projects":[{"id":"abc","name":"proj","path":%q}]}`, proj)
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, home, body)
+	s := mustOpen(t, home)
+
+	added, err := s.AddProject(mkdir(t, root, "other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := diskFile(t, home); f.Theme != ThemeCatppuccinMocha || len(f.Projects) != 2 {
+		t.Fatalf("after add: %+v", f)
+	}
+	if err := s.RemoveProject(added.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f := diskFile(t, home); f.Theme != ThemeCatppuccinMocha || len(f.Projects) != 1 {
+		t.Fatalf("after remove: %+v", f)
+	}
+	if s.Theme() != ThemeCatppuccinMocha {
+		t.Fatalf("Theme = %q", s.Theme())
+	}
+}
+
+func TestThemeVersion2Lenient(t *testing.T) {
+	root := t.TempDir()
+	proj := mkdir(t, root, "proj")
+	projects := fmt.Sprintf(`[{"id":"abc","name":"proj","path":%q}]`, proj)
+	for _, tc := range []struct{ name, content string }{
+		{"unknown id", `{"version":2,"theme":"solarized","projects":` + projects + `}`},
+		{"empty id", `{"version":2,"theme":"","projects":` + projects + `}`},
+		{"omitted", `{"version":2,"projects":` + projects + `}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := writeConfig(t, home, tc.content)
+			s := mustOpen(t, home)
+			if s.Theme() != DefaultTheme || s.Recovered() != "" {
+				t.Fatalf("Theme = %q, Recovered = %q", s.Theme(), s.Recovered())
+			}
+			if got := s.Projects(); len(got) != 1 || got[0].ID != "abc" {
+				t.Fatalf("projects = %v", got)
+			}
+			if readFile(t, path) != tc.content {
+				t.Fatal("file changed")
+			}
+		})
+	}
+}
+
+func TestThemeVersion2Damaged(t *testing.T) {
+	for _, tc := range []struct{ name, content string }{
+		{"unknown field", `{"version":2,"theme":"dracula","projects":[],"font":"x"}`},
+		{"v1 with theme", `{"version":1,"theme":"dracula","projects":[]}`},
+		{"theme is a number", `{"version":2,"theme":7,"projects":[]}`},
+		{"version 0", `{"version":0,"projects":[]}`},
+		{"negative version", `{"version":-1,"projects":[]}`},
+		{"trailing data", `{"version":2,"projects":[]} {}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := writeConfig(t, home, tc.content)
+			s := mustOpen(t, home)
+			rec := s.Recovered()
+			if rec == "" || readFile(t, rec) != tc.content {
+				t.Fatalf("Recovered = %q", rec)
+			}
+			if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("config.json must be set aside")
+			}
+			if s.Theme() != DefaultTheme || len(s.Projects()) != 0 {
+				t.Fatalf("got %q %v", s.Theme(), s.Projects())
+			}
+		})
+	}
+}
+
+func TestThemeVersionNewer(t *testing.T) {
+	home := t.TempDir()
+	content := `{"version":3,"theme":"dracula","projects":[]}`
+	path := writeConfig(t, home, content)
+	if _, err := Open(home); !errors.Is(err, ErrNewerVersion) {
+		t.Fatalf("err = %v", err)
+	}
+	if readFile(t, path) != content {
+		t.Fatal("file changed")
+	}
+}
+
+func TestThemeConcurrent(t *testing.T) {
+	home := t.TempDir()
+	s := mustOpen(t, home)
+	var wg sync.WaitGroup
+	for i := range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.SetTheme(Themes()[i%len(Themes())]); err != nil {
+				t.Error(err)
+			}
+			_ = s.Theme()
+		}()
+	}
+	wg.Wait()
+	if got := mustOpen(t, home).Theme(); got != s.Theme() {
+		t.Fatalf("disk %q, memory %q", got, s.Theme())
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,9 +45,12 @@ const EnvNvimUserLua = "PISAR_USER_LUA"
 const EnvLog = "PISAR_LOG"
 
 const (
-	fileName    = "config.json"
-	appDirName  = "Pisar"
-	fileVersion = 1
+	fileName   = "config.json"
+	appDirName = "Pisar"
+	// fileVersion is the version Pisar writes. Version 1 (no theme) is still read;
+	// the first write after reading it upgrades the file.
+	fileVersion   = 2
+	fileVersionV1 = 1
 
 	dirPerm  fs.FileMode = 0o700
 	filePerm fs.FileMode = 0o600
@@ -190,6 +194,20 @@ const (
 	spellDirName = "spell"
 )
 
+// Theme IDs. The order of Themes is the order in the menu.
+const (
+	ThemePisar           = "pisar"
+	ThemeCatppuccinMocha = "catppuccin-mocha"
+	ThemeDracula         = "dracula"
+	DefaultTheme         = ThemePisar
+)
+
+// Themes returns every known theme ID in menu order. It is a new slice on every
+// call, so a caller cannot corrupt the list.
+func Themes() []string {
+	return []string{ThemePisar, ThemeCatppuccinMocha, ThemeDracula}
+}
+
 // Project is one registered folder.
 type Project struct {
 	ID   string `json:"id"`   // stable, random; independent of the path
@@ -230,14 +248,30 @@ var (
 	ErrNotFound      = errors.New("config: project not found")
 	ErrNotADirectory = errors.New("config: not a directory")
 	ErrNewerVersion  = errors.New("config: file was written by a newer version of Pisar")
+	ErrUnknownTheme  = errors.New("config: unknown theme")
 )
 
 // errDamaged marks content that cannot be used; Open moves such a file aside.
 var errDamaged = errors.New("config: damaged file")
 
-type fileFormat struct {
+// fileFormatV1 is kept apart from fileFormat so that a version 1 file with a
+// "theme" field is still rejected by DisallowUnknownFields: such a file is not
+// one this program or an older one wrote.
+type fileFormatV1 struct {
 	Version  int       `json:"version"`
 	Projects []Project `json:"projects"`
+}
+
+type fileFormat struct {
+	Version  int       `json:"version"`
+	Theme    string    `json:"theme"`
+	Projects []Project `json:"projects"`
+}
+
+// state is what a config file holds, whatever its version.
+type state struct {
+	projects []Project
+	theme    string
 }
 
 // Store is the loaded configuration. It is safe for concurrent use.
@@ -247,6 +281,7 @@ type Store struct {
 
 	mu       sync.Mutex
 	projects []Project
+	theme    string // never empty
 }
 
 // DefaultHome returns $PISAR_HOME if set (must be absolute), otherwise
@@ -270,7 +305,7 @@ func Open(home string) (*Store, error) {
 	if err := os.MkdirAll(home, dirPerm); err != nil {
 		return nil, fmt.Errorf("config: create home: %w", err)
 	}
-	s := &Store{home: home}
+	s := &Store{home: home, theme: DefaultTheme}
 	path := filepath.Join(home, fileName)
 
 	data, err := os.ReadFile(path)
@@ -281,10 +316,11 @@ func Open(home string) (*Store, error) {
 		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
 
-	projects, err := parse(data)
+	st, err := parse(data)
 	switch {
 	case err == nil:
-		s.projects = projects
+		s.projects = st.projects
+		s.theme = st.theme
 	case errors.Is(err, ErrNewerVersion):
 		// Never touch a file written by a newer version.
 		return nil, err
@@ -301,38 +337,72 @@ func Open(home string) (*Store, error) {
 // parse validates the file content. Unknown fields are rejected on purpose:
 // for the same version they mean we do not understand the file, and saving
 // would silently drop them; treating the file as damaged keeps a copy instead.
-func parse(data []byte) ([]Project, error) {
+// A version 1 file has no theme, so it gets DefaultTheme; it is not rewritten
+// until the next change.
+func parse(data []byte) (state, error) {
 	var head struct {
 		Version int `json:"version"`
 	}
 	if err := json.Unmarshal(data, &head); err != nil {
-		return nil, fmt.Errorf("%w: %w", errDamaged, err)
+		return state{}, fmt.Errorf("%w: %w", errDamaged, err)
 	}
 	if head.Version > fileVersion {
-		return nil, ErrNewerVersion
-	}
-	if head.Version != fileVersion {
-		return nil, fmt.Errorf("%w: unsupported version %d", errDamaged, head.Version)
+		return state{}, ErrNewerVersion
 	}
 
-	var f fileFormat
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&f); err != nil {
-		return nil, fmt.Errorf("%w: %w", errDamaged, err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%w: trailing data", errDamaged)
+	var st state
+	var projects []Project
+	switch head.Version {
+	case fileVersionV1:
+		var f fileFormatV1
+		if err := decodeStrict(data, &f); err != nil {
+			return state{}, err
+		}
+		projects = f.Projects
+		st.theme = DefaultTheme
+	case fileVersion:
+		var f fileFormat
+		if err := decodeStrict(data, &f); err != nil {
+			return state{}, err
+		}
+		projects = f.Projects
+		st.theme = f.Theme
+		// An unknown theme (for example from a build that had more of them) is
+		// not damage: the file keeps its bytes and only the shown theme falls back.
+		// An empty value is the same as an omitted field and needs no warning.
+		if !slices.Contains(Themes(), st.theme) {
+			if st.theme != "" {
+				slog.Warn("config: unknown theme in config file, using the default", "theme", st.theme, "default", DefaultTheme)
+			}
+			st.theme = DefaultTheme
+		}
+	default:
+		return state{}, fmt.Errorf("%w: unsupported version %d", errDamaged, head.Version)
 	}
 
-	seen := make(map[string]bool, len(f.Projects))
-	for _, p := range f.Projects {
+	seen := make(map[string]bool, len(projects))
+	for _, p := range projects {
 		if p.ID == "" || p.Path == "" || !filepath.IsAbs(p.Path) || seen[p.ID] {
-			return nil, fmt.Errorf("%w: invalid project entry %q", errDamaged, p.ID)
+			return state{}, fmt.Errorf("%w: invalid project entry %q", errDamaged, p.ID)
 		}
 		seen[p.ID] = true
 	}
-	return f.Projects, nil
+	st.projects = projects
+	return st, nil
+}
+
+// decodeStrict decodes exactly one JSON value into v, refusing unknown fields
+// and trailing data.
+func decodeStrict(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("%w: %w", errDamaged, err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%w: trailing data", errDamaged)
+	}
+	return nil
 }
 
 // moveAside renames the damaged file so the original bytes are kept.
@@ -474,6 +544,33 @@ func (s *Store) PreviewDir() string { return filepath.Join(s.home, previewDirNam
 // Recovered returns the path the damaged file was moved to by Open, or "".
 func (s *Store) Recovered() string { return s.recovered }
 
+// Theme returns the ID of the chosen theme; DefaultTheme until one is chosen.
+func (s *Store) Theme() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.theme
+}
+
+// SetTheme chooses a theme and writes the file. An unknown ID is refused with
+// ErrUnknownTheme and nothing is written; choosing the current theme again
+// writes nothing either.
+func (s *Store) SetTheme(id string) error {
+	if !slices.Contains(Themes(), id) {
+		return fmt.Errorf("%w: %q", ErrUnknownTheme, id)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if id == s.theme {
+		return nil
+	}
+	if err := save(s.home, s.projects, id); err != nil {
+		return err
+	}
+	s.theme = id
+	return nil
+}
+
 // Projects returns a copy of the projects in the order they were added.
 func (s *Store) Projects() []Project {
 	s.mu.Lock()
@@ -532,7 +629,7 @@ func (s *Store) AddProject(path string) (Project, error) {
 	}
 	p := Project{ID: id, Name: filepath.Base(abs), Path: abs}
 	next := append(slices.Clone(s.projects), p)
-	if err := save(s.home, next); err != nil {
+	if err := save(s.home, next, s.theme); err != nil {
 		return Project{}, err
 	}
 	s.projects = next
@@ -549,7 +646,7 @@ func (s *Store) RemoveProject(id string) error {
 		return ErrNotFound
 	}
 	next := slices.Delete(slices.Clone(s.projects), i, i+1)
-	if err := save(s.home, next); err != nil {
+	if err := save(s.home, next, s.theme); err != nil {
 		return err
 	}
 	s.projects = next
@@ -567,11 +664,11 @@ func newID() (string, error) {
 
 // save writes the file atomically: temp file in the same directory (so the
 // rename stays on one filesystem), fsync, rename.
-func save(home string, projects []Project) (err error) {
+func save(home string, projects []Project, theme string) (err error) {
 	if projects == nil {
 		projects = []Project{}
 	}
-	data, err := json.MarshalIndent(fileFormat{Version: fileVersion, Projects: projects}, "", "  ")
+	data, err := json.MarshalIndent(fileFormat{Version: fileVersion, Theme: theme, Projects: projects}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("config: encode: %w", err)
 	}
