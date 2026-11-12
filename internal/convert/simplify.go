@@ -21,6 +21,16 @@ const (
 	SimplifiedTabs            Simplification = "tabs"
 	SimplifiedFields          Simplification = "fields"
 	SimplifiedTableFormatting Simplification = "table-formatting"
+	SimplifiedDrawings        Simplification = "drawings"
+)
+
+// Namespaces of the drawn shapes Word 2010 and later writes next to a VML
+// copy for older readers: a shape (wps:wsp) and a group of shapes (wpg:wgp).
+// Only the spelling Word writes is known; ISO 29500 strict has no counterpart
+// of these elements that could be checked, so none is looked for.
+const (
+	nsWordShape = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+	nsWordGroup = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
 )
 
 type simpSet uint16
@@ -35,9 +45,10 @@ const (
 	simpTabs
 	simpFields
 	simpTable
+	simpDrawings
 
 	simpAll = simpAlignment | simpTextColor | simpFont | simpSpacing | simpIndentation |
-		simpPageBreaks | simpTabs | simpFields | simpTable
+		simpPageBreaks | simpTabs | simpFields | simpTable | simpDrawings
 )
 
 var simplifyOrder = [...]struct {
@@ -53,6 +64,7 @@ var simplifyOrder = [...]struct {
 	{simpTabs, SimplifiedTabs},
 	{simpFields, SimplifiedFields},
 	{simpTable, SimplifiedTableFormatting},
+	{simpDrawings, SimplifiedDrawings},
 }
 
 // maxFieldDepth bounds the nesting of fields that is tracked. Real documents
@@ -126,9 +138,15 @@ func (s *docScanner) start(t xml.StartElement) {
 		parent = s.stack[n-1]
 	}
 	local := ""
-	if isWordSpace(t.Name.Space) {
+	switch {
+	case isWordSpace(t.Name.Space):
 		local = t.Name.Local
 		s.element(parent, local, t)
+	// pandoc drops a drawn shape, text or no text; the text it holds is
+	// already a loss of its own (text-boxes), and one code per kind is enough.
+	case t.Name.Space == nsWordShape && t.Name.Local == "wsp",
+		t.Name.Space == nsWordGroup && t.Name.Local == "wgp":
+		s.found |= simpDrawings
 	}
 	s.stack = append(s.stack, local)
 }

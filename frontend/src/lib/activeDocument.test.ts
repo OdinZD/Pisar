@@ -404,6 +404,7 @@ describe('documentStatus', () => {
       'tabs',
       'fields',
       'table-formatting',
+      'drawings',
     ]
     const names = [
       'poravnanje',
@@ -415,6 +416,7 @@ describe('documentStatus', () => {
       'tabulatori',
       'polja (broj stranice, sadržaj)',
       'oblikovanje tablica',
+      'crtani oblici',
     ]
 
     it.each(allCodes.map((code, i) => [code, names[i]]))('%s is told as "%s"', (code, name) => {

@@ -270,7 +270,8 @@ func TestDocxToMarkdownCalls(t *testing.T) {
 			}
 			wantFormats := []string{formatPipeTables, formatGridTables}
 			for i, got := range f.calls {
-				want := []string{"-f", "docx", "-t", wantFormats[i], "--wrap=none", "--extract-media=.", "-o", MarkdownName, src}
+				want := []string{"-f", "docx", "-t", wantFormats[i], "--wrap=none", "--extract-media=.",
+					"--lua-filter=" + filepath.Join(dir, flattenLinksName), "-o", MarkdownName, src}
 				if got.name != fakePandoc || got.dir != dir || strings.Join(got.args, "\x00") != strings.Join(want, "\x00") {
 					t.Errorf("call %d = {%q %q %q}, want {%q %q %q}", i+1, got.name, got.dir, got.args, fakePandoc, dir, want)
 				}
@@ -371,6 +372,209 @@ func TestDocxToMarkdownRefusesExistingMarkdown(t *testing.T) {
 		})
 		if _, err := c.DocxToMarkdown(t.Context(), src, dir); err != nil || len(f.calls) != 1 {
 			t.Errorf("err = %v, %d calls", err, len(f.calls))
+		}
+	})
+}
+
+// filterArgs returns the filter path of every --lua-filter argument of a call.
+func filterArgs(c call) []string {
+	var out []string
+	for _, a := range c.args {
+		if p, ok := strings.CutPrefix(a, "--lua-filter="); ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// The filter is on the command line of both passes, is the embedded one, is
+// there while pandoc runs, and is gone when the call returns.
+func TestDocxToMarkdownFilter(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "in.docx")
+	writeAt(t, src, validDocx(t))
+	outputs := []string{"<table>\n", "ok\n"} // the first pass asks for the second
+	dir := t.TempDir()
+	want := filepath.Join(dir, flattenLinksName)
+
+	c, f := newFake(t, func(n int, c call) ([]byte, []byte, error) {
+		got := filterArgs(c)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("pass %d: filters = %q, want [%q]", n, got, want)
+		}
+		body, err := os.ReadFile(want)
+		if err != nil {
+			t.Errorf("pass %d: the filter is not in the folder: %v", n, err)
+		} else if !slices.Equal(body, flattenLinksLua) {
+			t.Errorf("pass %d: the filter in the folder is not the embedded one", n)
+		}
+		if info, err := os.Stat(want); err == nil && info.Mode().Perm() != 0o600 {
+			t.Errorf("pass %d: filter mode = %v, want 0600", n, info.Mode().Perm())
+		}
+		return nil, nil, os.WriteFile(filepath.Join(c.dir, argAfter(t, c, "-o")), []byte(outputs[n-1]), 0o600)
+	})
+	if _, err := c.DocxToMarkdown(t.Context(), src, dir); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.calls) != 2 {
+		t.Fatalf("pandoc ran %d times, want 2 (pipe and grid)", len(f.calls))
+	}
+	if exists(want) {
+		t.Error("the filter is still in the folder")
+	}
+	if got := listDir(t, dir); !slices.Equal(got, []string{MarkdownName}) {
+		t.Errorf("folder = %q, want only doc.md", got)
+	}
+}
+
+// Whatever ends the call, the filter does not stay behind.
+func TestDocxToMarkdownRemovesFilter(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "in.docx")
+	writeAt(t, src, validDocx(t))
+	tests := []struct {
+		name string
+		fn   func(ctx context.Context, cancel context.CancelFunc, c call) ([]byte, []byte, error)
+	}{
+		{"pandoc fails", func(_ context.Context, _ context.CancelFunc, _ call) ([]byte, []byte, error) {
+			return nil, []byte("boom"), errors.New("exit status 1")
+		}},
+		{"pandoc succeeds and writes nothing", func(_ context.Context, _ context.CancelFunc, _ call) ([]byte, []byte, error) {
+			return nil, nil, nil
+		}},
+		{"canceled while pandoc runs", func(_ context.Context, cancel context.CancelFunc, _ call) ([]byte, []byte, error) {
+			cancel()
+			return nil, nil, context.Canceled
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c, f := newFake(t, func(_ int, c call) ([]byte, []byte, error) { return tt.fn(ctx, cancel, c) })
+			if _, err := c.DocxToMarkdown(ctx, src, dir); err == nil {
+				t.Fatal("expected an error")
+			}
+			if len(f.calls) != 1 {
+				t.Errorf("pandoc ran %d times", len(f.calls))
+			}
+			if got := listDir(t, dir); len(got) != 0 {
+				t.Errorf("folder = %q, want it empty", got)
+			}
+		})
+	}
+	t.Run("canceled before pandoc starts", func(t *testing.T) {
+		dir := t.TempDir()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		c, f := newFake(t, func(int, call) ([]byte, []byte, error) { return nil, nil, nil })
+		if _, err := c.DocxToMarkdown(ctx, src, dir); !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v", err)
+		}
+		if len(f.calls) != 0 || len(listDir(t, dir)) != 0 {
+			t.Errorf("%d calls, folder %q", len(f.calls), listDir(t, dir))
+		}
+	})
+}
+
+// A file of the filter's name from an earlier call is the package's own: it is
+// replaced, never trusted and never written through.
+func TestDocxToMarkdownReplacesExistingFilter(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "in.docx")
+	writeAt(t, src, validDocx(t))
+	for _, name := range []string{"a stale file", "a symlink"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			filter := filepath.Join(dir, flattenLinksName)
+			var elsewhere string
+			if name == "a symlink" {
+				elsewhere = filepath.Join(t.TempDir(), "elsewhere")
+				writeAt(t, elsewhere, []byte("not ours"))
+				if err := os.Symlink(elsewhere, filter); err != nil {
+					t.Skipf("no symlinks: %v", err)
+				}
+			} else {
+				writeAt(t, filter, []byte("-- stale, and not the filter\n"))
+			}
+			c, _ := newFake(t, func(_ int, c call) ([]byte, []byte, error) {
+				if body, err := os.ReadFile(filter); err != nil || !slices.Equal(body, flattenLinksLua) {
+					t.Errorf("the filter during the run: %q, %v", body, err)
+				}
+				return nil, nil, os.WriteFile(filepath.Join(c.dir, MarkdownName), []byte("x\n"), 0o600)
+			})
+			if _, err := c.DocxToMarkdown(t.Context(), src, dir); err != nil {
+				t.Fatal(err)
+			}
+			if exists(filter) {
+				t.Error("the filter is still in the folder")
+			}
+			if elsewhere != "" {
+				sameBytes(t, elsewhere, []byte("not ours"))
+			}
+		})
+	}
+	t.Run("a folder of that name is not replaced", func(t *testing.T) {
+		dir := t.TempDir()
+		blocker := filepath.Join(dir, flattenLinksName)
+		if err := os.MkdirAll(filepath.Join(blocker, "inner"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		c, f := newFake(t, func(int, call) ([]byte, []byte, error) { return nil, nil, nil })
+		if _, err := c.DocxToMarkdown(t.Context(), src, dir); err == nil {
+			t.Fatal("expected an error")
+		}
+		if len(f.calls) != 0 {
+			t.Error("pandoc ran")
+		}
+		if !exists(filepath.Join(blocker, "inner")) {
+			t.Error("the folder that was in the way is gone")
+		}
+	})
+}
+
+// Failing to remove the filter is reported, next to the failure of the
+// conversion if there is one, and never swallowed.
+func TestDocxToMarkdownFilterRemovalFails(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "in.docx")
+	writeAt(t, src, validDocx(t))
+	// Pandoc "leaves" a folder with something in it where the filter was, so
+	// that removing it fails.
+	blockFilter := func(t *testing.T, c call) {
+		t.Helper()
+		p := filterArgs(c)[0]
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(p, "inner"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("after a conversion that worked", func(t *testing.T) {
+		dir := t.TempDir()
+		c, _ := newFake(t, func(_ int, c call) ([]byte, []byte, error) {
+			blockFilter(t, c)
+			return nil, nil, os.WriteFile(filepath.Join(c.dir, MarkdownName), []byte("x\n"), 0o600)
+		})
+		losses, err := c.DocxToMarkdown(t.Context(), src, dir)
+		if err == nil || !strings.Contains(err.Error(), "remove filter") {
+			t.Fatalf("err = %v, want the failure to remove the filter", err)
+		}
+		if losses != nil {
+			t.Errorf("losses = %v", losses)
+		}
+		if !exists(filepath.Join(dir, MarkdownName)) {
+			t.Error("doc.md is gone")
+		}
+	})
+	t.Run("after a conversion that failed", func(t *testing.T) {
+		dir := t.TempDir()
+		c, _ := newFake(t, func(_ int, c call) ([]byte, []byte, error) {
+			blockFilter(t, c)
+			return nil, []byte("boom"), errors.New("exit status 1")
+		})
+		_, err := c.DocxToMarkdown(t.Context(), src, dir)
+		var te *ToolError
+		if !errors.As(err, &te) || !strings.Contains(err.Error(), "remove filter") {
+			t.Fatalf("err = %v, want the tool error and the failure to remove the filter", err)
 		}
 	})
 }

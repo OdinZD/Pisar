@@ -126,13 +126,13 @@ func TestExamineSimplified(t *testing.T) {
 		{name: "table borders", inner: `<w:tbl><w:tblPr><w:tblBorders><w:top w:val="single"/></w:tblBorders></w:tblPr></w:tbl>`, want: []Simplification{SimplifiedTableFormatting}},
 		{name: "table without borders or shading", inner: `<w:tbl><w:tblPr><w:tblStyle w:val="Table"/><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tr><w:tc><w:tcPr><w:tcW w:w="100" w:type="dxa"/></w:tcPr></w:tc></w:tr></w:tbl>`},
 
-		{name: "everything, in the order of the list", inner: field(`PAGE`) +
+		{name: "everything, in the order of the list", inner: drawnShape(nsWordShape, "wsp") + field(`PAGE`) +
 			`<w:tbl><w:tblPr><w:tblBorders/></w:tblPr></w:tbl>` + `<w:p><w:r><w:tab/></w:r></w:p>` +
 			para(`<w:sectPr/>`) + para(`<w:ind w:left="1"/>`) + para(`<w:spacing w:after="0"/>`) +
 			runProps(`<w:sz w:val="40"/>`) + runProps(`<w:color w:val="FF0000"/>`) + para(`<w:jc w:val="center"/>`),
 			want: []Simplification{
 				SimplifiedAlignment, SimplifiedTextColor, SimplifiedFont, SimplifiedSpacing, SimplifiedIndentation,
-				SimplifiedPageBreaks, SimplifiedTabs, SimplifiedFields, SimplifiedTableFormatting,
+				SimplifiedPageBreaks, SimplifiedTabs, SimplifiedFields, SimplifiedTableFormatting, SimplifiedDrawings,
 			}},
 		{name: "the same code twice is reported once", inner: para(`<w:jc w:val="center"/>`) + para(`<w:jc w:val="right"/>`),
 			want: []Simplification{SimplifiedAlignment}},
@@ -239,6 +239,62 @@ func diagramRef(ns string) string {
 		`<dgm:relIds xmlns:dgm="` + ns + `"/></a:graphicData></a:graphic></w:drawing></w:r></w:p>`
 }
 
+// drawnShape is a w:drawing that holds one element of a shape namespace.
+func drawnShape(ns, local string) string {
+	return `<w:p><w:r><w:drawing><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData>` +
+		`<x:` + local + ` xmlns:x="` + ns + `"/></a:graphicData></a:graphic></w:drawing></w:r></w:p>`
+}
+
+func TestExamineDrawings(t *testing.T) {
+	const mc = `xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:v="urn:schemas-microsoft-com:vml"`
+	drawn := []Simplification{SimplifiedDrawings}
+	tests := []struct {
+		name       string
+		entries    []entry
+		simplified []Simplification
+		losses     []Loss
+	}{
+		{"shape", []entry{docWith(drawnShape(nsWordShape, "wsp"))}, drawn, nil},
+		{"group of shapes", []entry{docWith(drawnShape(nsWordGroup, "wgp"))}, drawn, nil},
+		{"shape with a VML copy for old readers, as Word writes a line", []entry{docWith(
+			`<w:p><w:r><mc:AlternateContent ` + mc + `><mc:Choice Requires="wps"><w:drawing><a:graphic xmlns:a="x"><a:graphicData>` +
+				`<wps:wsp xmlns:wps="` + nsWordShape + `"><wps:cNvCnPr/><wps:spPr/><wps:bodyPr/></wps:wsp>` +
+				`</a:graphicData></a:graphic></w:drawing></mc:Choice><mc:Fallback><w:pict><v:line from="0,0" to="1,0"/></w:pict></mc:Fallback>` +
+				`</mc:AlternateContent></w:r></w:p>`)}, drawn, nil},
+		{"shapes in a group are one code", []entry{docWith(
+			`<w:p><w:r><w:drawing><wpg:wgp xmlns:wpg="` + nsWordGroup + `" xmlns:wps="` + nsWordShape + `"><wps:wsp/><wps:wsp/></wpg:wgp></w:drawing></w:r></w:p>` +
+				drawnShape(nsWordShape, "wsp"))}, drawn, nil},
+		// A shape with text is a text box: read-only because of it, and still a drawing.
+		{"shape with text", []entry{docWith(
+			`<w:p><w:r><w:drawing><wps:wsp xmlns:wps="` + nsWordShape + `"><wps:txbx><w:txbxContent><w:p><w:r><w:t>text</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp></w:drawing></w:r></w:p>`)},
+			drawn, []Loss{LossTextBoxes}},
+
+		{"other elements of the shape namespace", []entry{docWith(
+			`<w:p><w:r><w:drawing><wps:cNvCnPr xmlns:wps="` + nsWordShape + `"/><wps:spPr xmlns:wps="` + nsWordShape + `"/>` +
+				`<wps:bodyPr xmlns:wps="` + nsWordShape + `"/><wpg:grpSpPr xmlns:wpg="` + nsWordGroup + `"/></w:drawing></w:r></w:p>`)}, nil, nil},
+		{"wsp in a foreign namespace", []entry{docWith(drawnShape(nsOther, "wsp") + drawnShape(nsOther, "wgp"))}, nil, nil},
+		{"wsp and wgp in the namespace of the other", []entry{docWith(drawnShape(nsWordGroup, "wsp") + drawnShape(nsWordShape, "wgp"))}, nil, nil},
+		{"wsp in the Word namespace", []entry{docWith(`<w:p><w:r><w:wsp/><w:wgp/></w:r></w:p>`)}, nil, nil},
+		{"a picture is not a drawn shape", []entry{docWith(
+			`<w:p><w:r><w:drawing><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"/></w:drawing></w:r></w:p>`)}, nil, nil},
+		{"VML alone is not looked for", []entry{docWith(`<w:p><w:r><w:pict><v:line xmlns:v="urn:schemas-microsoft-com:vml"/></w:pict></w:r></w:p>`)}, nil, nil},
+		{"a shape in a header is not looked at", []entry{plainDoc(), {"word/header1.xml", part("hdr", drawnShape(nsWordShape, "wsp"))}}, nil, nil},
+		{"markup-looking text", []entry{docWith(`<w:p><w:r><w:t>&lt;wps:wsp/&gt;</w:t></w:r></w:p>`)}, nil, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := writeFile(t, mustZip(t, tc.entries))
+			got, err := Examine(context.Background(), p, testLimits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got.Simplified, tc.simplified) || !reflect.DeepEqual(got.Losses, tc.losses) {
+				t.Fatalf("got %+v, want simplified %v, losses %v", got, tc.simplified, tc.losses)
+			}
+		})
+	}
+}
+
 func TestExamineObjects(t *testing.T) {
 	objectIn := func(ns string) entry {
 		return entry{"word/document.xml", xmlDecl + `<w:document xmlns:w="` + ns + `"><w:body><w:p><w:r><w:object/></w:r></w:p></w:body></w:document>`}
@@ -315,7 +371,7 @@ func TestExamineKeepsReadingAfterTheLosses(t *testing.T) {
 		}
 	})
 	t.Run("all losses and all formatting: the rest is not read", func(t *testing.T) {
-		everything := field(`PAGE`) + `<w:tbl><w:tblPr><w:tblBorders/></w:tblPr></w:tbl><w:p><w:r><w:tab/></w:r></w:p>` +
+		everything := drawnShape(nsWordShape, "wsp") + field(`PAGE`) + `<w:tbl><w:tblPr><w:tblBorders/></w:tblPr></w:tbl><w:p><w:r><w:tab/></w:r></w:p>` +
 			para(`<w:sectPr/>`) + para(`<w:ind w:left="1"/>`) + para(`<w:spacing w:after="0"/>`) +
 			runProps(`<w:sz w:val="40"/>`) + runProps(`<w:color w:val="FF0000"/>`) + para(`<w:jc w:val="center"/>`)
 		p := writeFile(t, mustZip(t, []entry{{"word/document.xml",
@@ -325,7 +381,7 @@ func TestExamineKeepsReadingAfterTheLosses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(got.Losses) != 4 || len(got.Simplified) != 9 {
+		if len(got.Losses) != 4 || len(got.Simplified) != 10 {
 			t.Fatalf("got %+v", got)
 		}
 	})
@@ -384,8 +440,10 @@ func TestExamineFixtures(t *testing.T) {
 		{file: "chart.docx", losses: []Loss{LossObjects}},
 		{file: "formatting.docx", simplified: []Simplification{
 			SimplifiedAlignment, SimplifiedTextColor, SimplifiedFont, SimplifiedSpacing, SimplifiedIndentation,
-			SimplifiedPageBreaks, SimplifiedTabs, SimplifiedFields, SimplifiedTableFormatting,
+			SimplifiedPageBreaks, SimplifiedTabs, SimplifiedFields, SimplifiedTableFormatting, SimplifiedDrawings,
 		}},
+		// A table of contents is a field with tab characters; its entries are links, not formatting.
+		{file: "toc.docx", simplified: []Simplification{SimplifiedTabs, SimplifiedFields}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.file, func(t *testing.T) {
@@ -413,6 +471,7 @@ func FuzzExamine(f *testing.F) {
 	f.Add(mustZip(f, []entry{plainDoc()}))
 	f.Add(mustZip(f, []entry{docWith(para(`<w:jc w:val="center"/>`) + field(`PAGE`) + field(`HYPERLINK "x"`) + `<w:object/>`)}))
 	f.Add(mustZip(f, []entry{docWith(strings.Repeat(`<w:r><w:fldChar w:fldCharType="begin"/></w:r>`, 70))}))
+	f.Add(mustZip(f, []entry{docWith(drawnShape(nsWordShape, "wsp") + drawnShape(nsWordGroup, "wgp"))}))
 	p := filepath.Join(f.TempDir(), "doc.docx")
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if err := os.WriteFile(p, data, 0o600); err != nil {

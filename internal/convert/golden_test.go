@@ -30,8 +30,8 @@ var (
 	realLimits = InspectLimits{MaxEntries: 10000, MaxPartBytes: 256 << 20}
 )
 
-// fixtureNames are the nine sample documents; legacy is a .doc.
-var fixtureNames = []string{"basic", "complex-table", "comments", "tracked-changes", "textbox", "header-image", "chart", "formatting", "legacy"}
+// fixtureNames are the ten sample documents; legacy is a .doc.
+var fixtureNames = []string{"basic", "complex-table", "comments", "tracked-changes", "textbox", "header-image", "chart", "formatting", "toc", "legacy"}
 
 func fixturePath(name string) string {
 	if name == "legacy" {
@@ -310,8 +310,16 @@ func fixedDate(t *testing.T) {
 	t.Setenv("SOURCE_DATE_EPOCH", "1767225600")
 }
 
+// firstSaveChanges is what the first save is known to change in the Markdown of
+// a document, and nothing else may change: the class .TOC-Heading of the title
+// of a table of contents is Word's style, which Markdown does not carry. After
+// that one change the Markdown is stable.
+var firstSaveChanges = map[string]struct{ before, after string }{
+	"toc": {"# Sadržaj {#sadržaj .TOC-Heading}\n", "# Sadržaj\n"},
+}
+
 func TestRoundTrip(t *testing.T) {
-	for _, name := range []string{"basic", "complex-table", "header-image", "formatting"} {
+	for _, name := range []string{"basic", "complex-table", "header-image", "formatting", "toc"} {
 		t.Run(name, func(t *testing.T) {
 			fixedDate(t)
 			c, rec, _ := realConverter(t, false)
@@ -334,14 +342,21 @@ func TestRoundTrip(t *testing.T) {
 			work2 := t.TempDir()
 			docxToMarkdown(t, c, out1, work2)
 			md2 := readMarkdown(t, work2)
-			if a, b := normalizeImages(md1), normalizeImages(md2); a != b {
-				t.Errorf("the Markdown changed in a round trip:\n%s", firstDifference(a, b))
+			first, second := normalizeImages(md1), normalizeImages(md2)
+			if ch, ok := firstSaveChanges[name]; ok {
+				if !strings.Contains(first, ch.before) {
+					t.Fatalf("the known change %q is not in the first Markdown:\n%s", ch.before, first)
+				}
+				first = strings.Replace(first, ch.before, ch.after, 1)
+			}
+			if first != second {
+				t.Errorf("the Markdown changed in a round trip:\n%s", firstDifference(first, second))
 			}
 
 			// The pictures of the body: as many, and the same bytes.
 			wantImages, gotImages := bodyImages(t, src), bodyImages(t, out1)
 			wantCount := 1
-			if name == "complex-table" || name == "formatting" {
+			if name == "complex-table" || name == "formatting" || name == "toc" {
 				wantCount = 0 // no picture in those documents
 			}
 			if len(wantImages) != wantCount || len(gotImages) != len(wantImages) {
@@ -534,6 +549,97 @@ func TestChartIsLostInSave(t *testing.T) {
 	}
 	if rep.Losses != nil || rep.Simplified != nil {
 		t.Errorf("the saved document is reported as %+v", rep)
+	}
+}
+
+// Word's table of contents: every entry is a link to a heading that holds a
+// PAGEREF field. Without the filter pandoc reads that as a link inside a link,
+// which Markdown cannot write: it comes back as literal text. This test is the
+// reason the filter exists; if it fails, pandoc changed and the filter may not
+// be needed (or the fixture no longer shows the problem).
+func TestTocIsANestedLinkWithoutTheFilter(t *testing.T) {
+	_, _, pandoc := realConverter(t, false)
+	src, err := filepath.Abs(fixturePath("toc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(zipContents(t, src)["word/document.xml"])
+	for _, needle := range []string{`<w:hyperlink w:anchor="_Toc1"`, `PAGEREF _Toc1`, `w:name="_Toc1"`} {
+		if !strings.Contains(doc, needle) {
+			t.Fatalf("%s is not in the fixture", needle)
+		}
+	}
+	if i, j := strings.Index(doc, `<w:hyperlink w:anchor="_Toc1"`), strings.Index(doc, `PAGEREF _Toc1`); j < i || j > strings.Index(doc[i:], `</w:hyperlink>`)+i {
+		t.Fatal("the PAGEREF field is not inside the hyperlink of the entry")
+	}
+
+	work := t.TempDir()
+	if _, stderr, err := execRunner(t.Context(), work, pandoc, "-f", "docx", "-t", formatPipeTables,
+		"--wrap=none", "-o", MarkdownName, src); err != nil {
+		t.Fatalf("pandoc: %v: %s", err, stderr)
+	}
+	md := readMarkdown(t, work)
+	for _, want := range []string{"[Uvod [3](#uvod)](#uvod)", "[Zaključak [5](#zaključak)](#zaključak)"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("%q is not in what pandoc writes without the filter:\n%s", want, md)
+		}
+	}
+}
+
+// With the filter an entry is one link, and a save leaves no trace of the
+// page number as literal text.
+func TestTocLinksAreFlattened(t *testing.T) {
+	c, _, _ := realConverter(t, false)
+	src := fixturePath("toc")
+	work := t.TempDir()
+	docxToMarkdown(t, c, src, work)
+	md := readMarkdown(t, work)
+	for _, want := range []string{"[Uvod 3](#uvod)", "[Zaključak 5](#zaključak)"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("%q is not in the Markdown:\n%s", want, md)
+		}
+	}
+	for _, line := range strings.Split(md, "\n") {
+		if strings.Count(line, "](") > 1 {
+			t.Errorf("a link inside a link: %q", line)
+		}
+	}
+	if got := listDir(t, work); slices.Contains(got, flattenLinksName) {
+		t.Errorf("the filter stayed in the folder: %q", got)
+	}
+
+	_, after := roundTripDocx(t, c, src)
+	if strings.Contains(after, "](#") {
+		t.Errorf("Markdown link syntax came out as text in the saved document:\n%s", after)
+	}
+	for _, want := range []string{
+		`<w:hyperlink w:anchor="_uvod">`, `<w:hyperlink w:anchor="_zaključak">`, // the entries still point at the headings
+		`>Uvod 3<`, `>Zaključak 5<`, // the page number is part of the text of the entry
+		`w:name="_uvod"`, `w:name="_zaključak"`, // and the headings are where they point
+	} {
+		if !strings.Contains(after, want) {
+			t.Errorf("%s is not in the saved document", want)
+		}
+	}
+}
+
+// Both passes (pipe tables, then grid tables) read through the filter, and the
+// folder is clean afterwards.
+func TestFilterIsOnBothPasses(t *testing.T) {
+	c, rec, _ := realConverter(t, false)
+	work := t.TempDir()
+	docxToMarkdown(t, c, fixturePath("complex-table"), work)
+	if got := rec.readsOf(); got != 2 {
+		t.Fatalf("pandoc read the document %d times, want 2", got)
+	}
+	want := filepath.Join(work, flattenLinksName)
+	for i, c := range rec.calls {
+		if got := filterArgs(c); len(got) != 1 || got[0] != want {
+			t.Errorf("pass %d: filters = %q, want [%q]", i+1, got, want)
+		}
+	}
+	if got := listDir(t, work); slices.Contains(got, flattenLinksName) {
+		t.Errorf("the filter stayed in the folder: %q", got)
 	}
 }
 

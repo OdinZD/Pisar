@@ -148,6 +148,7 @@ const simplifiedNames: Record<string, string> = {
   tabs: strings.simplifiedTabs,
   fields: strings.simplifiedFields,
   'table-formatting': strings.simplifiedTableFormatting,
+  drawings: strings.simplifiedDrawings,
 }
 
 /** "Spremanje pojednostavljuje oblikovanje: poravnanje, boja teksta"; null when no code is known. */

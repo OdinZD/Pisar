@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	_ "embed" // flattenLinksLua
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,20 @@ import (
 const (
 	MarkdownName = "doc.md"
 	MediaDirName = "media"
+
+	// flattenLinksName is the pandoc filter DocxToMarkdown puts in the folder
+	// for the length of the conversion; it is gone when the call returns.
+	flattenLinksName = "flatten-links.lua"
 )
+
+// flattenLinksLua replaces a link inside a link by its text. Word's table of
+// contents is such a thing: every entry is a link to a heading that holds a
+// PAGEREF field, which pandoc reads as a second link. Markdown has no nested
+// links, so without the filter the inner one is read back as literal text and
+// every save would add "[3](#uvod)" to the entry.
+//
+//go:embed filters/flatten-links.lua
+var flattenLinksLua []byte
 
 // Markdown dialects for reading a .docx. -smart keeps typographic quotes and
 // dashes as written; without it they come back as straight quotes and "---".
@@ -278,7 +292,7 @@ func (c *Converter) checkDocx(ctx context.Context, path string) error {
 // HTML (a line that begins with "<table"): that table would be lost on the
 // way back to .docx. doc.md stays; what to do about it is the caller's. The
 // result is nil otherwise.
-func (c *Converter) DocxToMarkdown(ctx context.Context, src, dir string) ([]Loss, error) {
+func (c *Converter) DocxToMarkdown(ctx context.Context, src, dir string) (losses []Loss, err error) {
 	srcAbs, err := absPath(src)
 	if err != nil {
 		return nil, err
@@ -302,6 +316,18 @@ func (c *Converter) DocxToMarkdown(ctx context.Context, src, dir string) ([]Loss
 		return nil, fmt.Errorf("convert: %w", err)
 	}
 
+	filter, err := writeFlattenLinks(dirAbs)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		// Named results: the failure to clean up is joined to whatever the
+		// conversion itself returned, so neither hides the other.
+		if rerr := os.Remove(filter); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+			err = errors.Join(err, fmt.Errorf("convert: remove filter: %w", rerr))
+		}
+	}()
+
 	// The second pass overwrites the doc.md of the first: same call, same output.
 	for _, format := range [...]string{formatPipeTables, formatGridTables} {
 		if err := ctx.Err(); err != nil {
@@ -312,7 +338,7 @@ func (c *Converter) DocxToMarkdown(ctx context.Context, src, dir string) ([]Loss
 		// folder would put absolute paths in the Markdown.
 		err := c.call(ctx, toolPandoc, c.pandocBin, dirAbs,
 			"-f", "docx", "-t", format, "--wrap=none", "--extract-media=.",
-			"-o", MarkdownName, srcAbs)
+			"--lua-filter="+filter, "-o", MarkdownName, srcAbs)
 		if err != nil {
 			return nil, err
 		}
@@ -329,6 +355,28 @@ func (c *Converter) DocxToMarkdown(ctx context.Context, src, dir string) ([]Loss
 	}
 	// The grid dialect still gave a raw HTML table; pandoc has nothing better.
 	return []Loss{LossTables}, nil
+}
+
+// writeFlattenLinks puts the filter in dir and returns its absolute path. A
+// file of that name is ours from an earlier call that did not get to clean up,
+// so it is replaced; it is removed first rather than overwritten, so that a
+// symlink left there is replaced too and never written through.
+func writeFlattenLinks(dir string) (string, error) {
+	p := filepath.Join(dir, flattenLinksName)
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("convert: replace filter: %w", err)
+	}
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", fmt.Errorf("convert: write filter: %w", err)
+	}
+	if _, err := f.Write(flattenLinksLua); err != nil {
+		return "", removePartial(p, errors.Join(fmt.Errorf("convert: write filter: %w", err), f.Close()))
+	}
+	if err := f.Close(); err != nil {
+		return "", removePartial(p, fmt.Errorf("convert: write filter: %w", err))
+	}
+	return p, nil
 }
 
 // startsRawTable reports whether some line of the file begins with "<table",

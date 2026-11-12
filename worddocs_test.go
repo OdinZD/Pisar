@@ -537,7 +537,7 @@ func TestWordDocsOpenLegacyDoc(t *testing.T) {
 // the list in internal/convert.
 var allSimplified = []string{
 	"alignment", "text-color", "font", "spacing", "indentation",
-	"page-breaks", "tabs", "fields", "table-formatting",
+	"page-breaks", "tabs", "fields", "table-formatting", "drawings",
 }
 
 // The formatting a save would simplify is known from the opening, does not make

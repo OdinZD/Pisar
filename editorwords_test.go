@@ -288,7 +288,7 @@ func TestWdSimplified(t *testing.T) {
 	if len(a.ReadOnly) != 0 || !slices.Equal(a.Simplified, allSimplified) {
 		t.Fatalf("formatting.docx: readOnly = %v, simplified = %v", a.ReadOnly, a.Simplified)
 	}
-	want := `"simplified":["alignment","text-color","font","spacing","indentation","page-breaks","tabs","fields","table-formatting"]`
+	want := `"simplified":["alignment","text-color","font","spacing","indentation","page-breaks","tabs","fields","table-formatting","drawings"]`
 	if b, err := json.Marshal(a); err != nil || !bytes.Contains(b, []byte(want)) {
 		t.Errorf("formatting.docx: JSON = %s, %v", b, err)
 	}

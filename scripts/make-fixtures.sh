@@ -136,7 +136,7 @@ insert_header() {
 }
 
 echo "== generating"
-for name in basic complex-table comments tracked-changes textbox legacy chart formatting; do
+for name in basic complex-table comments tracked-changes textbox legacy chart formatting toc; do
   md2docx "$name"
 done
 
@@ -155,7 +155,7 @@ insert_header "$BUILD/header-image-plain.docx" "$BUILD/header-image.docx"
 rm -f "$BUILD/header-image-plain.docx"
 
 mkdir -p "$OUT"
-for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx header-image.docx legacy.doc chart.docx formatting.docx; do
+for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx header-image.docx legacy.doc chart.docx formatting.docx toc.docx; do
   [[ -s "$BUILD/$f" ]] || {
     echo "no output: $f" >&2
     exit 1
@@ -211,7 +211,7 @@ cells_text() {
     grep -Fq '<w:numPr>' "$x" && grep -Fq '<w:tbl>' "$x"
 }
 
-for f in basic complex-table comments tracked-changes textbox header-image chart formatting; do
+for f in basic complex-table comments tracked-changes textbox header-image chart formatting toc; do
   check "$f.docx is a valid archive with word/document.xml" valid_docx "$OUT/$f.docx"
 done
 
@@ -262,6 +262,20 @@ check "formatting.docx: underline" has "$F" word/document.xml '<w:u w:val="singl
 check "formatting.docx: strikethrough" has "$F" word/document.xml '<w:strike/>'
 check "formatting.docx: superscript" has "$F" word/document.xml '<w:vertAlign w:val="superscript"/>'
 check "formatting.docx: small caps" has "$F" word/document.xml '<w:smallCaps/>'
+check "formatting.docx: a drawn shape (wps:wsp)" has "$F" word/document.xml '<wps:wsp '
+check "formatting.docx: the shape has no text" lacks "$F" word/document.xml 'wps:txbx'
+
+# toc.docx: a table of contents as Word writes it. Every entry is a
+# w:hyperlink to a bookmark on a heading and holds a PAGEREF field. pandoc puts
+# "_" before the id of a heading when it writes the bookmark, so the ids in the
+# source are Toc1 and Toc2 and the bookmarks are _Toc1 and _Toc2, which is what
+# the entries point at.
+T="$OUT/toc.docx"
+check "toc.docx: the TOC field" has "$T" word/document.xml 'TOC \o "1-3" \h \z \u'
+check "toc.docx: entry with a PAGEREF field inside a hyperlink" has "$T" word/document.xml '<w:hyperlink w:anchor="_Toc1" w:history="1">'
+check "toc.docx: the PAGEREF field" has "$T" word/document.xml 'PAGEREF _Toc2 \h'
+check "toc.docx: bookmark _Toc1 on a heading" has "$T" word/document.xml 'w:name="_Toc1"'
+check "toc.docx: bookmark _Toc2 on a heading" has "$T" word/document.xml 'w:name="_Toc2"'
 
 H="$OUT/header-image.docx"
 # The body keeps its own image (pandoc names it rIdN.png); the logo is the other one.

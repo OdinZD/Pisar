@@ -29,4 +29,6 @@ Stranica 1
 |-------------|---------------|
 | žuta ćelija | obična ćelija |
 
+Crta slijedi: i tekst iza nje.
+
 Završni odlomak.

@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7, 8a, 8b i 9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 8c (filter za sadržaj, crtani oblici), pa korak 10
+- Sljedeći korak: faza 3, korak 10 (dokazi, ručna provjera, `plan-reviewer`)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, koraci 8a i 8b)
+- Zadnja izmjena: 2026-11-12 (faza 3, korak 8c)
 
 ## Priprema (2026-11-11)
 
@@ -914,7 +914,26 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         kod pojednostavljenja `drawings` u koraku 8c.
       - Uvučeni citati: u Markdownu su citat, a u spremljenom dokumentu bez stila „Block Text” postaju
         običan odlomak (i pri drugom otvaranju više nisu citat). Zapisano kao poznati gubitak.
-- [ ] 8c. Lua filter za ugniježđene poveznice + probni dokument `toc.docx`; pojednostavljenje `drawings`
+- [x] 8c. Lua filter i crtani oblici. `internal/convert/filters/flatten-links.lua` (ugrađen s `go:embed`):
+      `DocxToMarkdown` ga zapiše u radnu mapu, doda `--lua-filter=` u oba prolaza i ukloni ga na svakom
+      izlazu (neuspjeh uklanjanja se vraća kao greška, ne guta se). Stavka sadržaja: bez filtra
+      `[Uvod [3](#uvod)](#uvod)`, s filtrom `[Uvod 3](#uvod)`. Probni dokument `toc.docx` (složen tako
+      da pandoc bez filtra stvarno da ugniježđenu poveznicu; test to dokumentira). U krugu `toc.docx`
+      prvi i drugi Markdown razlikuju se samo klasom `.TOC-Heading` na naslovu sadržaja; drugi, treći i
+      četvrti su isti. Novi kod pojednostavljenja `drawings` (`wps:wsp`, `wpg:wgp`); `formatting.docx`
+      ima crtanu liniju. Skripta ima 38 provjera; vitest 538.
+      - Izmijenjeni postojeći testovi: `TestDocxToMarkdownCalls` (argumenti imaju `--lua-filter=`);
+        `TestRoundTrip` (dodan `toc` s jednom dopuštenom razlikom prvog kruga); `TestExamineSimplified`,
+        `TestExamineKeepsReadingAfterTheLosses`, `TestExamineFixtures` (deseti kod); u glavnom paketu
+        popis kodova u `worddocs_test.go` i očekivani JSON u `editorwords_test.go` dobili su `drawings`
+        (izvan popisa datoteka iz briefa, ali nužno jer se `formatting.docx` promijenio).
+      - Nije potvrđeno na stvarnom XML-u u testu: prostori imena `wps`/`wpg` (uzeti iz vlasnikova
+        dokumenta koji je mjerila glavna sesija; stroga varijanta nije dodana).
+      - **Nestabilan test je nađen i ispravljen u kodu:** `TestWdProject` je padao u oko 5 od 30
+        pokretanja jer je usluga javljala `saved` dok je zadatak izvoza još bio označen kao „u tijeku”,
+        pa je `unsaved` nekoliko ms nakon `saved` vraćao istinu (preimenovanje odmah nakon spremanja
+        bilo bi odbijeno). Ispravak glavne sesije (12 redaka u `editorwords.go`): zadatak se označi
+        dovršenim (`settle`) prije javljanja ishoda. Test nije mijenjan; 40 od 40 pokretanja prolazi.
 - [x] 9. Dimna provjera (`scripts/smoke.sh`): 63 provjere (19 starih + 44 nove), oko 10 s. `basic.docx` s
       naredbenog retka → `doc.md` u `work/`, izmjena kroz Neovimov socket + `:w` → valjan `.docx` s novim
       tekstom i istom slikom, jedan backup jednak izvorniku, bez drugih datoteka pored dokumenta, iste

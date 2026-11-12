@@ -46,7 +46,7 @@ u njemu nađeno. Probni dokument za sve stavke: `formatting.docx`.
 | tabulator | razmak |
 | polja u tijelu (broj stranice, datum) | običan tekst s vrijednošću koju su imala |
 | sadržaj (polje TOC) | običan tekst s poveznicama na naslove; brojevi stranica su zamrznuti i više se ne osvježavaju; naslov sadržaja gubi stil „TOC Heading” |
-| crtani oblici bez teksta (linije, pravokutnici) | nestaju |
+| crtani oblici bez teksta (linije, pravokutnici) | nestaju (u upozorenju kao „crtani oblici”) |
 | sjenčanje i obrubi tablice | iz stila tablice |
 | stilovi odlomka izvan osnovnih (npr. „Title”, „Quote”) | običan odlomak (nije u upozorenju: ne može se pouzdano otkriti) |
 
