@@ -24,6 +24,7 @@ declare module "@wailsio/runtime" {
             "project:changed": string;
             "projects:changed": string;
             "pty:data": string;
+            "theme:changed": string;
             "ui:focus-tree": string;
             "ui:open-search": string;
             "ui:toggle-preview": string;

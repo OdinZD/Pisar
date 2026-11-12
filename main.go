@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 
@@ -33,6 +34,7 @@ func init() {
 	application.RegisterEvent[string](eventMenuNewDocument)
 	application.RegisterEvent[string](eventMenuCopy)
 	application.RegisterEvent[string](eventMenuFormat)
+	application.RegisterEvent[string](eventThemeChanged)
 
 	// Editor events. The two document events carry a structure: the registered
 	// type must be exactly the one emitted (a value, not a pointer).
@@ -176,6 +178,20 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 		return nil, nil, err
 	}
 
+	// The settings service is built before the application and the window, like the
+	// emitters above: setBackground reads window once it has been created, and no
+	// theme is chosen before Run.
+	var window *application.WebviewWindow
+	settings := newSettingsService(settingsServiceDeps{
+		Store: store,
+		Emit:  emit,
+		SetBackground: func(r, g, b uint8) {
+			if window != nil {
+				window.SetBackgroundColour(application.NewRGB(r, g, b))
+			}
+		},
+	})
+
 	// The editor comes first: the project service asks it which documents are
 	// open. Cleanups run in reverse, so the project service stops before
 	// the editor does, and no rename or Trash reaches an editor that is gone.
@@ -228,6 +244,7 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 		Services: []application.Service{
 			application.NewServiceWithOptions(svc, application.ServiceOptions{MarshalError: marshalError}),
 			application.NewServiceWithOptions(editor, application.ServiceOptions{MarshalError: marshalError}),
+			application.NewServiceWithOptions(settings, application.ServiceOptions{MarshalError: marshalError}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -247,7 +264,8 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	svc.syncWatchers() // watch every project whose folder exists
 
 	actions := &menuActions{editor: editor, emit: emit, timeout: limits.CommandTimeout}
-	app.Menu.Set(newMenu(app, text, actions,
+	theme := store.Theme()
+	app.Menu.Set(newMenu(app, text, actions, theme, settings.setTheme,
 		func() { app.Event.Emit(eventMenuNewDocument, "") },
 		func() {
 			if _, err := svc.AddProject(context.Background()); err != nil {
@@ -256,19 +274,23 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 		},
 	))
 
-	// BackgroundColour is white and lives outside tokens.ts on purpose: omitting it leaves RGBA{}
-	// (alpha 0), so the NSWindow background is clear and may flash see-through before the webview paints.
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	// BackgroundColour is the bg.app colour of the remembered theme. It lives outside tokens.ts
+	// on purpose (the window needs it before the webview exists); a test keeps the two in step.
+	// Omitting it leaves RGBA{} (alpha 0), so the NSWindow background is clear and may flash
+	// see-through before the webview paints. The URL carries the theme so that the page can
+	// start in it without asking Go first.
+	r, g, b := config.ThemeWindowBackground(theme)
+	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            text.AppName,
 		Width:            config.WindowWidth,
 		Height:           config.WindowHeight,
 		MinWidth:         config.WindowMinWidth,
 		MinHeight:        config.WindowMinHeight,
-		BackgroundColour: application.NewRGB(255, 255, 255),
+		BackgroundColour: application.NewRGB(r, g, b),
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarDefault,
 		},
-		URL: "/",
+		URL: windowURL(theme),
 	})
 
 	// The red close button asks like Cmd+Q does. Cancel keeps the window; when
@@ -292,6 +314,11 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	}
 
 	return app, runCleanups, nil
+}
+
+// windowURL is the page the window opens: the root, with the theme in the query.
+func windowURL(theme string) string {
+	return "/?" + url.Values{"theme": {theme}}.Encode()
 }
 
 // showFatal shows a native error and quits when it is dismissed. It runs a

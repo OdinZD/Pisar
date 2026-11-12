@@ -29,6 +29,11 @@ type uiText struct {
 	MenuFormat            string `json:"menuFormat"`
 	MenuBold              string `json:"menuBold"`
 	MenuItalic            string `json:"menuItalic"`
+	MenuView              string `json:"menuView"`
+	MenuTheme             string `json:"menuTheme"`
+	ThemePisar            string `json:"themePisar"`
+	ThemeCatppuccinMocha  string `json:"themeCatppuccinMocha"`
+	ThemeDracula          string `json:"themeDracula"`
 	QuitTitle             string `json:"quitTitle"`
 	QuitMessage           string `json:"quitMessage"` // placeholder {names}
 	QuitMore              string `json:"quitMore"`    // placeholder {count}

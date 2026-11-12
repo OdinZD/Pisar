@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"Pisar/internal/config"
 )
 
 type fakeMenuEditor struct {
@@ -159,6 +161,60 @@ func TestMenuShortcutsUnique(t *testing.T) {
 	} {
 		if _, ok := seen[strings.ToLower(accel)]; !ok {
 			t.Errorf("no item has the shortcut %s", accel)
+		}
+	}
+}
+
+func TestMenuThemeItems(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := config.Themes()
+	for _, current := range ids {
+		t.Run(current, func(t *testing.T) {
+			items := themeItems(text, current)
+			if len(items) != len(ids) {
+				t.Fatalf("%d items, want %d", len(items), len(ids))
+			}
+			labels := map[string]bool{}
+			checked := 0
+			for i, it := range items {
+				if it.id != ids[i] {
+					t.Errorf("item %d is %q, want %q", i, it.id, ids[i])
+				}
+				if strings.TrimSpace(it.label) == "" || labels[it.label] {
+					t.Errorf("item %q has an empty or repeated label %q", it.id, it.label)
+				}
+				labels[it.label] = true
+				if it.checked {
+					checked++
+					if it.id != current {
+						t.Errorf("%q is checked, want %q", it.id, current)
+					}
+				}
+			}
+			if checked != 1 {
+				t.Errorf("%d items checked, want exactly 1", checked)
+			}
+		})
+	}
+}
+
+func TestMenuThemeItemsUnknown(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, current := range []string{"", "no-such-theme"} {
+		var checked []string
+		for _, it := range themeItems(text, current) {
+			if it.checked {
+				checked = append(checked, it.id)
+			}
+		}
+		if len(checked) != 1 || checked[0] != config.DefaultTheme {
+			t.Errorf("current %q: checked %v, want only %q", current, checked, config.DefaultTheme)
 		}
 	}
 }

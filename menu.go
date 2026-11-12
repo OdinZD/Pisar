@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"Pisar/internal/config"
 )
 
 // eventMenuCopy asks the frontend to copy: only it knows where the keyboard
@@ -53,6 +57,41 @@ func formatItems(text uiText) []formatItem {
 		{label: text.MenuBold, accel: "CmdOrCtrl+b", action: formatBold},
 		{label: text.MenuItalic, accel: "CmdOrCtrl+i", action: formatItalic},
 	}
+}
+
+// themeItem is one radio item of the Theme submenu.
+type themeItem struct {
+	label, id string
+	checked   bool
+}
+
+// themeLabel is the name of a theme in the menu.
+func themeLabel(text uiText, id string) string {
+	switch id {
+	case config.ThemePisar:
+		return text.ThemePisar
+	case config.ThemeCatppuccinMocha:
+		return text.ThemeCatppuccinMocha
+	case config.ThemeDracula:
+		return text.ThemeDracula
+	}
+	return id // a theme without a text still gets a usable item
+}
+
+// themeItems are the items of the Theme submenu, in the order of
+// config.Themes. Exactly one is checked: current, or DefaultTheme when current
+// is not a known theme. Like formatItems it is built apart from newMenu so that
+// tests can read it.
+func themeItems(text uiText, current string) []themeItem {
+	ids := config.Themes()
+	if !slices.Contains(ids, current) {
+		current = config.DefaultTheme
+	}
+	out := make([]themeItem, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, themeItem{label: themeLabel(text, id), id: id, checked: id == current})
+	}
+	return out
 }
 
 // menuShortcut is an own menu item that has a shortcut.
@@ -124,8 +163,10 @@ func (a *menuActions) search() {
 // never holds up the UI. Wails v3.1.0 already calls a click handler from a
 // goroutine of its own (MenuItem.handleClick), but that is not in its contract.
 //
-// The Formatting menu sits between Edit and Window; its items only emit
-// eventMenuFormat.
+// The Formatting menu sits between Edit and View; its items only emit
+// eventMenuFormat. The View menu sits between Formatting and Window and holds
+// the Theme submenu: three radio items without shortcuts. theme is the one
+// checked at the start; chooseTheme applies a choice (SettingsService.setTheme).
 //
 // The Edit menu is our own and has only Copy and Paste: Cmd+Z, Cmd+X and
 // Cmd+A have no item on purpose, so they do nothing while the focus is in the
@@ -133,7 +174,7 @@ func (a *menuActions) search() {
 // depends on Neovim's mode and on the focus. Paste is the system role
 // (selector paste:): the webview gets a real paste event, which xterm.js turns
 // into (bracketed) input and the input fields handle themselves.
-func newMenu(app *application.App, text uiText, a *menuActions, newDocument, addProject func()) *application.Menu {
+func newMenu(app *application.App, text uiText, a *menuActions, theme string, chooseTheme func(id string) error, newDocument, addProject func()) *application.Menu {
 	menu := app.Menu.New()
 	menu.AddRole(application.AppMenu)
 
@@ -170,6 +211,45 @@ func newMenu(app *application.App, text uiText, a *menuActions, newDocument, add
 		})
 	}
 
+	view := menu.AddSubmenu(text.MenuView)
+	addThemeMenu(view.AddSubmenu(text.MenuTheme), themeItems(text, theme), chooseTheme)
+
 	menu.AddRole(application.WindowMenu)
 	return menu
+}
+
+// addThemeMenu fills the Theme submenu with radio items. Wails has already moved
+// the check to the clicked item when the handler runs, so the handler only
+// has to put it right again when the choice failed.
+//
+// The handler is not started with "go": setTheme writes one small local file and
+// never calls Neovim, so it is quick, and Wails runs every handler in a goroutine
+// of its own anyway. mu is held for the whole choice, so two quick clicks are
+// applied one after the other and current is always the theme that was applied
+// last. The check is then set on that theme, whichever click finished last.
+func addThemeMenu(sub *application.Menu, items []themeItem, chooseTheme func(id string) error) {
+	var (
+		mu      sync.Mutex
+		current string
+		radios  = map[string]*application.MenuItem{}
+	)
+	for _, it := range items {
+		radios[it.id] = sub.AddRadio(it.label, it.checked)
+		if it.checked {
+			current = it.id
+		}
+	}
+	for _, it := range items {
+		radios[it.id].OnClick(func(*application.Context) {
+			mu.Lock()
+			defer mu.Unlock()
+			if err := chooseTheme(it.id); err != nil {
+				slog.Error("menu: choose theme", "theme", it.id, "err", err)
+			} else {
+				current = it.id
+			}
+			// SetChecked on a radio item unchecks the others of its group.
+			radios[current].SetChecked(true)
+		})
+	}
 }

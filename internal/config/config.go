@@ -208,6 +208,26 @@ func Themes() []string {
 	return []string{ThemePisar, ThemeCatppuccinMocha, ThemeDracula}
 }
 
+// themeWindowBackgrounds are the bg.app colours of the palettes in
+// frontend/src/theme/tokens.ts. They are repeated here on purpose: the native
+// window needs its colour before any webview exists. A test (TestSettingsTokens
+// in the root package) fails when they drift apart from tokens.ts.
+var themeWindowBackgrounds = map[string][3]uint8{
+	ThemePisar:           {0xF5, 0xF6, 0xF7},
+	ThemeCatppuccinMocha: {0x18, 0x18, 0x25},
+	ThemeDracula:         {0x21, 0x22, 0x2C},
+}
+
+// ThemeWindowBackground returns the colour of the bg.app token of the theme, for the
+// native window behind the webview. An unknown id gets the default theme's colour.
+func ThemeWindowBackground(id string) (r, g, b uint8) {
+	c, ok := themeWindowBackgrounds[id]
+	if !ok {
+		c = themeWindowBackgrounds[DefaultTheme]
+	}
+	return c[0], c[1], c[2]
+}
+
 // Project is one registered folder.
 type Project struct {
 	ID   string `json:"id"`   // stable, random; independent of the path

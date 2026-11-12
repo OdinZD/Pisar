@@ -3,9 +3,11 @@
 
 import * as EditorService from "./editorservice.js";
 import * as ProjectService from "./projectservice.js";
+import * as SettingsService from "./settingsservice.js";
 export {
     EditorService,
-    ProjectService
+    ProjectService,
+    SettingsService
 };
 
 export type {

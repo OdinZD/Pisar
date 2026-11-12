@@ -715,6 +715,26 @@ func diskFile(t *testing.T, home string) fileFormat {
 	return f
 }
 
+func TestThemeWindowBackground(t *testing.T) {
+	type rgb struct{ r, g, b uint8 }
+	seen := map[rgb]string{}
+	for _, id := range Themes() {
+		r, g, b := ThemeWindowBackground(id)
+		c := rgb{r, g, b}
+		if other, dup := seen[c]; dup {
+			t.Errorf("%s and %s have the same window colour %v", id, other, c)
+		}
+		seen[c] = id
+	}
+	dr, dg, db := ThemeWindowBackground(DefaultTheme)
+	for _, id := range []string{"", "no-such-theme", "PISAR"} {
+		r, g, b := ThemeWindowBackground(id)
+		if r != dr || g != dg || b != db {
+			t.Errorf("ThemeWindowBackground(%q) = %d,%d,%d, want the default theme's %d,%d,%d", id, r, g, b, dr, dg, db)
+		}
+	}
+}
+
 func TestThemes(t *testing.T) {
 	want := []string{ThemePisar, ThemeCatppuccinMocha, ThemeDracula}
 	if got := Themes(); !slices.Equal(got, want) {

@@ -69,6 +69,11 @@ export const ProjectsChanged = "projects:changed";
 export const PtyData = "pty:data";
 
 /**
+ * Name of the custom event "theme:changed".
+ */
+export const ThemeChanged = "theme:changed";
+
+/**
  * Name of the custom event "ui:focus-tree".
  */
 export const UiFocusTree = "ui:focus-tree";
