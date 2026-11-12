@@ -945,6 +945,94 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
         retka) pandoc čita kao nastavak fusnote. Svojstvo Markdowna; ide u `docs/known-losses.md`.
 - [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
 
+### Dokazi po kriterijima (2026-11-12)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit `9eb43fe`).
+
+- `go test -count=1 -race ./...` → svi paketi `ok`; `task test` → exit 0 (vitest `Tests 538 passed`);
+  `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`; `task build` → exit 0;
+  `bash scripts/make-fixtures.sh` → `all checks passed` (38 provjera, izlaz bajt-stabilan);
+  `bash scripts/smoke.sh` → `smoke: all checks passed` (63 provjere); `bash scripts/shutdown.sh` →
+  `shutdown: all checks passed`.
+- Go testovi (`go test -list`): `Pisar` 127, `config` 28, `convert` 55, `docsafe` 87, `nvim` 55,
+  `project` 36, `term` 34; preskočeni samo `TestRealTrash` i `TestScanNFCandNFD` (kao u fazi 2).
+  Pokrivenost (`go test -count=1 -cover ./...`): `Pisar` 81,9 %, `config` 84,4 %, `convert` 92,8 %,
+  `docsafe` 85,1 %, `nvim` 86,8 %, `project` 94,5 %, `term` 93,5 %.
+
+1. Otvaranje kroz radnu kopiju, slike se izdvajaju i vraćaju: `TestWordDocsOpenBasic` (`doc.md`,
+   `media/`, `reference.docx`, `meta.json`; izvornik bajt-identičan), `TestWdOpen` (pravi Neovim:
+   buffer je `doc.md`, događaj nosi putanju `.docx`-a), `TestRoundTrip` u `internal/convert` (broj i
+   bajtovi slike nakon kruga; `header-image`: logo u zaglavlju bajt-identičan, nema visećih veza),
+   `smoke.sh` (slika u spremljenom `.docx`-u jednaka izvornoj).
+2. Spremanje prema toku 4.3, svaki korak testom: konflikt `TestReplace_ConflictBeforeStart`,
+   `TestReplace_ConflictDuringWork`, `TestWordDocsExportConflict`, `TestWdConflict`; backup
+   `TestBackup_*` (12 testova); privremena datoteka `TestReplace_TempFile`; provjera izlaza pandoca
+   u `convert` (`MarkdownToDocx` odbija prazan ili nevaljan izlaz); dozvole i xattr-i
+   `TestReplace_Success`, `TestCopyXattrs`; redoslijed `TestReplace_StagesAreVisitedInOrder`; greška u
+   svakoj fazi `TestReplace_FaultAtEveryStage`; cijeli tok s pravim alatima `TestWordDocsExport`,
+   `TestWdSave`, `smoke.sh`.
+3. Golden round-trip i `docs/known-losses.md`: `go test ./internal/convert/...` (golden za 10 probnih
+   dokumenata, krug za `basic`, `complex-table`, `header-image`, `formatting`, `toc`);
+   `TestFormattingIsLostInSave`, `TestChartIsLostInSave` dokazuju stavke iz dokumenta;
+   `docs/known-losses.md` uz to nosi mjerenje na pet vlasnikovih dokumenata.
+4. Komentari i praćene izmjene samo za čitanje, s razlogom: `TestInspectFixtures`,
+   `TestWordDocsOpenReadOnlyReasons`, `TestWdReadOnly` (buffer se ne da mijenjati, `Save` →
+   `read-only`, `:w!` ne mijenja datoteku), `smoke.sh` (slučaj B); razlog u traci `documentStatus`
+   (vitest).
+5. „Spremi kao kopiju”: `TestWordDocsSaveCopy`, `TestWdSaveCopy`, `TestCreateNew_ExistingDestination`
+   (postojeće ime se ne prepisuje, izvornik bajt-identičan).
+6. `.doc` se uvozi i sprema kao novi `.docx`: `TestWordDocsOpenLegacyDoc`, `TestWordDocsImportedDoc`,
+   `TestWdLegacy`, `smoke.sh` (slučaj C); neuspjeh `textutil`-a uz izlazni kod 0 prepoznaje se po
+   izlaznoj datoteci (testovi `DocToDocx` s lažnim `Runner`-om).
+7. Prekid usred zapisa ostavlja izvornik netaknut: `TestReplace_FaultAtEveryStage` (10 faza: bajtovi,
+   dozvole i xattr-i isti, bez zaostalih datoteka), `TestCreateNew_FaultAtEveryStage`,
+   `TestBackup_FailureLeavesTheDocumentAlone`, `TestReplace_Cancellation`.
+8. Oporavak radne kopije nakon rušenja: `TestWordDocsRecovery` (Oporavi / Odbaci / Odustani, oštećena
+   kopija), `TestFindWork_PrefersUnsavedThenNewest`, `TestSweepWork`, `TestWdShutdownQueued`
+   (izvoz prekinut gašenjem ostavlja kopiju za oporavak).
+
+### Ručna provjera [R] — za vlasnika (agent ovo ne može provjeriti)
+
+Pripremi kopije dokumenata; izvornike ne diraj. Backup je u `~/Library/Application Support/Pisar/backups/`.
+
+1. Otvori pravi `.docx` iz stabla (`↵` ili klik): traka kratko kaže „Konverzija u tijeku…”, zatim se
+   vidi tekst; uz dokument s izravnim oblikovanjem stoji napomena „Spremanje pojednostavljuje
+   oblikovanje: …”.
+2. Izmijeni tekst, `⌘S`: traka prođe kroz „Konverzija u tijeku…” do „Spremljeno”. **Otvori spremljeni
+   dokument u Wordu (i Pagesu):** otvara li se bez poruke o oštećenju ili popravku; je li tekst isti;
+   jesu li zaglavlje, podnožje s brojem stranice i fusnote na mjestu; izgleda li sadržaj (TOC) kao
+   „Uvod 3”. Oblikovanje će biti pojednostavljeno kako piše u `docs/known-losses.md`; presudi je li to
+   prihvatljivo. Ovo je kriterij **[R]** faze.
+3. U mapi backupa postoji kopija izvornika prije prvog spremanja.
+4. Dokument s komentarima ili praćenim izmjenama (u testnoj mapi ga nije bilo): otvara se „Samo za
+   čitanje: …”; tipkanje ne mijenja tekst; „Spremi kao kopiju” otvara dijalog, kopija se otvori i
+   može se uređivati; izvornik je netaknut.
+5. `.doc` (u testnoj mapi ga nije bilo): napomena o uvozu; `⌘S` stvara `Ime.docx` pored njega; ako
+   `Ime.docx` već postoji, dijalog pita za ime; `.doc` ostaje isti.
+6. Konflikt: dokument otvoren u Pisaru spremi iz Worda, pa `⌘S` u Pisaru → dijalog s tri gumba.
+   Isprobaj „Odustani” (ništa se ne mijenja, traka kaže „Izmjene još nisu u dokumentu”), „Prepiši”
+   (u backupu je Wordova verzija) i „Učitaj ponovno” (u Neovimu je Wordova verzija).
+7. Oporavak: nakon „Odustani” u konfliktu zatvori Pisar s „Odbaci”, pokreni ga i otvori isti
+   dokument → pitanje Oporavi / Odbaci izmjene / Odustani.
+8. Gašenje s nespremljenim Wordovim dokumentom: dijalog navodi ime `.docx`-a (ne `doc.md`); „Spremi”
+   zatvara aplikaciju tek kad je datoteka zapisana.
+9. Izgled trake na najmanjoj širini prozora (1000 px): dugi razlozi i napomena se skraćuju s tri
+   točke, cijeli tekst je u oblačiću; greška je crvena i podebljana.
+10. `Esc` u nativnim dijalozima znači „Odustani” (otvoreno i iz faze 2).
+
+### Otvoreno nakon faze 3
+
+- Wordovo oblikovanje se pri spremanju pojednostavljuje (odjeljak 2 u `docs/known-losses.md`). To je
+  posljedica Markdowna kao radnog formata, ne greška; kriterij **[R]** „izgleda kao izvornik” vlasnik
+  ocjenjuje uz to ograničenje.
+- U uzorku stvarnih dokumenata nije bilo komentara, praćenih izmjena, tekstualnih okvira, tablica,
+  slika ni `.doc`-a; za njih postoje samo mjerenja na generiranim dokumentima.
+- Mjerenje na stvarnim dokumentima rađeno je pandocom s naredbenog retka, s istim argumentima koje
+  koristi aplikacija, ne kroz samu aplikaciju.
+- Neovim prikazuje ime `doc.md`, ne ime dokumenta. Prljave radne kopije koje nitko ne oporavi ostaju u
+  `work/`. `SaveCopy` ne uzima tekst koji je utipkan, a nije zapisan. Noviji `cx:chart` nije pokriven.
+- Nativni dijalozi (oporavak, konflikt, spremanje) provjereni su samo prevođenjem i lažnim dijalozima.
+
 ### Izvan opsega
 
 Novi `.docx` iz aplikacije, uređivanje komentara i praćenih izmjena, pregled, tražilica, PDF izvoz,
