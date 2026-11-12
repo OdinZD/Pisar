@@ -7,12 +7,14 @@
   import { EditorController } from './lib/editorController.svelte'
   import { PreviewController } from './lib/previewController.svelte'
   import { SearchController } from './lib/searchController.svelte'
+  import { ThemeController } from './lib/themeController.svelte'
   import { TreeController } from './lib/treeController.svelte'
 
   const editor = new EditorController()
   const tree = new TreeController(editor)
   const preview = new PreviewController()
   const search = new SearchController(editor, tree)
+  const theme = new ThemeController()
 
   // Follows the document Neovim has open, whoever changed it. The effect depends only on
   // editor.active: followActive reads and writes tree state, which untrack keeps out of the
@@ -28,11 +30,13 @@
     const stopEditor = editor.start()
     const stopPreview = preview.start()
     const stopSearch = search.start()
+    const stopTheme = theme.start()
     return () => {
       stopTree()
       stopEditor()
       stopPreview()
       stopSearch()
+      stopTheme()
     }
   })
 </script>
@@ -41,9 +45,9 @@
   <Toolbar {tree} {editor} {preview} />
   <div class="body">
     <Sidebar {tree} {editor} />
-    <EditorPane {editor} {search} />
+    <EditorPane {editor} {search} {theme} />
     {#if preview.open}
-      <Preview {preview} {editor} />
+      <Preview {preview} {editor} {theme} />
     {/if}
   </div>
 </div>

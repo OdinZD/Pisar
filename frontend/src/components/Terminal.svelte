@@ -10,7 +10,7 @@
   import { noTerminalFocus, type TerminalFocus } from '../lib/focus'
   import { statusInset } from '../lib/searchLayout'
   import { createSerialSender, type SerialSender } from '../lib/serialSender'
-  import { activeTheme } from '../theme/active'
+  import type { ThemeController } from '../lib/themeController.svelte'
   import { fontStack } from '../theme/cssVars'
   import { nvimColorscheme } from '../theme/nvimColorscheme'
   import { terminalTheme } from '../theme/terminalTheme'
@@ -24,6 +24,7 @@
     onfailed,
     onlayout,
     keepsFocus,
+    theme,
   }: {
     onstarted: () => void
     onfailed: (err: unknown) => void
@@ -31,6 +32,8 @@
     // True while something else (the open search panel) has the keyboard on purpose: a start that
     // finishes then must not pull it into the terminal.
     keepsFocus?: () => boolean
+    // The active theme: the terminal follows it while running.
+    theme: ThemeController
   } = $props()
 
   let container: HTMLDivElement
@@ -67,6 +70,14 @@
     return true
   }
 
+  // xterm.js compares an option object by reference, so every switch builds a new theme object.
+  // `term` is not reactive: before the terminal exists the effect does nothing, and the terminal is
+  // created with the theme that is in force then.
+  $effect(() => {
+    const palette = themes[theme.id].colors
+    if (term) term.options.theme = terminalTheme(palette) satisfies ITheme
+  })
+
   onMount(() => {
     let disposed = false
     const cleanups: Array<() => void> = []
@@ -99,7 +110,7 @@
         fontWeightBold: fontWeights.bold,
         lineHeight: 1, // replaced by calibrateLineHeight() once the cell is measured
         // The colours come from the tokens; `satisfies` fails the build if the shape stops fitting xterm.js.
-        theme: terminalTheme(themes[activeTheme()].colors) satisfies ITheme,
+        theme: terminalTheme(themes[theme.id].colors) satisfies ITheme,
         // Neovim draws on the alternate screen; there is nothing to scroll back to.
         scrollback: 0,
         // Explicitly false: on the Croatian layout Option composes characters (Option+key types
@@ -230,13 +241,17 @@
       })
 
       const { cols, rows } = t
+      const startedWith = theme.id
       try {
-        await Start(cols, rows, nvimColorscheme(themes[activeTheme()]))
+        await Start(cols, rows, nvimColorscheme(themes[startedWith]))
       } catch (err) {
         if (!disposed) onfailed(err)
         return
       }
       if (disposed) return
+      // The theme changed while Neovim was starting: that SetColorscheme may have come before Neovim
+      // ran (only the file was written) and Start then wrote the older colorscheme over it.
+      if (theme.id !== startedWith) theme.resend()
       sent = { cols, rows }
       running = true
       onstarted()

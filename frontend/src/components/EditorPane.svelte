@@ -4,13 +4,14 @@
   import { errorMessage } from '../lib/errorMessage'
   import { noTerminalFocus } from '../lib/focus'
   import type { SearchController } from '../lib/searchController.svelte'
+  import type { ThemeController } from '../lib/themeController.svelte'
   import { toolsNotice } from '../lib/toolsState'
   import { strings } from '../strings'
   import EmptyState from './EmptyState.svelte'
   import SearchPanel from './SearchPanel.svelte'
   import Terminal from './Terminal.svelte'
 
-  let { editor, search }: { editor: EditorController; search: SearchController } = $props()
+  let { editor, search, theme }: { editor: EditorController; search: SearchController; theme: ThemeController } = $props()
 
   let terminal: ReturnType<typeof Terminal> | undefined = $state()
 
@@ -46,6 +47,7 @@
       onfailed={(err) => editor.terminalFailed(err)}
       onlayout={(px) => (reportedInset = px)}
       keepsFocus={() => search.open}
+      {theme}
     />
   {:else if editor.phase === 'failed'}
     <EmptyState error={errorMessage(editor.error ?? 'internal')} />

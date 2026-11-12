@@ -4,13 +4,16 @@
   import { appOrigin, previewFrameDocument, previewPageId, previewSandbox } from '../lib/previewFrame'
   import { previewView } from '../lib/previewState'
   import { createPageWriter, type FrameDocument } from '../lib/previewWrite'
+  import type { ThemeController } from '../lib/themeController.svelte'
   import { strings } from '../strings'
   import { activeTheme } from '../theme/active'
+  import { applyTheme } from '../theme/cssVars'
   import { previewFontFaceSpecs } from '../theme/fonts'
   import { themes } from '../theme/tokens'
 
-  let { preview, editor }: { preview: PreviewController; editor: EditorController } = $props()
+  let { preview, editor, theme }: { preview: PreviewController; editor: EditorController; theme: ThemeController } = $props()
 
+  // The palette that is in force when the component is created; a later switch is applied by the effect below.
   // Fonts are fetched by the frame itself, so it needs absolute addresses on the application's origin.
   const origin = appOrigin(window.location)
   const srcdoc = previewFrameDocument({
@@ -46,6 +49,17 @@
     // Until the frame's own document has loaded there is no container (it is still about:blank);
     // the load event runs this effect again.
     if (writer.write(doc as FrameDocument, previewPageId, html)) wire(doc)
+  })
+
+  // A theme switch changes the variables on the frame's <html> from outside; srcdoc stays as it is, so
+  // the frame is not reloaded and the scroll position survives. An inline style on the root wins over
+  // the :root rule of the frame's stylesheet. The effect runs again after every load, because a frame
+  // that loaded after the switch started from the palette baked into srcdoc.
+  $effect(() => {
+    void loads
+    const palette = themes[theme.id].colors
+    const root = frame?.contentDocument?.documentElement
+    if (root) applyTheme(root, palette)
   })
 </script>
 

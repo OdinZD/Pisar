@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeTheme, isThemeId, setActiveTheme, themeFromSearch } from './active'
+import { activeTheme, isThemeId, setActiveTheme, startTheme, themeFromSearch } from './active'
 import { defaultTheme, themeIds } from './tokens'
 
 describe('isThemeId', () => {
@@ -31,6 +31,21 @@ describe('themeFromSearch', () => {
 
   it('every id in the registry can be asked for', () => {
     for (const id of themeIds) expect(themeFromSearch(`?theme=${id}`)).toBe(id)
+  })
+})
+
+describe('startTheme', () => {
+  it('prefers a valid answer from Go to the URL', () => {
+    expect(startTheme('pisar', 'dracula')).toBe('dracula')
+    expect(startTheme(null, 'dracula')).toBe('dracula')
+  })
+
+  it.each([[undefined], [''], ['x'], [1], [null], [{}]])('falls back to the URL when Go answered %j', (v) => {
+    expect(startTheme('dracula', v)).toBe('dracula')
+  })
+
+  it.each([[undefined], [''], ['x'], [7]])('gives the default when both are unusable (Go: %j)', (v) => {
+    expect(startTheme(null, v)).toBe(defaultTheme)
   })
 })
 
