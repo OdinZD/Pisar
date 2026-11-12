@@ -675,6 +675,20 @@ func (e *EditorService) Copy(ctx context.Context) (bool, error) {
 	return copied, nil
 }
 
+// Format runs a Markdown formatting action on the current buffer: kind is
+// "bold", "italic", "heading" or "list". An action that does not apply (Neovim
+// waits for more input, the buffer is read-only) is not an error: it does
+// nothing and returns nil, because the user's keys simply mean nothing there.
+func (e *EditorService) Format(ctx context.Context, kind string) error {
+	slog.Debug("service call", "method", "Format", "kind", kind)
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	if err := e.session.Format(ctx, kind); err != nil {
+		return failEditor("format", err)
+	}
+	return nil
+}
+
 // CopyText puts text on the system clipboard (the terminal's own selection).
 // Empty text leaves the clipboard alone.
 func (e *EditorService) CopyText(text string) error {

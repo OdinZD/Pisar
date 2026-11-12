@@ -31,6 +31,16 @@ export function CopyText(text: string): $CancellablePromise<void> {
 }
 
 /**
+ * Format runs a Markdown formatting action on the current buffer: kind is
+ * "bold", "italic", "heading" or "list". An action that does not apply (Neovim
+ * waits for more input, the buffer is read-only) is not an error: it does
+ * nothing and returns nil, because the user's keys simply mean nothing there.
+ */
+export function Format(kind: string): $CancellablePromise<void> {
+    return $Call.ByID(2163227227, kind);
+}
+
+/**
  * HasInitialDocument reports whether a document was named on the command line
  * and has not been opened yet (it is opened by the first successful Start).
  */

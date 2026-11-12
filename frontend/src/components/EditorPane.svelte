@@ -24,6 +24,7 @@
   $effect(() => {
     editor.focusTerminal = () => terminal?.focus()
     editor.terminalFocus = () => terminal?.focusState() ?? noTerminalFocus
+    editor.runInOrder = (call) => terminal?.runInOrder(call) ?? false
   })
 </script>
 

@@ -25,6 +25,7 @@ const byCode: Record<ErrorCode, string> = {
   conflict: strings.errorConflict,
   'damaged-work': strings.errorDamagedWork,
   'preview-too-large': strings.errorPreviewTooLarge,
+  'invalid-format': strings.errorInvalidFormat,
   internal: strings.errorGeneric,
 }
 

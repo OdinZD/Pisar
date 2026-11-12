@@ -9,7 +9,7 @@
   import { Resize, Start, Write } from '../../bindings/Pisar/editorservice'
   import { noTerminalFocus, type TerminalFocus } from '../lib/focus'
   import { statusInset } from '../lib/searchLayout'
-  import { createSerialSender } from '../lib/serialSender'
+  import { createSerialSender, type SerialSender } from '../lib/serialSender'
   import { fontStack } from '../theme/cssVars'
   import { nvimColorscheme } from '../theme/nvimColorscheme'
   import { terminalTheme } from '../theme/terminalTheme'
@@ -34,6 +34,9 @@
 
   let container: HTMLDivElement
   let term: Terminal | undefined
+  // The ordered queue of everything sent to Neovim; only while it runs.
+  let sender: SerialSender | undefined
+  let running = false
 
   /** Gives the terminal keyboard focus. */
   export function focus(): void {
@@ -51,6 +54,16 @@
       focused: t.textarea !== undefined && t.textarea === document.activeElement,
       selection: t.hasSelection() ? t.getSelection() : '',
     }
+  }
+
+  /**
+   * Runs a call after every keystroke typed so far has been sent to Neovim, and before any typed later
+   * (see serialSender.ts). Returns false, and does not run it, when Neovim is not running.
+   */
+  export function runInOrder(call: () => Promise<void>): boolean {
+    if (!sender || !running) return false
+    sender.run(call)
+    return true
   }
 
   onMount(() => {
@@ -157,20 +170,22 @@
 
       // Input: one serial sender for onData and onBinary keeps the order of the keystrokes. Until
       // Start has finished there is no Neovim to receive them, so they are dropped.
-      let running = false
-      const sender = createSerialSender(
+      const input = createSerialSender(
         (data) => Write(data),
         (err) => console.error('write failed', err),
       )
+      sender = input
       const dataSub = t.onData((data) => {
-        if (running) sender.send(data)
+        if (running) input.send(data)
       })
       // Neovim asks for SGR mouse reporting, which never uses onBinary (it would carry bytes >= 0x80,
       // which a Go string cannot take unchanged); forwarded only for completeness.
       const binarySub = t.onBinary((data) => {
-        if (running) sender.send(data)
+        if (running) input.send(data)
       })
       cleanups.push(() => {
+        running = false
+        sender = undefined
         dataSub.dispose()
         binarySub.dispose()
       })

@@ -636,6 +636,7 @@ const (
 	codeConflict         = "conflict"
 	codeDamagedWork      = "damaged-work"
 	codePreviewTooLarge  = "preview-too-large"
+	codeInvalidFormat    = "invalid-format"
 	codeInternal         = "internal"
 )
 
@@ -691,6 +692,8 @@ func codeOf(err error) string {
 	// program this way needs its own sentinel, or its failure would read as this one.
 	case errors.Is(err, exec.ErrNotFound):
 		return codeNvimMissing
+	case errors.Is(err, nvim.ErrUnknownFormat):
+		return codeInvalidFormat
 	case errors.Is(err, nvim.ErrUnnamedBuffer):
 		return codeUnnamedBuffer
 	case errors.Is(err, errUnsaved), errors.Is(err, nvim.ErrBufferModified):
@@ -727,6 +730,7 @@ var codeText = map[string]string{
 	codeConflict:         "the file changed outside Pisar",
 	codeDamagedWork:      "the working copy is damaged",
 	codePreviewTooLarge:  "the document is too large for the preview",
+	codeInvalidFormat:    "unknown formatting action",
 	codeInternal:         "unexpected error",
 }
 

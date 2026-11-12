@@ -919,6 +919,7 @@ func TestCodeOf(t *testing.T) {
 		{"preview source too large", nvim.ErrBufferTooLarge, codePreviewTooLarge},
 		{"preview without pandoc", fmt.Errorf("%w: %w", preview.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
 		{"preview tool failed", &preview.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
+		{"unknown format", nvim.ErrUnknownFormat, codeInvalidFormat},
 		{"deadline", context.DeadlineExceeded, codeCanceled},
 		{"canceled", context.Canceled, codeCanceled},
 		{"unknown", errors.New("whatever"), codeInternal},

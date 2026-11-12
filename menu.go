@@ -15,6 +15,18 @@ const eventMenuCopy = "menu:copy"
 // eventMenuSearch asks the frontend to open the document search (⌘P). Payload "".
 const eventMenuSearch = "menu:search"
 
+// eventMenuFormat asks the frontend to format the text (⌘B, ⌘I). Payload: one
+// of the format kinds below. Like Copy it is the frontend that decides: the
+// shortcut must do nothing while the focus is in an input field.
+const eventMenuFormat = "menu:format"
+
+// The formatting actions of the Formatting menu, as EditorService.Format
+// names them.
+const (
+	formatBold   = "bold"
+	formatItalic = "italic"
+)
+
 // menuEditor is what the menu items need from the editor.
 type menuEditor interface {
 	running() bool
@@ -48,6 +60,13 @@ func (a *menuActions) copy() {
 	a.emit(eventMenuCopy, "")
 }
 
+// format hands the decision to the frontend (see eventMenuFormat). Go does not
+// call Neovim here: the keys the user typed just before are still on their way
+// through the frontend's ordered queue, and the format must follow them.
+func (a *menuActions) format(kind string) {
+	a.emit(eventMenuFormat, kind)
+}
+
 // search hands the decision to the frontend (see eventMenuSearch): the search
 // panel and the focus are its business.
 func (a *menuActions) search() {
@@ -58,6 +77,9 @@ func (a *menuActions) search() {
 // in their own goroutine, so that a blocked Neovim call (up to CommandTimeout)
 // never holds up the UI. Wails v3.1.0 already calls a click handler from a
 // goroutine of its own (MenuItem.handleClick), but that is not in its contract.
+//
+// The Formatting menu sits between Edit and Window; its items only emit
+// eventMenuFormat.
 //
 // The Edit menu is our own and has only Copy and Paste: Cmd+Z, Cmd+X and
 // Cmd+A have no item on purpose, so they do nothing while the focus is in the
@@ -92,6 +114,16 @@ func newMenu(app *application.App, text uiText, a *menuActions, newDocument, add
 	if paste := edit.FindByRole(application.Paste); paste != nil {
 		paste.SetLabel(text.MenuPaste)
 	}
+
+	// Not started with "go": emitting never blocks, and one goroutine per
+	// click would let two quick shortcuts reach the frontend in either order.
+	format := menu.AddSubmenu(text.MenuFormat)
+	format.Add(text.MenuBold).SetAccelerator("CmdOrCtrl+b").OnClick(func(*application.Context) {
+		a.format(formatBold)
+	})
+	format.Add(text.MenuItalic).SetAccelerator("CmdOrCtrl+i").OnClick(func(*application.Context) {
+		a.format(formatItalic)
+	})
 
 	menu.AddRole(application.WindowMenu)
 	return menu

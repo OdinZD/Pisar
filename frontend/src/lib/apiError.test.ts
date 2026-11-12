@@ -26,6 +26,8 @@ describe('errorCode', () => {
     ['read only', wailsError('read-only: x', { code: 'read-only' }), 'read-only'],
     ['conflict', wailsError('conflict: x', { code: 'conflict' }), 'conflict'],
     ['damaged work', wailsError('damaged-work: x'), 'damaged-work'],
+    ['invalid format', wailsError('invalid-format: x', { code: 'invalid-format' }), 'invalid-format'],
+    ['invalid format, text only', wailsError('invalid-format: unknown formatting action'), 'invalid-format'],
     ['unknown cause code, known text', wailsError('missing: x', { code: 'bogus' }), 'missing'],
     ['unknown code', wailsError('x', { code: 'bogus' }), 'internal'],
     ['text without code', wailsError('something broke'), 'internal'],

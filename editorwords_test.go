@@ -369,6 +369,26 @@ func TestWdSave(t *testing.T) {
 	}
 }
 
+// Formatting a read-only document does nothing and is not an error: the keys
+// of ⌘B mean nothing there.
+func TestWdFmtRO(t *testing.T) {
+	w := startWd(t)
+	a := w.open("comments.docx")
+	if !slices.Equal(a.ReadOnly, []string{"comments"}) {
+		t.Fatalf("readOnly = %v", a.ReadOnly)
+	}
+	probe := `[&modifiable, &modified, join(getline(1, '$'), ' ')]`
+	before := w.eval(probe)
+	for _, kind := range []string{"bold", "italic", "heading", "list"} {
+		if err := w.svc.Format(context.Background(), kind); err != nil {
+			t.Errorf("Format(%s) = %v, want nil", kind, err)
+		}
+	}
+	if got := w.eval(probe); !slices.Equal(got, before) || got[0] != "0" || got[1] != "0" {
+		t.Errorf("state = %q, before %q", got, before)
+	}
+}
+
 // A document with comments is read-only: nothing in the buffer changes, Save
 // is refused without asking Neovim, :w! does nothing to the user's file.
 func TestWdReadOnly(t *testing.T) {

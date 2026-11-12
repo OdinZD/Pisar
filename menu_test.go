@@ -71,6 +71,28 @@ func TestMenuCopy(t *testing.T) {
 	}
 }
 
+func TestMenuFormat(t *testing.T) {
+	for _, c := range []struct{ name, kind, want string }{
+		{"bold", formatBold, "bold"},
+		{"italic", formatItalic, "italic"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var out []menuEmit
+			ed := &fakeMenuEditor{isRunning: true}
+			a := newActions(ed, &out)
+			a.format(c.kind)
+			if len(out) != 1 || out[0] != (menuEmit{"menu:format", c.want}) {
+				t.Errorf("menuEmit %v", out)
+			}
+			// The frontend decides, and the service is reached through its ordered queue:
+			// the menu itself calls neither Save nor Neovim.
+			if ed.saves != 0 {
+				t.Errorf("Save called %d times", ed.saves)
+			}
+		})
+	}
+}
+
 func TestMenuSearch(t *testing.T) {
 	var out []menuEmit
 	ed := &fakeMenuEditor{}

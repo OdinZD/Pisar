@@ -28,6 +28,7 @@ export const errorCodes = [
   'conflict',
   'damaged-work',
   'preview-too-large',
+  'invalid-format',
   'internal',
 ] as const;
 

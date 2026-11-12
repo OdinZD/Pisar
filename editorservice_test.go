@@ -1148,6 +1148,120 @@ func TestEdCopy(t *testing.T) {
 	}
 }
 
+// openA opens a.md of the document fixture and waits until it is the active one.
+func (e *edEnv) openA() {
+	e.t.Helper()
+	p, _ := docFixture(e.t, e)
+	from := e.rec.mark()
+	if err := e.svc.OpenDocument(context.Background(), p.ID, "a.md"); err != nil {
+		e.t.Fatal(err)
+	}
+	e.rec.waitActive(e.t, from, "a.md", func(d DocumentActive) bool { return d.Rel == "a.md" })
+}
+
+// lines reads the buffer back through eval; it needs normal mode.
+func (e *edEnv) lines() string {
+	e.t.Helper()
+	return strings.Join(e.eval(`[join(getline(1, '$'), '|')]`), "|")
+}
+
+func TestEdFmt(t *testing.T) {
+	e := startEd(t)
+	e.openA()
+	ctx := context.Background()
+
+	// Normal mode: the word under the cursor is wrapped.
+	if err := e.svc.Write("Gotext"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Write("\x1b"); err != nil { // alone: Esc followed by a key would be read as Alt+key
+		t.Fatal(err)
+	}
+	if got := e.lines(); got != "# a|text" {
+		t.Fatalf("typed text: %q", got)
+	}
+	if err := e.svc.Format(ctx, "bold"); err != nil {
+		t.Fatalf("Format bold: %v", err)
+	}
+	if got := e.lines(); got != "# a|**text**" {
+		t.Errorf("bold in normal mode: %q", got)
+	}
+	// The same action again takes the marks off.
+	if err := e.svc.Format(ctx, "bold"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.lines(); got != "# a|text" {
+		t.Errorf("bold twice: %q", got)
+	}
+	if err := e.svc.Format(ctx, "list"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.lines(); got != "# a|- text" {
+		t.Errorf("list: %q", got)
+	}
+}
+
+// Keys typed just before a format must be in the text before it: the frontend
+// sends both through one ordered queue, and Neovim has to see them in that
+// order although the keys travel through the PTY and Format through the socket.
+func TestEdFmtOrder(t *testing.T) {
+	e := startEd(t)
+	e.openA()
+	ctx := context.Background()
+	var want []string
+	want = append(want, "# a")
+	for i := range 12 {
+		for _, keys := range []string{"o", "text"} {
+			if err := e.svc.Write(keys); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Neovim is in insert mode (or is about to be): the pair of marks is inserted
+		// after "text", and "more" goes between them.
+		if err := e.svc.Format(ctx, "bold"); err != nil {
+			t.Fatalf("round %d: Format: %v", i, err)
+		}
+		if err := e.svc.Write("more"); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.Write("\x1b"); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, "text**more**")
+		e.eval(`[1]`) // all keys of the round are handled before the next one starts
+	}
+	if got := e.lines(); got != strings.Join(want, "|") {
+		t.Errorf("lines = %q, want %q", got, strings.Join(want, "|"))
+	}
+}
+
+func TestEdFmtErr(t *testing.T) {
+	e := startEd(t)
+	e.openA()
+	before := e.lines()
+	for _, kind := range []string{"", "bogus", "BOLD", "bold ", "../x"} {
+		wantCode(t, e.svc.Format(context.Background(), kind), codeInvalidFormat)
+	}
+	if got := e.lines(); got != before {
+		t.Errorf("an unknown action changed the text: %q", got)
+	}
+	// An expired context is the caller's cancellation, not an invalid action.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := e.svc.Format(ctx, "bold"); err == nil {
+		t.Error("Format with a canceled context succeeded")
+	}
+	// Still alive and answering.
+	if got := e.eval(`['ok']`); got[0] != "ok" {
+		t.Errorf("eval = %v", got)
+	}
+}
+
+func TestEdFmtStopped(t *testing.T) {
+	e := newEd(t)
+	wantCode(t, e.svc.Format(context.Background(), "bold"), codeNotRunning)
+}
+
 func TestEdCopyText(t *testing.T) {
 	e := newEd(t)
 	if err := e.svc.CopyText(""); err != nil || len(e.clip.calls()) != 0 {
@@ -1628,6 +1742,7 @@ func TestEdCodes(t *testing.T) {
 		{"preview source too large", nvim.ErrBufferTooLarge, codePreviewTooLarge},
 		{"preview without pandoc", fmt.Errorf("%w: %w", preview.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
 		{"preview tool failed", &preview.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
+		{"unknown format", nvim.ErrUnknownFormat, codeInvalidFormat},
 		{"already coded", &apiError{code: codeNotRunning}, codeNotRunning},
 		{"specific beats canceled", errors.Join(nvim.ErrNotRunning, context.Canceled), codeNotRunning},
 		{"unknown", errors.New("whatever"), codeInternal},

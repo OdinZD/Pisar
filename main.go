@@ -32,6 +32,7 @@ func init() {
 	application.RegisterEvent[string](eventProjectChanged)
 	application.RegisterEvent[string](eventMenuNewDocument)
 	application.RegisterEvent[string](eventMenuCopy)
+	application.RegisterEvent[string](eventMenuFormat)
 
 	// Editor events. The two document events carry a structure: the registered
 	// type must be exactly the one emitted (a value, not a pointer).

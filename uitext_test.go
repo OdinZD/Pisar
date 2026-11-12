@@ -125,6 +125,22 @@ func TestUITextSaveFailures(t *testing.T) {
 	}
 }
 
+func TestUITextMenuFormat(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct{ got, want string }{
+		"menuFormat": {text.MenuFormat, "Oblikovanje"},
+		"menuBold":   {text.MenuBold, "Podebljano"},
+		"menuItalic": {text.MenuItalic, "Kurziv"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q", name, c.got, c.want)
+		}
+	}
+}
+
 func TestUITextMenuSearch(t *testing.T) {
 	text, err := loadUIText()
 	if err != nil {

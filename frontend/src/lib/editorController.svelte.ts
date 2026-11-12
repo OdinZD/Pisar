@@ -3,7 +3,7 @@
 // the Go service. Starting Neovim itself is done by Terminal.svelte (it needs the terminal's size);
 // it reports back through terminalStarted() / terminalFailed().
 import { Events } from '@wailsio/runtime'
-import { DocumentActive, DocumentExport, DocumentState, MenuCopy, NvimExit } from '../../bindings/events'
+import { DocumentActive, DocumentExport, DocumentState, MenuCopy, MenuFormat, NvimExit } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/editorservice'
 import { errorCode, type ErrorCode } from './apiError'
 import { performCopy } from './copyAction'
@@ -29,6 +29,7 @@ import {
   type Transition,
 } from './editorState'
 import { describeFocus, noTerminalFocus, type TerminalFocus } from './focus'
+import { shouldFormat } from './formatAction'
 
 interface Waiter {
   resolve: () => void
@@ -63,6 +64,13 @@ export class EditorController {
   /** Set by the editor pane: whether the terminal has the focus and what it has selected with the mouse. */
   terminalFocus: () => TerminalFocus = () => noTerminalFocus
 
+  /**
+   * Set by the editor pane: queues a call behind the keystrokes already typed (and before the ones
+   * typed later), so it reaches Neovim in the order the user pressed the keys. False when there is no
+   * running terminal; the call does not run then.
+   */
+  runInOrder: (call: () => Promise<void>) => boolean = () => false
+
   #nextId = 0
   // Promises handed out by open() that wait for an answer, by request id.
   #waiters = new Map<number, Waiter>()
@@ -84,6 +92,7 @@ export class EditorController {
         this.#state = documentExport(this.#state, ev.data)
       }),
       Events.On(MenuCopy, () => void this.#copyFromMenu()),
+      Events.On(MenuFormat, (ev) => this.#formatFromMenu(ev.data)),
     ]
     // The application was started with a document: Go opens it after the first successful Start,
     // so the editor only has to run.
@@ -156,6 +165,23 @@ export class EditorController {
     } catch (err) {
       console.error('copy failed', err)
     }
+  }
+
+  // Cmd+B / Cmd+I. Only the terminal may be formatted from: in an input field the shortcut must leave
+  // the document alone. The call goes through the terminal's ordered queue, so text typed just before
+  // is in Neovim before the marks. A failure is only logged: an action that does not apply (a read-only
+  // document, a prompt waiting for a key) already returns success, and a real failure is rare and not
+  // something the user can act on. Focus stays where it is; the menu does not move it.
+  #formatFromMenu(kind: string): void {
+    if (!shouldFormat(describeFocus(document.activeElement, this.terminalFocus()), this.phase)) return
+    const queued = this.runInOrder(async () => {
+      try {
+        await service.Format(kind)
+      } catch (err) {
+        console.error('format failed', err)
+      }
+    })
+    if (!queued) console.error('format dropped: the terminal is not running')
   }
 
   #apply(t: Transition): void {

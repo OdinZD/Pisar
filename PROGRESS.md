@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–3 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–4 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 4 (usluga, izbornik „Oblikovanje”, frontend)
+- Sljedeći korak: faza 5, korak 5 (dimna provjera)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, korak 3)
+- Zadnja izmjena: 2026-11-12 (faza 5, korak 4)
 
 ## Priprema (2026-11-11)
 
@@ -1608,7 +1608,26 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
         `TestTextState` (faza 4) je uspoređivao dva `vim.json.encode` niza, čiji redoslijed ključeva
         nije određen, pa je jednom pao pod `-race`; snimka sada koristi `vim.inspect` (sortira
         ključeve). Tvrdnje testa su iste.
-- [ ] 4. Usluga, izbornik „Oblikovanje” (`⌘B`, `⌘I`), frontend
+- [x] 4. Usluga, izbornik, frontend. `EditorService.Format(kind)` (nepoznata radnja → kod `invalid-format`);
+      izbornik „Oblikovanje” između „Uređivanje” i „Prozor”: „Podebljano” (`⌘B`), „Kurziv” (`⌘I`); klik
+      samo emitira `menu:format`. Frontend: `lib/formatAction.ts` (`shouldFormat`: šalje samo kad
+      terminal ima fokus i Neovim radi; polje za unos, stablo, gumb, pregled i bez fokusa → ne).
+      Vitest 826.
+      - **Redoslijed tipki i oblikovanja:** tipke terminala i `Format` idu kroz ISTI serijski red
+        (`serialSender.run`; poziv je zapreka pa se podaci prije i poslije njega ne spajaju). Bez toga
+        bi Wails, koji svaki poziv obrađuje u vlastitoj goroutini, mogao poslati `Format` prije tipki:
+        „tekst” + `⌘B` dalo bi `**tekst`. Izbornik zato emitira bez vlastite goroutine (odstupanje od
+        uzorka „Kopiraj”). Drugi dio puta (PTY naspram RPC-a) izmjeren je u `TestEdFmtOrder`: Neovim
+        obradi već upisane tipke prije kasnijeg RPC poziva (40 od 40 pod `-race`).
+      - Greška poziva i `not-running` se samo zapišu u konzolu; korisniku se ne prikazuju.
+      - Datoteke izvan tablice plana: `frontend/src/lib/serialSender.ts`, `components/Terminal.svelte`
+        i `EditorPane.svelte` (zajednički red), `lib/apiError.ts`, `errorMessage.ts` (novi kod),
+        `projectservice.go` (kod greške).
+      - Prošireni postojeći testovi (samo dodavanje): `TestEdCodes`, `TestCodeOf`, `apiError.test.ts`,
+        `errorMessage.test.ts`, `serialSender.test.ts`.
+      - Nije provjereno: izbornik u pravom Wails prozoru (testirana je radnja i konstante); tipke
+        utipkane nakon `⌘B`, a prije nego događaj stigne u frontend, mogu proći prije oblikovanja
+        (nekoliko ms).
 - [ ] 5. Dimna provjera (`scripts/smoke.sh`)
 - [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
 

@@ -24,5 +24,7 @@ describe('errorMessage', () => {
     expect(errorMessage('read-only')).toBe(strings.errorReadOnly)
     expect(errorMessage('conflict')).toBe(strings.errorConflict)
     expect(errorMessage('damaged-work')).toBe(strings.errorDamagedWork)
+    expect(errorMessage('invalid-format')).toBe(strings.errorInvalidFormat)
+    expect(errorMessage('invalid-format')).toBe('Nepoznata radnja oblikovanja.')
   })
 })
