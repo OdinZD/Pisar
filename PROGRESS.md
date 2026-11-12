@@ -4,14 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc`: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12);
+  čeka se vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 2 je prihvaćena
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 10 (dokazi, ručna provjera, `plan-reviewer`)
+- Sljedeći korak: vlasnikova ručna provjera faze 3 (popis u odjeljku faze); zatim plan faze 4
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, ispravci nakon pregleda, krug 2)
+- Zadnja izmjena: 2026-11-12 (faza 3 dovršena, čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -943,7 +944,8 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       phase=saved`) + promjena datoteke, rok 30 s; bez `sleep`-a. Bez `pandoc`-a provjere se preskaču.
       - Nalaz: `doc.md` završava definicijama fusnota; redak dopisan odmah iza zadnje (bez praznog
         retka) pandoc čita kao nastavak fusnote. Svojstvo Markdowna; ide u `docs/known-losses.md`.
-- [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
+- [x] 10. Kraj faze: dokazi po kriterijima, popis **[R]**, `plan-reviewer` (krug 1 FAIL, krug 2 FAIL samo
+      zbog zapisa, krug 3 **PASS**), sažetak vlasniku
 
 ### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
 
@@ -978,6 +980,11 @@ Svi nalazi kruga 1 potvrđeni kao riješeni ili zabilježeni. Novo: brojevi u �
 bili su od prije ispravaka (ispravljeni su prema svježem mjerenju); ograničenje „Učitaj ponovno” za
 neupisani tekst i točka u ručnoj provjeri (dodani); uvod u `docs/known-losses.md` (ublažen); pogrešan
 komentar u podtestu „reload” (ispravljen, tvrdnje iste).
+
+### Pregled plana — krug 3 (2026-11-12): PASS
+
+Reviewer je sam izmjerio brojeve iz „Dokazi po kriterijima” (isti su) i potvrdio N1–N4 iz kruga 2.
+Otvoreno ostaje samo ono što je u „Otvoreno nakon faze 3” i kriterij **[R]**.
 
 ### Odstupanja od plana faze (datoteke i ponašanje)
 
@@ -1113,15 +1120,16 @@ pakiranje, automatsko pokretanje Worda.
 
 ### Kriteriji prihvaćanja
 
-- [ ] otvaranje `.docx`-a kroz radnu kopiju; slike se izdvajaju i vraćaju
-- [ ] spremanje prema toku 4.3, svaki korak pokriven testom
-- [ ] golden round-trip prolazi; `docs/known-losses.md` napisan iz stvarnih rezultata
-- [ ] `.docx` s komentarima ili praćenim izmjenama otvara se samo za čitanje, s razlogom
-- [ ] „Spremi kao kopiju” stvara novu datoteku i ne dira izvornik
-- [ ] `.doc` se uvozi i sprema kao novi `.docx`
-- [ ] simulirani prekid usred zapisa ostavlja izvornik netaknut
-- [ ] oporavak radne kopije nakon rušenja
-- [ ] **[R]** spremljeni `.docx` otvara se u Wordu ili Pagesu i izgleda kao izvornik
+- [x] otvaranje `.docx`-a kroz radnu kopiju; slike se izdvajaju i vraćaju — dokaz 1
+- [x] spremanje prema toku 4.3, svaki korak pokriven testom — dokaz 2
+- [x] golden round-trip prolazi; `docs/known-losses.md` napisan iz stvarnih rezultata — dokaz 3
+- [x] `.docx` s komentarima ili praćenim izmjenama otvara se samo za čitanje, s razlogom — dokaz 4
+- [x] „Spremi kao kopiju” stvara novu datoteku i ne dira izvornik — dokaz 5
+- [x] `.doc` se uvozi i sprema kao novi `.docx` — dokaz 6
+- [x] simulirani prekid usred zapisa ostavlja izvornik netaknut — dokaz 7
+- [x] oporavak radne kopije nakon rušenja — dokaz 8
+- [ ] **[R]** spremljeni `.docx` otvara se u Wordu ili Pagesu i izgleda kao izvornik — čeka vlasnikovu
+      ručnu provjeru (popis gore); agent ovo ne označava
 
 ## Faza 4 — Pregled i tražilica
 
