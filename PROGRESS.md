@@ -2180,7 +2180,9 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
         prosljeđuje `theme` u `Terminal`). `theme/active.ts` je dobio i `startTheme`.
       - Ispravak glavne sesije nakon kruga 1 pregleda (oko 15 redaka, bez testa jer kontroler nema
         testove): `ThemeController.start()` nakon pretplate još jednom pita `SettingsService.Theme()`, da se
-        ne izgubi tema izabrana između potvrde u `main.ts` i pretplate na `theme:changed`.
+        ne izgubi tema izabrana između potvrde u `main.ts` i pretplate na `theme:changed`. Nakon kruga 2:
+        taj se odgovor odbacuje ako je u međuvremenu stigao događaj ili je pretplata uklonjena (događaj je
+        uvijek barem jednako nov kao ono što je poziv mogao pročitati).
       - NIJE viđeno (ručna provjera): promjena na klik u meniju, boje terminala i pregleda nakon promjene,
         skrol pregleda, promjena teme usred pokretanja Neovima. Komponente i kontroler nemaju testove.
 - [x] 9. Dimna provjera i dokumenti: `scripts/smoke.sh` ima još jedno pokretanje (v2 `config.json` s
@@ -2200,11 +2202,12 @@ faze 8 (which-key, pregled prečaca, otvaranje `user.lua`).
 
 ### Dokazi po kriterijima (2026-11-12)
 
-Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit koraka 9).
+Naredbe iz korijena repozitorija, sve ponovno pokrenute nakon zadnje izmjene koda (ispravak iz kruga 2
+pregleda, commit `6a00607`).
 
 1. `task test` → svi Go paketi `ok`; vitest `Test Files 31 passed`, `Tests 1276 passed`. `task test:race` → svi
    paketi `ok`, bez `DATA RACE`. `task lint` → `0 issues.`, svelte-check `245 FILES 0 ERRORS 0 WARNINGS`.
-   `task build` → exit 0.
+   `task build` → exit 0. Uz to `go test -race -count=1 ./...` (bez cachea) → svih osam paketa `ok`.
 2. `cd frontend && npx vitest run src/theme` → `Test Files 9 passed`, `Tests 597 passed` (kontrast, tablice iz
    `DESIGN.md`, xterm tema i colorscheme za sve tri teme).
 3. `go test ./internal/config -run 'Theme|Version' -count=1` → `ok`;
@@ -2225,6 +2228,10 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit ko
   `tokenColor`, dirnut `EditorPane.svelte`), `config.Themes` zapisan kao varijabla umjesto funkcije i
   nepostojeći odjeljak na koji je korak 9 upućivao. Sve je ispravljeno ovdje. Uz to zapažanje o
   izgubljenom događaju `theme:changed` tijekom učitavanja stranice: ispravljeno u kodu (korak 8).
+- Krug 2: FAIL bez blokera. Svih šest nalaza iz kruga 1 je riješeno i tekst odgovara kodu. Dva nova manja
+  nalaza: ispravak iz kruga 1 otvorio je simetričnu utrku (zakašnjeli odgovor `Theme()` mogao je pregaziti
+  noviji događaj) — ispravljeno zastavicom u `ThemeController.start()`; rečenica o tome kada su dokazi
+  pokrenuti bila je zastarjela — dokazi su ponovljeni nakon ispravka i rečenica je ispravljena.
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
