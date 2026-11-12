@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7 i 9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7, 8a, 8b i 9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 8a (grafovi samo za čitanje, upozorenje o oblikovanju)
+- Sljedeći korak: faza 3, korak 8c (filter za sadržaj, crtani oblici), pa korak 10
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, korak 9)
+- Zadnja izmjena: 2026-11-12 (faza 3, koraci 8a i 8b)
 
 ## Priprema (2026-11-11)
 
@@ -878,10 +878,43 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       - Ograničenje: dokument samo za čitanje s izmijenjenim bufferom ne može nastati (buffer je
         nepromjenjiv), pa gumb „Spremi kao kopiju” u praksi uvijek stoji. Izgled trake nije provjeren
         okom (ide u ručnu provjeru).
-- [ ] 8a. Dorada po vlasnikovim odlukama od 2026-11-12: graf / SmartArt / ugrađeni objekt → samo za čitanje;
-      izravno oblikovanje → upozorenje u alatnoj traci; probni dokumenti `chart.docx`, `formatting.docx`
-- [ ] 8b. `docs/known-losses.md` iz golden rezultata i mjerenja; mjerenje na vlasnikovim pravim dokumentima
-      (čeka putanju do mape)
+- [x] 8a. Dorada po vlasnikovim odlukama od 2026-11-12. `convert.Examine(ctx, path, lim) (Report, error)` u
+      jednom prolazu vraća `Losses` (novi `embedded-objects`: `c:chart`, `dgm:relIds`, `w:object`, i u
+      strogim prostorima imena) i `Simplified` (9 kodova: `alignment`, `text-color`, `font`, `spacing`,
+      `indentation`, `page-breaks`, `tabs`, `fields`, `table-formatting`; samo `word/document.xml`, s
+      praćenjem roditelja elementa). `Inspect` je omotač. `wordView.Simplified` i
+      `DocumentActive.simplified` (uvijek niz); prazni se nakon uspješnog izvoza. Traka: napomena
+      „Spremanje pojednostavljuje oblikovanje: …” za dokument koji nije samo za čitanje (napomena o
+      uvozu iz `.doc`-a ima prednost). Probni dokumenti `chart.docx`, `formatting.docx` (iz Markdowna sa
+      sirovim OpenXML blokom) + golden. Vitest 537.
+      - Testovi `TestFormattingIsLostInSave` i `TestChartIsLostInSave` dokazuju gubitak nakon kruga
+        (i da isticanje, podcrtano, precrtano, eksponent i kapitalke ostaju).
+      - `basic`, `complex-table`, `header-image` ne okidaju nijedno pojednostavljenje (pravila nisu
+        preširoka za pandocov izlaz). Polje `HYPERLINK` se ne broji kao polje (pandoc ga čuva kao vezu).
+      - Ugrađeni objekt s pregledom: pandoc izvuče pregled kao sliku, OLE podaci nestaju; i dalje samo
+        za čitanje. Noviji `cx:chart` nije pokriven. Za oporavljenu radnu kopiju popis je prazan (ne
+        pamti se u `meta.json`).
+      - Izmijenjeni postojeći testovi: u `inspect_test.go` tri slučaja ranog prekida dobila su četvrti
+        gubitak (`<w:object/>`) jer „svi gubici” sada znači četiri; popisi probnih dokumenata u
+        `inspect_test.go`, `golden_test.go`, `worddocs_test.go`; `TestEdSwitch`, `TestEdLocate`,
+        `TestEdRemoved`, `TestEdEventJSON` i literali u frontend testovima dobili su novo polje `simplified`.
+      - Nestabilan test: `coder` je jednom vidio pad `task test` u glavnom paketu i nije stigao utvrditi
+        koji test. Glavna sesija je zatim pokrenula `go test -count=8 -race .` (uz opterećenje drugim
+        provjerama): 8 od 8 prolazi, 187 s. Uzrok nije nađen; ostaje otvoren rizik.
+- [x] 8b. `docs/known-losses.md` napisan iz golden rezultata i mjerenja. Mjerenje na pet vlasnikovih
+      dokumenata iz `/Users/odinwolf/Documents/test` (kopije u scratchpadu; izvornici samo čitani, nisu u
+      repozitoriju): tekst nakon kruga isti riječ po riječ; podnožje s brojem stranice, fusnote, margine
+      sačuvani; izgubljeno izravno oblikovanje kako je izmjereno. U uzorku nije bilo komentara, praćenih
+      izmjena, okvira, tablica, slika ni `.doc`-a.
+      - **Nalaz:** stavka Wordovog sadržaja (`w:hyperlink` s poljem `PAGEREF \h` unutra) izlazi kao
+        poveznica u poveznici; nakon spremanja u dokumentu piše „Uvod [3](#uvod)”. Izmjereno rješenje:
+        Lua filter pri čitanju koji ugniježđenu poveznicu svodi na njezin tekst (`--lua-filter`, pandocov
+        ugrađeni Lua, bez nove ovisnosti) → „Uvod 3” s vezom na naslov, krug stabilan. Ide u korak 8c.
+      - **Nalaz:** crtani oblici bez teksta (`wps:wsp`, četiri linije u jednom dokumentu) nestaju → novi
+        kod pojednostavljenja `drawings` u koraku 8c.
+      - Uvučeni citati: u Markdownu su citat, a u spremljenom dokumentu bez stila „Block Text” postaju
+        običan odlomak (i pri drugom otvaranju više nisu citat). Zapisano kao poznati gubitak.
+- [ ] 8c. Lua filter za ugniježđene poveznice + probni dokument `toc.docx`; pojednostavljenje `drawings`
 - [x] 9. Dimna provjera (`scripts/smoke.sh`): 63 provjere (19 starih + 44 nove), oko 10 s. `basic.docx` s
       naredbenog retka → `doc.md` u `work/`, izmjena kroz Neovimov socket + `:w` → valjan `.docx` s novim
       tekstom i istom slikom, jedan backup jednak izvorniku, bez drugih datoteka pored dokumenta, iste
