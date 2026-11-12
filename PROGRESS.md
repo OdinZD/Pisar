@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 5, korak 6 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, korak 5 i dokazi)
+- Zadnja izmjena: 2026-11-12 (faza 5, ispravci nakon pregleda, krug 1)
 
 ## Priprema (2026-11-11)
 
@@ -1546,7 +1546,8 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
         hit-enter). `TestSpellBoot` to dokazuje.
       - `spellcapcheck=""`: zadani uzorak je označavao mala slova nakon „npr.”, „itd.”, „tj.” i svaku
         stavku „1. kupiti” kao grešku velikog slova.
-      - **Valovita crta:** Neovim pri pokretanju pita terminal (DECRQSS) podržava li je; xterm.js 6.0.0
+      - **Valovita crta (odstupanje od plana, koji je predviđao ravnu crtu ako valovita ne radi):** Neovim
+        pri pokretanju pita terminal (DECRQSS) podržava li je; xterm.js 6.0.0
         odgovara `0m` (taj mu je dio označen kao neispravan), pa je kriva riječ bila podcrtana ravnom
         crtom u boji teksta. Go sada na taj upit odgovara sam (`termAnswers`, kao za DSR i DA1) s
         `0;4:3m`; Neovim tada šalje `CSI 4:3 m` i boju `58:2::180:35:24` (`danger`), a DOM renderer
@@ -1640,6 +1641,32 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
         valovite crte u prozoru.
 - [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
 
+### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
+
+`plan-reviewer` je sam pokrenuo sve provjere (prolaze; testove glavnog paketa i `internal/nvim` tri
+puta pod `-race`) i `init.lua` isprobao vlastitim ulazima u Neovimu bez sučelja. Nalazi:
+
+1. `user.lua` s `eventignore = "all"` (ili s pojedinim događajima) utišao bi sve obavijesti `pisar_*`,
+   pa `:w` na Wordovom dokumentu ne bi pokrenuo izvoz. **Ispravak:** nakon `user.lua` se iz
+   `'eventignore'` i `'eventignorewin'` (globalno i po prozoru) uklanjaju `all` i događaji koje koriste
+   skupine `PisarNotify` i `PisarFormat` (popis se čita iz samih skupina); ostali vlasnikovi unosi
+   ostaju. Uz to se brišu `g:pisar_reloading`, `g:pisar_preview`, `g:pisar_channel` (Pisarove unutarnje
+   varijable; Go ih postavlja sam), a `g:pisar_user_error` koji nije tekst više ne ruši `Start`
+   (izmjereno: prije je padao na dekodiranju). Testovi `TestUEi`, `TestUOne`, `TestURel`, `TestUVar`;
+   `TestWdIgnore` (Wordov dokument + `eventignore=all` → `:w` i dalje izvozi).
+2. Prečaci `⌘B` / `⌘I` nisu imali test: stavke izbornika „Oblikovanje” i svi prečaci aplikacije sada su
+   podaci (`formatItems`, `menuShortcuts`), s testovima `TestMenuFormatItems` i
+   `TestMenuShortcutsUnique` (nema dvostrukih među šest prečaca). Položaj izbornika u prozoru ostaje u
+   ručnoj provjeri.
+
+Iz napomena, ispravljeno: podebljano / kurziv u normal modu na riječi UNUTAR već omotanog izraza
+skida oznake cijelog izraza (`**jedna riječ**` → `jedna riječ`; prije je nastajalo
+`**jedna **riječ****`); apostrof između dva slova je dio riječi (`don't`); visual grana poštuje
+`'selection'` (`exclusive`); komentari u `format.go` i `init.lua`. Namjerno NIJE promijenjeno:
+podvlaka i dalje završava riječ (`snake_case` → `**snake**_case`), jer to tvrdi postojeći test
+`underscore ends a word` (podvlaka je u Markdownu oznaka naglaska); zahtjev glavne sesije za suprotnim
+je povučen.
+
 ### Dokazi po kriterijima (2026-11-12)
 
 Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
@@ -1651,7 +1678,8 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
 - Go testovi (`go test -list`): `Pisar` 183, `config` 33, `convert` 55, `docsafe` 92, `nvim` 105,
   `preview` 24, `project` 44, `term` 36. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
   84,3 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,6 %, `preview` 92,2 %,
-  `project` 96,3 %, `term` 92,6 % (mijenja se za nekoliko desetinki između pokretanja).
+  `project` 96,3 %, `term` 92,6 % (mijenja se između pokretanja; `nvim` za do oko jedan postotni bod,
+  jer grane ovise o vremenu pokretanja i gašenja Neovima).
 
 1. `init.lua`: prelamanje po riječima, kretanje po prikazanim recima, bez brojeva redaka (prekidač):
    `TestProseOptions` (i za kasnije otvoren buffer), `TestRows` (`j` ostaje u istom stvarnom retku,
@@ -1662,13 +1690,14 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
    `TestEdWriteConfigDictionary` (rječnik zapisan bajt-identično, drugi put se ne piše),
    `TestEdWriteConfigKeepsUserWords`, `TestEdStartSpell`; `smoke.sh`.
 3. Prečaci za naslov, bold, italic, listu: `TestFmtBold`, `TestFmtItalic`, `TestFmtBoldIns`,
-   `TestFmtHead`, `TestFmtList`, `TestFmtUndo`, `TestFmtRO`, `TestFmtWait` (svaka radnja kroz
-   mapiranje i kroz `Format`); `TestEdFmt`, `TestEdFmtOrder`, `TestWdFmtRO`; `TestMenuFormat`
-   (`⌘B` / `⌘I` → `menu:format`); vitest `formatAction.test.ts` (odluka o fokusu),
+   `TestFmtHead`, `TestFmtList`, `TestFmtUndo`, `TestFmtRO`, `TestFmtWait`, `TestFmtSpan`, `TestFmtApos`,
+   `TestFmtSel` (svaka radnja kroz mapiranje i kroz `Format`); `TestEdFmt`, `TestEdFmtOrder`,
+   `TestWdFmtRO`; `TestMenuFormat` (radnja → `menu:format`), `TestMenuFormatItems` (prečaci
+   `CmdOrCtrl+b` / `CmdOrCtrl+i`), `TestMenuShortcutsUnique`; vitest `formatAction.test.ts` (odluka o fokusu),
    `serialSender.test.ts` (redoslijed tipki i oblikovanja); `smoke.sh` (`␣b` `␣i` `␣h` `␣l`).
 4. `user.lua` nakon ugrađene konfiguracije: `TestUOpts` (njegova opcija nadjačava ugrađenu), `TestUErr`
    (greška ne ruši, ugrađeno vrijedi), `TestUKeep` (vraćeno ono o čemu Go ovisi, događaji stižu i
-   nisu dvostruki), `TestUFile` (bez datoteke, mapa, veze), `TestUNoWrite`, `TestUOut`, `TestUIn`,
+   nisu dvostruki), `TestUEi` i `TestWdIgnore` (`eventignore` ne može utišati obavijesti), `TestUFile` (bez datoteke, mapa, veze), `TestUNoWrite`, `TestUOut`, `TestUIn`,
    `TestUSpell`; `TestEdUserPath`, `TestEdUserLua`, `TestEdUserLuaLog`; `smoke.sh` (B i C).
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
@@ -1701,7 +1730,22 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
 - U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
 - Blokovski odabir se za podebljano i kurziv odbija; naslov zamjenjuje oznaku liste.
 - Valovita crta i izbornik „Oblikovanje” nisu viđeni u prozoru (ručna provjera).
-- `init.lua` ima 1119 redaka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
+- `init.lua` ima više od 1100 redaka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
+- `.md` bez dozvole pisanja (Neovimov `readonly`, ne `nomodifiable`): oblikovanje mijenja tekst uz
+  Neovimovo upozorenje W10, isto kao tipkanje. Wordovi dokumenti samo za čitanje su `nomodifiable` i
+  zaštićeni.
+- Pismo bez razmaka između riječi (kineski, japanski): podebljano i kurziv u normal modu ne nalaze
+  riječ pod kursorom; visual mod radi.
+- **Odluka vlasnika (2026-11-12, tijekom pregleda): „Poruke neka budu na hrvatskom”.** Poruke koje
+  Pisar sam ispisuje u Neovimovom retku poruka (`"Pisar: …"`, `"spelllang: no dictionary for …"`,
+  prefiks `"user.lua: "`, i tri poruke iz ranijih faza u `internal/nvim`) sele se u `strings.json`
+  i idu na hrvatski; provodi se nakon ispravaka iz kruga 1.
+- **Incident tijekom pregleda (2026-11-12, 14:33):** `plan-reviewer` je jednom pokrenuo
+  `nvim --headless -u NONE` bez `-i NONE` i bez preusmjerenog homea (da nađe `VIMRUNTIME`), pa je
+  Neovim prepisao vlasnikovu `~/.local/state/nvim/shada/main.shada` (povijest i oznake vlasnikovog
+  Neovima; konfiguracija se nije učitala). Datoteka postoji (13 882 bajta); sadržaj nije provjeravan
+  ni vraćan. Prijavljeno vlasniku. Svi kasniji pokusi išli su s preusmjerenim `XDG_*` i `-i NONE`; u
+  briefove je dodano izričito pravilo.
 
 ### Izvan opsega
 
