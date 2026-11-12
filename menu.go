@@ -27,6 +27,52 @@ const (
 	formatItalic = "italic"
 )
 
+// The shortcuts of the own menu items, in one place so that a test can see all
+// of them at once: two items with the same one would silently shadow each
+// other. Paste and the items of the system roles have theirs from the system.
+const (
+	accelNewDocument = "CmdOrCtrl+n"
+	accelSave        = "CmdOrCtrl+s"
+	accelSearch      = "CmdOrCtrl+p"
+	accelCopy        = "CmdOrCtrl+c"
+)
+
+// formatItem is one item of the Formatting menu: its label, its shortcut and
+// the action it asks the frontend for.
+type formatItem struct {
+	label  string
+	accel  string
+	action string
+}
+
+// formatItems are the items of the Formatting menu, in the order they appear.
+// newMenu is built from this list, and the tests read it, because newMenu needs
+// a Wails application.
+func formatItems(text uiText) []formatItem {
+	return []formatItem{
+		{label: text.MenuBold, accel: "CmdOrCtrl+b", action: formatBold},
+		{label: text.MenuItalic, accel: "CmdOrCtrl+i", action: formatItalic},
+	}
+}
+
+// menuShortcut is an own menu item that has a shortcut.
+type menuShortcut struct{ label, accel string }
+
+// menuShortcuts lists every own item that has a shortcut, whichever menu it is
+// in.
+func menuShortcuts(text uiText) []menuShortcut {
+	out := []menuShortcut{
+		{text.MenuNewDocument, accelNewDocument},
+		{text.MenuSave, accelSave},
+		{text.MenuSearch, accelSearch},
+		{text.MenuCopy, accelCopy},
+	}
+	for _, it := range formatItems(text) {
+		out = append(out, menuShortcut{it.label, it.accel})
+	}
+	return out
+}
+
 // menuEditor is what the menu items need from the editor.
 type menuEditor interface {
 	running() bool
@@ -92,21 +138,21 @@ func newMenu(app *application.App, text uiText, a *menuActions, newDocument, add
 	menu.AddRole(application.AppMenu)
 
 	file := menu.AddSubmenu(text.MenuFile)
-	file.Add(text.MenuNewDocument).SetAccelerator("CmdOrCtrl+n").OnClick(func(*application.Context) {
+	file.Add(text.MenuNewDocument).SetAccelerator(accelNewDocument).OnClick(func(*application.Context) {
 		newDocument()
 	})
 	file.Add(text.MenuAddProject).OnClick(func(*application.Context) {
 		go addProject()
 	})
-	file.Add(text.MenuSave).SetAccelerator("CmdOrCtrl+s").OnClick(func(*application.Context) {
+	file.Add(text.MenuSave).SetAccelerator(accelSave).OnClick(func(*application.Context) {
 		go a.save()
 	})
-	file.Add(text.MenuSearch).SetAccelerator("CmdOrCtrl+p").OnClick(func(*application.Context) {
+	file.Add(text.MenuSearch).SetAccelerator(accelSearch).OnClick(func(*application.Context) {
 		go a.search()
 	})
 
 	edit := menu.AddSubmenu(text.MenuEdit)
-	edit.Add(text.MenuCopy).SetAccelerator("CmdOrCtrl+c").OnClick(func(*application.Context) {
+	edit.Add(text.MenuCopy).SetAccelerator(accelCopy).OnClick(func(*application.Context) {
 		go a.copy()
 	})
 	edit.AddRole(application.Paste)
@@ -118,12 +164,11 @@ func newMenu(app *application.App, text uiText, a *menuActions, newDocument, add
 	// Not started with "go": emitting never blocks, and one goroutine per
 	// click would let two quick shortcuts reach the frontend in either order.
 	format := menu.AddSubmenu(text.MenuFormat)
-	format.Add(text.MenuBold).SetAccelerator("CmdOrCtrl+b").OnClick(func(*application.Context) {
-		a.format(formatBold)
-	})
-	format.Add(text.MenuItalic).SetAccelerator("CmdOrCtrl+i").OnClick(func(*application.Context) {
-		a.format(formatItalic)
-	})
+	for _, it := range formatItems(text) {
+		format.Add(it.label).SetAccelerator(it.accel).OnClick(func(*application.Context) {
+			a.format(it.action)
+		})
+	}
 
 	menu.AddRole(application.WindowMenu)
 	return menu
