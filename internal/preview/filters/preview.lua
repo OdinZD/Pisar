@@ -5,7 +5,12 @@
 -- reader switch can:
 --   * raw HTML, TeX and attribute content is dropped: a <script>, <style>,
 --     <iframe>, comment or any other tag leaves no trace, not even as text;
---   * no link survives (a link becomes a span), so nothing can be followed;
+--   * no link survives, so nothing can be followed: a link becomes a span, and a
+--     footnote, which pandoc's HTML writer would join to its text with two
+--     anchors (#fn1 and #fnref1), becomes a plain superscript number in the text
+--     with the notes, numbered the same, as a list at the end of the document.
+--     The frame's own address is the base of a link to "#fn1", so a click could
+--     take the whole frame to the application's page;
 --   * an image survives only when it is a local file of a known image type;
 --   * every attribute is dropped except class (and a plain width and height on
 --     an image). Pandoc copies any {key=value} of the Markdown, and the
@@ -139,11 +144,48 @@ local clean = {
   Cell = bare_attr,
 }
 
+-- Footnotes are taken out of the text before the writer sees them. The numbers
+-- follow the order of the document: the walk visits the elements in the order
+-- they stand in the tree (a table's caption before its rows, as it is shown).
+-- The walk is top-down so that a note can be numbered without its content being
+-- entered: a note inside a note is numbered after all the notes of the text, as
+-- it is shown there, so the notes are collected first and their own content is
+-- looked at afterwards.
+local function number_notes(blocks)
+  local notes = {}
+  local collect = {
+    traverse = "topdown",
+    Note = function(el)
+      notes[#notes + 1] = el.content
+      local ref = pandoc.Superscript({ pandoc.Str(tostring(#notes)) })
+      -- false: the content is not looked into here; see the loop below.
+      return pandoc.Span({ ref }, { class = "footnote-ref" }), false
+    end,
+  }
+  blocks = blocks:walk(collect)
+  local i = 1
+  while i <= #notes do
+    notes[i] = notes[i]:walk(collect)
+    i = i + 1
+  end
+  if #notes == 0 then return blocks end
+  -- Every note is a whole item, so a note of several paragraphs stays together.
+  blocks[#blocks + 1] = pandoc.Div({
+    pandoc.HorizontalRule(),
+    pandoc.OrderedList(notes),
+  }, { class = "footnotes" })
+  return blocks
+end
+
 function Pandoc(doc)
   local v = doc.meta["pisar-images"]
   images_on = v ~= nil and pandoc.utils.stringify(v) == "on"
   local d = doc.meta["pisar-resource-dir"]
   resource_dir = d ~= nil and pandoc.utils.stringify(d) or ""
   if resource_dir == "" then images_on = false end
-  return doc:walk(clean)
+  -- The notes are numbered after the cleaning, which has already been through
+  -- their content (a walk goes into a note), so what is moved is clean.
+  doc = doc:walk(clean)
+  doc.blocks = number_notes(doc.blocks)
+  return doc
 end

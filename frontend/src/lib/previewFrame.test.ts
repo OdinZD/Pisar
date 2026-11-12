@@ -170,6 +170,21 @@ describe('previewFrameDocument: content', () => {
     }
     expect(doc).toMatch(/img \{[^}]*max-width: 100%/)
   })
+
+  it('styles a note as a number and a list: there is no link to style', () => {
+    expect(doc).toContain('.footnote-ref')
+    expect(doc).not.toContain('.footnote-back')
+    expect(doc).not.toMatch(/(^|[\s,}])a \{/)
+  })
+
+  it('writes no length of its own beyond 0 and 1 px: the sizes are variables from the tokens', () => {
+    // Everything after the :root block, which is where the token values are written down.
+    const rules = doc.slice(doc.indexOf('\n}\n', doc.indexOf(':root {')))
+    const literals = rules.match(/(?<![\w.-])\d*\.?\d+(px|rem|em|pt)\b/g) ?? []
+    expect(literals.filter((l) => l !== '0' && l !== '1px' && !/^0(px|rem|em|pt)$/.test(l))).toEqual([])
+    expect(doc).toContain('var(--size-preview-page-shadow-blur)')
+    expect(doc).toContain('var(--size-preview-quote-rule-width)')
+  })
 })
 
 describe('previewFrameDocument: hostile values', () => {

@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 4, korak 8 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 7 i dokazi)
+- Zadnja izmjena: 2026-11-12 (faza 4, ispravci nakon pregleda, krug 1)
 
 ## Priprema (2026-11-11)
 
@@ -1194,8 +1194,8 @@ event "menu:search" ""         // ⌘P
         umetnuti `<svg>`; test pada ako se to promijeni.
       - Poznata ograničenja: simbolička veza u folderu dokumenta koja pokazuje izvan njega se ugrađuje
         (pandoc je slijedi; iz Markdowna se ne vidi); folder s `:` u imenu dobiva pregled bez slika
-        (pandoc dijeli `--resource-path` po `:`); u pregledu ostaju pandocova sidra fusnota
-        (`href="#fn1"`) i slike kao `data:` URI.
+        (pandoc dijeli `--resource-path` po `:`); slike su u pregledu `data:` URI. (Pandocova sidra
+        fusnota, koja su ovdje prvo ostala, uklonjena su nakon kruga 1 pregleda — vidi niže.)
 - [x] 2. `internal/project`: `Search(sources []SearchSource, query, limit) []Hit`. Traži samo dokumente, po imenu
       bez ekstenzije; svaka riječ upita mora biti podniz imena; bez razlike velikih i malih slova i
       bez dijakritika (kombinirajući znakovi U+0300–036F, `đ` → `d`, Latin-1 i Latin Extended-A po
@@ -1302,7 +1302,7 @@ event "menu:search" ""         // ⌘P
         mijenja), pa su rezervirana dva retka (`tokens.search.reservedRows`).
       - Nije provjereno okom: poravnanje s statusnom trakom, pomicanje popisa, `⌘P` dok je fokus u
         ploči, `⌃P` u polju, zatvaranje klikom.
-- [x] 7. Dimna provjera (`scripts/smoke.sh`): novi odjeljak „preview and search” (30 provjera; ukupno 91, oko
+- [x] 7. Dimna provjera (`scripts/smoke.sh`): novi odjeljak „preview and search” (28 provjera; ukupno 91, oko
       16 s). `.md` s retkom `<script>` i slikom na `http://127.0.0.1:9` zadan na naredbenom retku;
       tipke `␣p` i `␣f` idu Neovimu kroz socket. Dokazano na sagrađenoj aplikaciji: frontend pri
       pokretanju javlja `SetPreview enabled=false`; nakon `␣p` redom `ui:toggle-preview` →
@@ -1318,18 +1318,66 @@ event "menu:search" ""         // ⌘P
       - Skripta ne može vidjeti webview: dokazuje da je Go poslao stranicu, ne da je nacrtana.
 - [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
 
+### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
+
+`plan-reviewer` je sam pokrenuo sve provjere (prolaze) i vlastitim neprijateljskim ulazima provjerio
+filter (ništa izvršivo ni mrežno ne prolazi). Četiri stavke za ispravak:
+
+1. U pregledu su ostajala sidra fusnota (`<a href="#fn1">`, `<a href="#fnref1">`), iako plan kaže da
+   filter miče sve poveznice. U `srcdoc` okviru osnovna adresa je adresa roditelja, pa bi klik u
+   WebKitu mogao odvesti okvir na stranicu aplikacije. **Ispravak u filtru:** bilješka u tekstu je
+   brojčana oznaka (`<span class="footnote-ref"><sup>1</sup></span>`), a sadržaji bilješki idu na
+   kraj kao obična numerirana lista (`<div class="footnotes">`), istim redoslijedom i s istim
+   brojevima; sadržaj bilješke prolazi isto čišćenje. Test sigurnosti je pooštren: izlaz ne smije
+   imati NIJEDNU oznaku `<a` ni atribut `href` (iznimka za `#…` je uklonjena). `TestRenderFootnotes`
+   (15 slučajeva: tablica, lista, naslov, bilješka u bilješci, 12 bilješki…). Namjerno izmijenjeni
+   testovi: slučaj `plain` u `TestUnsafeInFindsWhatItShould` i slučaj `footnote` u
+   `TestRenderMarkup` (oba su očekivala pandocov oblik s poveznicama). Fuzz 20 s bez nalaza.
+2. Tvrdnja u dokazima da izlaz „nema `href`-a” nije bila točna dok su sidra postojala; sada jest.
+3. Datoteke izvan tablice plana nisu bile zapisane kao odstupanje: zapisane su niže.
+4. Doslovne veličine u stilu okvira (`box-shadow 0 1px 3px`, `border-left 3px`): nove veličine u
+   `tokens.ts` (`previewPageShadowOffset`, `previewPageShadowBlur`, `previewQuoteRuleWidth`), stil ih
+   koristi kroz varijable; test pada na svaku duljinu osim 0 i 1 px izvan bloka `:root`.
+
+Iz napomena: prazno stanje sada, kako traži `DESIGN.md`, uz „Otvori dokument” pokazuje tipke `␣f` /
+`⌘P` (`EmptyState.svelte`, tekst `emptySearchHint`); broj provjera u dimnoj skripti ispravljen je na
+28; ime tipa `Hit`, dodatno mjerilo poretka, preširoka tvrdnja o atributima i konstante izvan
+`config`-a zapisani su niže.
+
+### Odstupanja od plana faze (datoteke i ponašanje)
+
+Uz odstupanja zapisana uz pojedine korake:
+
+- **Datoteke izvan tablice „Datoteke” u planu:** `frontend/src/components/Terminal.svelte` (javlja
+  pomak iznad statusne trake nakon svakog `fit()` i ima `keepsFocus`, da kraj pokretanja Neovima ne
+  otme fokus polju tražilice); `frontend/src/lib/apiError.ts` i `errorMessage.ts` (kod
+  `preview-too-large`; popis kodova je tipiziran pa svaki Go kod mora imati par); `theme/cssVars.ts`
+  (varijable fonta i tipografije pregleda); `components/EmptyState.svelte` (natuknice tipki, vidi
+  krug 1 pregleda); `internal/nvim/reload_test.go` i ispravak `Reload`-a (greška iz faze 3).
+- **Ugovor:** tip rezultata pretrage je `project.Hit` (plan ga je zvao `SearchHit`); polja i JSON imena
+  su ista. Poredak ima i mjerilo „kraće ime prije duljeg” ispred abecednog, koje plan nije naveo.
+- **Čitač pregleda** prima sirovi HTML (plan je mjerio s isključenim); razlog je uz korak 1.
+- **Konstante izvan `internal/config`:** `maxToolOutput` i `killGrace` u `internal/preview` (isti
+  obrazac kao u `internal/convert` iz faze 3); `search.debounceMs` (80) i `search.reservedRows` (2) su
+  ponašanje frontenda, a stoje u `theme/tokens.ts`, jer frontend nema drugo mjesto za konstante.
+  `CLAUDE.md` kaže „nema hardkodiranih limita”; kao i u fazi 3, ovo je za vlasnikovu odluku.
+- **Atributi u HTML-u pregleda:** filter briše svaki atribut koji dolazi IZ DOKUMENTA, osim `class` (i
+  brojčanih `width` / `height` na slici). Atributi koje pandoc dodaje sam (`data-cites`, `role`,
+  `aria-hidden`, `title` slike, `style="text-align"` u tablici) ostaju; nijedan ne nosi adresu ni kod.
+
 ### Dokazi po kriterijima (2026-11-12)
 
-Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci iz kruga 1 pregleda).
 
 - `go test -count=1 -race ./...` → svih 8 paketa `ok`; `task test` → exit 0 (vitest `Test Files 27
-  passed`, `Tests 794 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
+  passed`, `Tests 796 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0; `bash scripts/smoke.sh` → `smoke: all checks passed` (91 provjera, dvaput
   zaredom); `bash scripts/shutdown.sh` → `shutdown: all checks passed`.
 - Go testovi (`go test -list`): `Pisar` 166, `config` 30, `convert` 55, `docsafe` 92, `nvim` 68,
-  `preview` 23, `project` 44, `term` 35. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
-  83,9 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,0 %, `preview` 92,2 %,
-  `project` 96,0 %, `term` 93,9 % (`nvim` se mijenja između pokretanja).
+  `preview` 24, `project` 44, `term` 35. Pokrivenost (`go test -count=1 -cover ./...`, nakon
+  ispravaka iz kruga 1): `Pisar` 83,8 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim`
+  88,7 %, `preview` 92,2 %, `project` 96,0 %, `term` 93,9 % (`Pisar` i `nvim` se mijenjaju između
+  pokretanja za nekoliko desetinki).
 
 1. Pregled se pali i gasi (`␣p`, gumb), osvježava se nakon debouncea: `TestPvCoalesce` (više izmjena
    unutar debouncea → jedna pretvorba sa zadnjim tekstom), `TestPvOff` (isključen → nijedna),
@@ -1338,7 +1386,8 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
    pravi Neovim), `TestChanged`, `TestChangedIns`; vitest `previewState.test.ts` (prekidač, gašenje
    ispod 1100 px, bez samopaljenja); `smoke.sh` (cijeli lanac kroz pravi frontend).
 2. Pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava: `TestRenderSafety` i `FuzzRender`
-   (za svaki neprijateljski ulaz izlaz nema oznake skripte, obrađivača događaja, `href`-a ni adrese),
+   (za svaki neprijateljski ulaz izlaz nema oznake skripte, obrađivača događaja, oznake `<a`, atributa
+   `href` ni adrese), `TestRenderFootnotes` (fusnote bez poveznica),
    `TestRenderDoesNotFetch` (lokalni poslužitelj broji 0 zahtjeva), `TestRenderAttributes`,
    `TestRenderImages` (bijeg iz foldera, neprijateljski SVG), `TestPvPandoc` (pravi Neovim i pandoc:
    `.md` sa `<script>` daje stranicu bez oznake skripte); vitest `previewFrame.test.ts` (`sandbox` je
@@ -1356,8 +1405,9 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
 
 1. Otvori `.md` i pritisni `␣p` (ili gumb „Pregled”): desno se pojavi stranica (bijela, na sivoj
    podlozi, blaga sjena); gumb je ispunjen akcentom; terminal se suzi i ostaje poravnat.
-2. Font stranice je Source Serif 4 (ne sistemski serif); naslovi, tablica, citat, kod, fusnota i
-   slika iz foldera dokumenta izgledaju kako `DESIGN.md` traži.
+2. Font stranice je Source Serif 4 (ne sistemski serif); naslovi, tablica, citat, kod i slika iz
+   foldera dokumenta izgledaju kako `DESIGN.md` traži. Fusnota je broj u tekstu i stavka u popisu na
+   kraju stranice; nije poveznica.
 3. Tipkaj u dugom dokumentu s pregledom pomaknutim dolje: nakon stanke se sadržaj osvježi, a pregled
    NE skače na vrh i ne treperi.
 4. U dokument upiši `<script>alert(1)</script>` i `![x](https://example.com/x.png)`: ništa se ne
@@ -1376,6 +1426,8 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
 11. `⌃P` u ploči mijenja opseg (svi projekti ↔ projekt aktivnog dokumenta) i ne miče kursor u polju;
     `⌘P` dok je ploča otvorena samo vraća fokus u polje.
 12. `Esc` u normal modu Neovima (ploča zatvorena) ne zatvara ništa.
+13. Bez otvorenog dokumenta stupac editora pokazuje „Otvori dokument” i ispod toga `␣f` / `⌘P` s
+    natuknicom.
 
 ### Otvoreno nakon faze 4
 

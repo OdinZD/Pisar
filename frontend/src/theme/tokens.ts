@@ -81,6 +81,11 @@ export const sizes = {
   previewWidth: 400,
   previewPageMaxWidth: 420,
   previewPagePadding: 40,
+  // The page's soft shadow (offset down and blur) and the rule beside a quotation. Beyond the
+  // 1 px hairlines these are the only fixed lengths the preview page needs.
+  previewPageShadowOffset: 1,
+  previewPageShadowBlur: 3,
+  previewQuoteRuleWidth: 3,
   previewCollapseWidth: 1100,
   editorMinWidth: 460,
 } as const

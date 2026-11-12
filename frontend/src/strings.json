@@ -46,6 +46,7 @@
   "noProjects": "Još nema projekata.",
   "projectMissingNote": "folder nije dostupan",
   "emptyOpenDocument": "Otvori dokument",
+  "emptySearchHint": "traži dokument",
   "editorLabel": "Uređivač",
   "previewToggle": "Pregled",
   "previewLabel": "Pregled dokumenta",

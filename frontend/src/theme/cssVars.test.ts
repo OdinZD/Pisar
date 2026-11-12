@@ -30,6 +30,9 @@ describe('cssVariables', () => {
     expect(vars['--size-preview-page-padding']).toBe('40px')
     expect(vars['--size-preview-collapse-width']).toBe('1100px')
     expect(vars['--size-editor-min-width']).toBe('460px')
+    expect(vars['--size-preview-page-shadow-offset']).toBe('1px')
+    expect(vars['--size-preview-page-shadow-blur']).toBe('3px')
+    expect(vars['--size-preview-quote-rule-width']).toBe('3px')
     for (const [name, value] of Object.entries(vars)) {
       if (name.startsWith('--size-') || name.startsWith('--space-')) expect(value).toMatch(/^\d+px$/)
     }

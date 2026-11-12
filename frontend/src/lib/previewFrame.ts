@@ -102,8 +102,8 @@ function fontFaces(faces: readonly FrameFace[]): string {
     .join('\n')
 }
 
-// Every colour, size and font is a variable from the tokens. The few literals left are 0, 1 px hairlines
-// and unitless ratios, which are not design values.
+// Every colour, size and font is a variable from the tokens. The only lengths written here are 0 and
+// 1 px hairlines (a border or a rule of one device-independent pixel), which are not design values.
 const pageCss = `
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--bg-desk); }
@@ -123,7 +123,9 @@ body {
   margin: 0 auto;
   padding: var(--size-preview-page-padding);
   background: var(--bg-editor);
-  box-shadow: 0 0 0 1px var(--border), 0 1px 3px var(--border-strong);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 var(--size-preview-page-shadow-offset) var(--size-preview-page-shadow-blur) var(--border-strong);
   overflow-wrap: break-word;
 }
 #${previewPageId} > :first-child { margin-top: 0; }
@@ -143,7 +145,7 @@ li:has(> .task-box:first-child) { list-style: none; }
 blockquote {
   margin: 0 0 var(--space-md);
   padding-left: var(--space-md);
-  border-left: 3px solid var(--border-strong);
+  border-left: var(--size-preview-quote-rule-width) solid var(--border-strong);
   color: var(--text-muted);
 }
 code, pre { font-family: var(--font-mono); font-size: var(--font-size-editor); }
@@ -169,8 +171,8 @@ del { color: var(--text-muted); }
 /* The description of a picture that cannot be shown (the picture itself is not loaded). */
 .missing-image { color: var(--text-muted); font-style: italic; }
 .task-box { margin-right: var(--space-xs); color: var(--text-muted); }
-a { color: var(--accent); }
-.footnote-ref, .footnote-back { text-decoration: none; }
+/* A note is a number in the text and an item of the list at the end; there is no link between them. */
+.footnote-ref { color: var(--text-muted); }
 .footnotes {
   margin-top: var(--space-xl);
   color: var(--text-muted);

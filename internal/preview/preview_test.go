@@ -104,10 +104,13 @@ var bannedTags = map[string]bool{
 	"audio": true, "source": true, "track": true, "svg": true, "frame": true,
 	"frameset": true, "applet": true, "input": true, "button": true,
 	"textarea": true, "select": true, "template": true,
+	// No link at all: a footnote's anchors (#fn1, #fnref1) are gone too, because a
+	// frame whose address is its parent's would follow "#fn1" to the parent's page.
+	"a": true,
 }
 
-// addressAttrs name an address or a file. Only a link inside the page (#...)
-// and an embedded picture (data:image/...) may be there.
+// addressAttrs name an address or a file. Only an embedded picture
+// (data:image/...) may be there, and no href at all.
 var addressAttrs = map[string]bool{
 	"href": true, "src": true, "srcset": true, "xlink:href": true, "action": true,
 	"formaction": true, "poster": true, "data": true, "background": true,
@@ -141,11 +144,11 @@ func unsafeIn(html []byte) []string {
 				if !styleOK.MatchString(strings.TrimSpace(val)) {
 					found = append(found, "style: "+tag)
 				}
-			case name == "href" && !strings.HasPrefix(val, "#"):
-				found = append(found, "href leaves the page: "+tag)
+			case name == "href":
+				found = append(found, "href attribute: "+tag)
 			case name == "src" && !strings.HasPrefix(val, "data:image/"):
 				found = append(found, "src is not an embedded picture: "+tag)
-			case addressAttrs[name] && name != "href" && name != "src":
+			case addressAttrs[name] && name != "src":
 				found = append(found, "address attribute: "+tag)
 			}
 			if strings.Contains(val, "javascript:") || strings.Contains(val, "url(") {
@@ -166,7 +169,7 @@ func unsafeIn(html []byte) []string {
 // shown in a code block) and then they are not an attack.
 var (
 	literalBanned = []string{
-		"<script", "<iframe", "<object", "<embed", "<link", "<meta", "<style", "<form", "<base",
+		"<script", "<iframe", "<object", "<embed", "<link", "<meta", "<style", "<form", "<base", "<a ", "<a>",
 		`href="http`, `src="http`, `src="//`, `src="/`,
 	}
 	literalBannedInTags = []string{"javascript:", "srcset", "url("}
@@ -203,7 +206,7 @@ func TestUnsafeInFindsWhatItShould(t *testing.T) {
 		html string
 		want bool
 	}{
-		{"plain", `<p>hi <a href="#fn1" class="footnote-ref" role="doc-noteref">1</a></p>`, false},
+		{"plain", `<p>hi <span class="footnote-ref"><sup>1</sup></span></p>`, false},
 		{"text that mentions attacks", `<p>&lt;script&gt; onerror=1 javascript:x url(y)</p>`, false},
 		{"embedded picture", `<img src="data:image/png;base64,AAAA" alt="x" />`, false},
 		{"table styles", `<th style="text-align: left;">a</th><col style="width: 33%" />`, false},
@@ -212,6 +215,10 @@ func TestUnsafeInFindsWhatItShould(t *testing.T) {
 		{"ON in upper case", `<p ONCLICK=x>a</p>`, true},
 		{"remote src", `<img src="http://h/x.png">`, true},
 		{"relative src", `<img src="nope.png">`, true},
+		{"footnote anchor", `<p>hi <a href="#fn1" class="footnote-ref" role="doc-noteref"><sup>1</sup></a></p>`, true},
+		{"back anchor", `<li id="fn1"><p>x<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>`, true},
+		{"anchor without href", `<a name="x">x</a>`, true},
+		{"href on another tag", `<area href="#x">`, true},
 		{"remote href", `<a href="https://h">x</a>`, true},
 		{"javascript href", `<a href="javascript:alert(1)">x</a>`, true},
 		{"css address", `<span style="background:url(http://h/x)">x</span>`, true},
@@ -357,6 +364,14 @@ func hostileInputs(base string, s site) []struct{ name, md string } {
 		{"raw attribute tex", "```{=latex}\n\\input{" + s.outer + "/secret.tex}\n```\n"},
 		{"yaml metadata", "---\ntitle: <script>x</script>\nheader-includes: <script>1</script>\ninclude-before: <script>2</script>\n---\n\nbody\n"},
 		{"footnote with link", "a[^1]\n\n[^1]: <script>x</script> [l](" + base + "/x)\n"},
+		{"footnote with remote image", "a[^1]\n\n[^1]: ![x](" + base + "/x.png)\n"},
+		{"footnote with local image", "a[^1]\n\n[^1]: ![x](a.png)\n"},
+		{"footnote with outside image", "a^[![x](../tajna.png) ![y](" + s.secret + ")]\n"},
+		{"footnote with attributes", "a^[b [x]{onclick=1 style=\"c\" .k} `c`{onclick=2}]\n"},
+		{"footnote with raw html", "a^[<b onclick=1>x</b> <!-- c --> <iframe src=" + base + "></iframe>]\n"},
+		{"footnote in a table", "| a |\n|---|\n| x^[<script>1</script>] |\n\n: c^[d]\n"},
+		{"footnote in a list and a heading", "# H^[<img src=x onerror=1>]\n\n- a^[b]\n"},
+		{"footnote in a footnote", "a^[b ^[c ^[d]]] e[^1]\n\n[^1]: x ^[<script>y</script>]\n"},
 		{"inline note", "a^[<img src=x onerror=1>]\n"},
 		{"linked image", "[![x](a.png)](" + base + "/x)\n"},
 		{"image title", `![x](a.png "<script>alert(1)</script>")` + "\n"},
@@ -475,6 +490,8 @@ func TestRenderDoesNotFetch(t *testing.T) {
 		{"image", md, s.docDir},
 		{"image without a folder", md, ""},
 		{"link", "[x](" + base + "/x)\n", s.docDir},
+		{"footnote image", "a^[![x](" + base + "/x.png)]\n", s.docDir},
+		{"footnote link", "a[^1]\n\n[^1]: [x](" + base + "/x)\n", s.docDir},
 		{"autolink", "<" + base + "/x>\n", s.docDir},
 		{"raw img", `<img src="` + base + `/x.png">` + "\n", s.docDir},
 		{"raw link", `<link rel="stylesheet" href="` + base + `/x.css">` + "\n", s.docDir},
@@ -507,7 +524,7 @@ func TestRenderMarkup(t *testing.T) {
 		{"emphasis", "**podebljano** i *kurziv*\n", []string{"<strong>podebljano</strong>", "<em>kurziv</em>"}, nil},
 		{"list", "- a\n- b\n\n1. c\n2. d\n", []string{"<ul>", "<li>a</li>", `<ol type="1">`, "<li>c</li>"}, nil},
 		{"table", "| a | b |\n|---|---|\n| 1 | 2 |\n", []string{"<table>", "<th>a</th>", "<td>2</td>"}, nil},
-		{"footnote", "tekst[^1]\n\n[^1]: bilješka\n", []string{`<a href="#fn1"`, `role="doc-endnotes"`, "bilješka"}, nil},
+		{"footnote is a number and a list, not links", "tekst[^1]\n\n[^1]: bilješka\n", []string{`<span class="footnote-ref"><sup>1</sup></span>`, `<div class="footnotes">`, "<hr />", "<ol>", "<li><p>bilješka</p></li>"}, []string{"<a ", "href", "<section", "doc-endnotes", "doc-noteref", "footnote-back", "id="}},
 		{"formula", "$x^2 + y^2 = z^2$\n", []string{"<math", "<msup>"}, []string{"$x^2"}},
 		{"display formula", "$$\\frac{a}{b}$$\n", []string{"<math", `display="block"`, "<mfrac>"}, nil},
 		{"code block", "```go\nfunc main() { x := \"<a>\" }\n```\n", []string{`<pre class="go"><code>`, "&lt;a&gt;"}, []string{"<span"}},
@@ -547,6 +564,183 @@ func TestRenderMarkup(t *testing.T) {
 				if strings.Contains(string(html), a) {
 					t.Errorf("output has %q:\n%s", a, html)
 				}
+			}
+		})
+	}
+}
+
+var (
+	refRe      = regexp.MustCompile(`<span class="footnote-ref"><sup>(\d+)</sup></span>`)
+	noteItemRe = regexp.MustCompile(`(?s)<li>(.*?)</li>`)
+	spaceRe    = regexp.MustCompile(`\s+`)
+)
+
+// splitNotes cuts a page at the list of notes: what stands before it, and what
+// is in it (without the tags). ok is false when the page has no such list.
+func splitNotes(html string) (body string, notes []string, ok bool) {
+	body, list, ok := strings.Cut(html, `<div class="footnotes">`)
+	if !ok {
+		return html, nil, false
+	}
+	for _, m := range noteItemRe.FindAllStringSubmatch(list, -1) {
+		text := tagRe.ReplaceAllString(m[1], "")
+		notes = append(notes, strings.TrimSpace(spaceRe.ReplaceAllString(text, " ")))
+	}
+	return body, notes, true
+}
+
+// TestRenderFootnotes: a note is a number in the text and an item of a list at
+// the end, in the same order, and there is no link between them.
+func TestRenderFootnotes(t *testing.T) {
+	r := realRenderer(t)
+	s := newSite(t)
+	base := "http://127.0.0.1:9"
+	var twelve strings.Builder
+	var twelveRefs []int
+	var twelveNotes []string
+	for i := 1; i <= 12; i++ {
+		fmt.Fprintf(&twelve, "odlomak^[bilješka %d]\n\n", i)
+		twelveRefs = append(twelveRefs, i)
+		twelveNotes = append(twelveNotes, fmt.Sprintf("bilješka %d", i))
+	}
+
+	tests := []struct {
+		name string
+		md   string
+		refs []int // every number on the page, in the order they stand there
+		// textRefs is how many of them stand before the list; 0 means "not checked".
+		textRefs int
+		notes    []string // text of the items of the list, in order
+		want     []string
+		absent   []string
+	}{
+		{name: "one", md: "tekst[^1]\n\n[^1]: bilješka\n", refs: []int{1}, notes: []string{"bilješka"}},
+		{
+			// The list is defined backwards, and the table comes before the list and the
+			// paragraph: the numbers follow the text.
+			name:  "three in a table, a list and a paragraph",
+			md:    "| a | b |\n|---|---|\n| x[^t] | y |\n\n- stavka^[lista]\n\nkraj[^k]\n\n[^k]: odlomak\n[^t]: tablica\n",
+			refs:  []int{1, 2, 3},
+			notes: []string{"tablica", "lista", "odlomak"},
+		},
+		{
+			name:  "a heading, a paragraph and a quote",
+			md:    "# Naslov^[prva]\n\ntekst^[druga]\n\n> citat^[treća]\n",
+			refs:  []int{1, 2, 3},
+			notes: []string{"prva", "druga", "treća"},
+			want:  []string{"<h1>Naslov<span"},
+		},
+		{
+			// Shown above the table, so numbered before its cells.
+			name:  "a table caption comes before its cells",
+			md:    "| a |\n|---|\n| x^[ćelija] |\n\n: opis^[naslov tablice]\n",
+			refs:  []int{1, 2},
+			notes: []string{"naslov tablice", "ćelija"},
+		},
+		{name: "a reference and one in the line", md: "a[^1] b^[u retku]\n\n[^1]: referenca\n", refs: []int{1, 2}, notes: []string{"referenca", "u retku"}},
+		{
+			name:  "a link is text",
+			md:    "a^[vidi [ovdje](" + base + "/x)]\n",
+			refs:  []int{1},
+			notes: []string{"vidi ovdje"},
+			want:  []string{`<span class="link">ovdje</span>`},
+		},
+		{
+			name:  "a local picture is embedded and a remote one is text",
+			md:    "a^[![lokalna](a.png) ![daleka](" + base + "/x.png)]\n",
+			refs:  []int{1},
+			notes: []string{"daleka"},
+			want:  []string{`<img src="data:image/png;base64,`, `<span class="missing-image">daleka</span>`},
+		},
+		{
+			name:   "a picture of another folder is text",
+			md:     "a^[![izvan](../tajna.png)]\n",
+			refs:   []int{1},
+			notes:  []string{"izvan"},
+			want:   []string{`<span class="missing-image">izvan</span>`},
+			absent: []string{"data:image"},
+		},
+		{
+			name:   "raw html leaves nothing",
+			md:     "a^[tekst <script>alert(1)</script> <!-- skriveno -->]\n",
+			refs:   []int{1},
+			notes:  []string{"tekst"},
+			absent: []string{"script", "alert", "skriveno"},
+		},
+		{
+			name:   "attributes are cleaned",
+			md:     "a^[[x]{onclick=1 style=\"c\" #i .k} `y`{onclick=2}]\n",
+			refs:   []int{1},
+			notes:  []string{"x y"},
+			want:   []string{`<span class="k">x</span>`},
+			absent: []string{"onclick", "style", "id="},
+		},
+		{
+			// The reader reads a note in a note, so the filter must cope with it. The
+			// inner notes are numbered after the notes of the text, as they are shown there.
+			name:     "a note in a note",
+			md:       "a^[b ^[c ^[d]]] e[^1]\n\n[^1]: x ^[y]\n",
+			refs:     []int{1, 2, 3, 4, 5},
+			textRefs: 2,
+			notes:    []string{"b 3", "x 4", "c 5", "y", "d"},
+		},
+		{
+			name:  "paragraphs of one note stay in one item",
+			md:    "a[^1]\n\n[^1]: prvi\n\n    drugi\n",
+			refs:  []int{1},
+			notes: []string{"prvi drugi"},
+			want:  []string{"<p>prvi</p>\n<p>drugi</p></li>"},
+		},
+		// Dropped content leaves an empty item rather than moving every later number.
+		{name: "a note of raw html only is an empty item", md: "a^[<script>alert(1)</script>] b^[dva]\n", refs: []int{1, 2}, notes: []string{"", "dva"}, absent: []string{"alert"}},
+		{name: "twelve", md: twelve.String(), refs: twelveRefs, notes: twelveNotes},
+		{name: "a note that is not used leaves nothing", md: "tekst\n\n[^1]: nekorišteno\n", absent: []string{"nekorišteno", "footnotes", "<hr", "<ol"}},
+		{name: "no notes, no list", md: "tekst\n", absent: []string{"footnotes", "<hr", "<ol"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := r.Render(context.Background(), []byte(tc.md), s.docDir)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			requireSafe(t, out)
+			html := string(out)
+			for _, a := range append([]string{"<a ", "href", "<section", "doc-endnotes", "doc-noteref", "footnote-back", "id="}, tc.absent...) {
+				if strings.Contains(html, a) {
+					t.Errorf("output has %q:\n%s", a, html)
+				}
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(html, w) {
+					t.Errorf("output lacks %q:\n%s", w, html)
+				}
+			}
+			body, notes, ok := splitNotes(html)
+			if ok != (len(tc.notes) > 0) {
+				t.Fatalf("list of notes present = %v, want %v:\n%s", ok, len(tc.notes) > 0, html)
+			}
+			var refs []int
+			for _, m := range refRe.FindAllStringSubmatch(html, -1) {
+				var n int
+				if _, err := fmt.Sscan(m[1], &n); err != nil {
+					t.Fatal(err)
+				}
+				refs = append(refs, n)
+			}
+			for i, n := range refs {
+				if n != i+1 {
+					t.Fatalf("numbers = %v, want 1..%d in order:\n%s", refs, len(refs), html)
+				}
+			}
+			if len(refs) != len(tc.refs) {
+				t.Fatalf("numbers = %v, want %v:\n%s", refs, tc.refs, html)
+			}
+			if got := len(refRe.FindAllString(body, -1)); got != tc.textRefs && tc.textRefs > 0 {
+				t.Fatalf("the text has %d numbers, want %d:\n%s", got, tc.textRefs, html)
+			}
+			if strings.Join(notes, "|") != strings.Join(tc.notes, "|") {
+				t.Fatalf("notes = %q, want %q:\n%s", notes, tc.notes, html)
 			}
 		})
 	}
