@@ -4,7 +4,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 6 — Pakiranje (plan odobren 2026-11-12, u izvedbi). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: 7 — Teme (plan faza 7 i 8 odobren 2026-11-12, u izvedbi). Faza 6 — Pakiranje: svi koraci
+  izvedeni, čeka vlasnikovu ručnu provjeru. Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -12,10 +13,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faze 6 i odluka o prihvaćanju
+- Sljedeći korak: faza 7, korak 1 (konfiguracija v2); usporedno vlasnikova ručna provjera faze 6
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 6: svi koraci izvedeni, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-12 (faza 7: plan odobren i upisan)
 
 ## Priprema (2026-11-11)
 
@@ -2036,3 +2037,98 @@ provjeru (dvoklik iz Findera, izgled ikone i obavijesti, clipboard).
 - [ ] `.app` se gradi i pokreće izvan razvojnog okruženja — dokaz 1; dvoklik iz Findera čeka vlasnika
 - [ ] provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom — dokaz 2; izgled obavijesti čeka vlasnika
 - [ ] ikona, naziv, verzija; potpisivanje za lokalnu upotrebu — dokaz 3; izgled ikone čeka vlasnika
+
+## Faza 7 — Teme
+
+Effort high. Plan faza 7 i 8 odobren 2026-11-12 (jedan plan, dvije faze; STOP nakon faze 7). Faza 6 i
+dalje čeka vlasnikovu ručnu provjeru; faze 7 i 8 o njoj ne ovise.
+
+### Odluke vlasnika (2026-11-12)
+
+- Tri teme: `pisar` (postojeća svijetla), `catppuccin-mocha`, `dracula`. Biraju se u meniju „Prikaz → Tema”,
+  promjena vrijedi odmah (sučelje, xterm.js, Neovim, pregled), izbor se pamti u `config.json`.
+- Pregled dokumenta prati temu (nema stalno bijelog papira).
+- Dracula odstupa od službene palete na četiri mjesta zbog kontrasta 4,5:1 iz `DESIGN.md`: `text.muted`
+  `#A1AAC8`, `text.linenr` `#8995BB`, `bg.cursorline` `#21222C`, `bg.selected` `#343746`. Catppuccin Mocha
+  ostaje unutar službene palete (akcent lavender). Testovi kontrasta se ne slabe; vrte se nad svim temama.
+- `config.json` ide na verziju 2; starija verzija Pisara takvu datoteku odbija i ne dira.
+- Rad ide redom, bez paralelnih agenata.
+
+### Ovisnosti (odobrene)
+
+- Nema novih Go ni npm ovisnosti.
+
+### Izmjereno prije plana
+
+- Wails v3.1.0 (`go doc`, izvor u module cacheu): `(*Menu).AddRadio(label, checked)`, susjedne radio stavke
+  čine grupu (`processRadioGroups`), `(*MenuItem).SetChecked` gasi ostale u grupi;
+  `(*WebviewWindow).SetBackgroundColour(RGBA)` ide kroz `InvokeSync` i boji samo NSWindow; `parseKey`
+  prihvaća `CmdOrCtrl+/`.
+- xterm.js 6.0.0 (`typings/xterm.d.ts`): `terminal.options.theme = {...}` mijenja temu u radu; mora biti
+  novi objekt.
+- Neovim 0.12.6 (`nvim --clean --headless`): ponovno izvršen tekst colorschemea s `background = "dark"`
+  mijenja `&background`, zadržava `g:colors_name = "pisar"` i zamjenjuje `Normal`.
+- Kontrast (ista formula kao `theme/contrast.ts`): Dracula komentar `#6272A4` na `#282A36` = 3,03; palete iz
+  plana prolaze sve parove iz postojećih testova (najmanje: Mocha 5,10, Dracula 4,53).
+- NIJE provjereno: službene heksadecimalne vrijednosti obiju paleta (provjeriti prije koraka 3), sve
+  vizualno (bljesak pri pokretanju, kvačice u meniju), `:colorscheme pisar` nad prepisanom datotekom u
+  pokrenutom Neovimu (pokriva test koraka 5).
+
+### Ugovor Go ↔ frontend
+
+```go
+// config.json v2: { "version": 2, "theme": "dracula", "projects": [...] }
+config.Themes []string; config.DefaultTheme; config.ErrUnknownTheme
+(*config.Store).Theme() string
+(*config.Store).SetTheme(id string) error
+config.ThemeWindowBackground(id string)            // boja bg.app za nativni prozor
+
+SettingsService.Theme(ctx) string                  // novi vezani servis
+EditorService.SetColorscheme(ctx, colorscheme string) error
+(*nvim.Process).Colorscheme(ctx) error             // i ista metoda na term.Session
+```
+
+Događaj `theme:changed` (payload: ID teme). URL prozora `/?theme=<id>`. `colorscheme.go` dobiva jedan novi
+fiksni redak zaglavlja: `vim.o.background = "dark"`.
+
+v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2. Nepoznat ID teme u v2 →
+`pisar` uz upozorenje u logu, datoteka ostaje. v1 s poljem `theme` je oštećena datoteka, kao i dosad.
+
+### Koraci
+
+- [ ] 1. Konfiguracija v2 s temom (`internal/config`)
+- [ ] 2. Registar tema s jednom temom; čiste funkcije primaju paletu (`theme/*`, `lib/previewFrame.ts`)
+- [ ] 3. Palete Catppuccin Mocha i Dracula, tablice u `DESIGN.md`, snimke colorschemea
+- [ ] 4. Validator colorschemea prihvaća `dark` (`colorscheme.go`)
+- [ ] 5. Ponovno učitavanje colorschemea u pokrenutom Neovimu (`internal/nvim`, `internal/term`)
+- [ ] 6. `EditorService.SetColorscheme`
+- [ ] 7. `SettingsService`, meni „Prikaz → Tema”, boja prozora, događaj `theme:changed`
+- [ ] 8. Promjena uživo u frontendu (`themeController`, terminal, pregled)
+- [ ] 9. Dimna provjera s tamnom temom, dokumenti, `plan-reviewer`
+
+### Izvan opsega
+
+Praćenje izgleda macOS-a, vlastite teme korisnika, prozor postavki, zasebne ANSI palete po temi, nove
+sintaksne boje izvan 17 tokena, ponovna primjena highlighta iz `user.lua` nakon promjene teme, sve iz
+faze 8 (which-key, pregled prečaca, otvaranje `user.lua`).
+
+### Kriteriji prihvaćanja
+
+- [ ] `task test`, `task test:race`, `task lint`, `task build` prolaze
+- [ ] `cd frontend && npx vitest run src/theme` — kontrast i tablice iz `DESIGN.md` za tri teme
+- [ ] `go test ./internal/config -run 'Theme|Version'` i
+      `go test . -run 'TestEd(SampleAccepted|BadScheme|SetScheme)|TestMenu|TestSettings'` prolaze
+- [ ] `bash scripts/smoke.sh` — svijetli prolaz i prolaz s Draculom (`Normal` = tokeni, `&background` = `dark`)
+- [ ] `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka
+- [ ] **[R]** promjena teme boji traku, stablo, terminal, Neovim i pregled bez ponovnog učitavanja; pregled
+      zadržava skrol; pokretanje s tamnom temom bez bijelog bljeska; kvačica u meniju točna i nakon
+      pokretanja; promjena dok stoji hit-enter prompt primijeni se nakon Entera
+
+## Faza 8 — Prečaci i which-key (odobren plan, čeka prihvaćanje faze 7)
+
+Odluke vlasnika (2026-11-12): vlastiti which-key u `nvim/init.lua` (bez dodatka), okidač je goli `<Space>` u
+`n` i `x`, tipke hvata `vim.on_key` (Neovim nikad ne blokira); `timeoutlen = 500`; vlastiti prečaci i imena
+grupa (`vim.g.pisar_groups`) u `user.lua`; pregled svih prečaca kao Svelte panel na `⌘/` i `␣?`; stavka
+menija „Uredi user.lua” (Go datoteku ne piše; ako je nema, Neovim otvori nespremljen buffer s predloškom, a
+`CLAUDE.md` dobiva rečenicu da `<home>/user.lua` zapisuje sam Neovim na `:w`). Raspored tipkovnice je sada
+US; `⌥` i dalje slaže znakove. Koraci i kriteriji upisuju se ovdje na početku faze.
