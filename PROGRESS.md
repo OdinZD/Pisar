@@ -1880,8 +1880,24 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
       - Izmjereno: `env -i X=1 locale charmap` → `US-ASCII`; s `LC_CTYPE=en_US.UTF-8` → `UTF-8`.
         Stvarno kodiranje u `pbcopy` nije mjereno (ručna provjera).
       - `gofmt -l .` ispisuje tri datoteke u `build/ios/` (Wailsov predložak, postojeće stanje, nije dirano).
-- [ ] 2. Provjera alata (Go): `EditorService.Tools`; greška pri pokretanju → nativni dijalog
-- [ ] 3. Zaslon u frontendu: što nedostaje, naredba za instalaciju, „Provjeri ponovno”
+- [x] 2. Provjera alata (Go): `editortools.go` — `EditorService.Tools` (`exec.LookPath` za oba alata pri svakom
+      pozivu, ništa se ne pamti i ništa se ne pokreće; `Name` je stabilna oznaka, ne ime iz konfiguracije;
+      uz `PISAR_LOG=debug` redak `editor: Tools nvim=… pandoc=…`). `main.go`: gradnja je izdvojena u
+      `build(text)`, a greška prije `app.Run()` ide kroz JEDNO mjesto (`reportStartFailure` →
+      `startFailureDialog` → `showFatal`); `ErrNewerVersion` zadržava svoj naslov i tekst, ostalo dobiva
+      `startFailedTitle` / `startFailed` (`{reason}`). Testovi: `TestTools` (7 slučajeva), `TestToolsFolder`,
+      `TestToolsLooksAgain`, `TestStartFailureDialog`.
+      - Greška iz `loadUIText` i iz samog `app.Run()` ostaje bez dijaloga (nema teksta, odnosno aplikacija
+        je već radila). Sam dijalog nije viđen (ručna provjera nije moguća bez izazivanja greške).
+      - `coder` je jednom vidio pad `TestEdFmtOrder` (pravi Neovim, ovisi o vremenu); ponovljeno 3 od 3
+        prolazi, kod glavne sesije `task test` i `go test -race .` prolaze. Nije istraženo.
+- [x] 3. Zaslon u frontendu: `lib/toolsState.ts` (`missingTools`, `toolsNotice`; čisto, pod vitestom),
+      `editorController` zove `Tools()` jednom pri pokretanju i na „Provjeri ponovno”; `EmptyState` u
+      praznom stanju editora pokazuje naslov, redak i naredbu za svaki alat koji nedostaje i gumb
+      (`role="alert"`, gumb stiliziran kao u `Toolbar.svelte`). Ne blokira: stablo radi, a bez pandoca se
+      `.md` i `.txt` otvaraju (terminal zamijeni obavijest). Stanje `failed` ima prednost. Vitest 834.
+      - Neuspio poziv `Tools()` se zapiše u konzolu i vrijedi kao „ništa ne nedostaje”.
+      - Izgled obavijesti nije viđen u prozoru (ručna provjera).
 - [ ] 4. Naziv, identifikator, verzija: „Pisar”, `com.odinwolf.pisar`, 0.1.0; paket `bin/Pisar.app`
 - [ ] 5. Ikona: SVG iz tokena → `appicon.icon`, `appicon.png` → `icons.icns`, `Assets.car`
 - [ ] 6. Potpisivanje: `task sign` (`$SIGN_IDENTITY`, hardened runtime, bez entitlements datoteke)

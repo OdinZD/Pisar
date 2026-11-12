@@ -30,6 +30,7 @@ import {
 } from './editorState'
 import { describeFocus, noTerminalFocus, type TerminalFocus } from './focus'
 import { shouldFormat } from './formatAction'
+import { missingTools, type ToolName } from './toolsState'
 
 interface Waiter {
   resolve: () => void
@@ -57,6 +58,12 @@ export class EditorController {
   savingCopy = $derived<boolean>(this.#state.savingCopy)
   /** the error of the last "Spremi kao kopiju", for the toolbar */
   copyError = $derived<ErrorCode | null>(this.#state.copyError)
+
+  #tools = $state.raw<ToolName[]>([])
+  /** the tools (nvim, pandoc) the last check did not find; empty when all are there or the check failed */
+  missingTools = $derived<ToolName[]>(this.#tools)
+  /** a tool check is running right now */
+  checkingTools = $state(false)
 
   /** Set by the editor pane: gives the terminal keyboard focus (a no-op while there is none). */
   focusTerminal: () => void = () => {}
@@ -103,6 +110,8 @@ export class EditorController {
       })
       .catch((err) => console.error('HasInitialDocument failed', err))
 
+    void this.checkTools()
+
     const cleanup = () => {
       live = false
       for (const off of offs) off()
@@ -110,6 +119,24 @@ export class EditorController {
     }
     this.#stop = cleanup
     return cleanup
+  }
+
+  /**
+   * Looks the tools up again. A failed call is only logged and counts as "nothing is missing": a
+   * warning without evidence would be worse than none.
+   */
+  async checkTools(): Promise<void> {
+    if (this.checkingTools) return
+    this.checkingTools = true
+    try {
+      // The binding types the list as nullable (a Go nil slice), though Tools always returns both.
+      this.#tools = missingTools((await service.Tools()) ?? [])
+    } catch (err) {
+      console.error('Tools failed', err)
+      this.#tools = []
+    } finally {
+      this.checkingTools = false
+    }
   }
 
   stop(): void {
