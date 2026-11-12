@@ -1701,7 +1701,7 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
 - U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
 - Blokovski odabir se za podebljano i kurziv odbija; naslov zamjenjuje oznaku liste.
 - Valovita crta i izbornik „Oblikovanje” nisu viđeni u prozoru (ručna provjera).
-- `init.lua` ima oko 900 redaka u jednoj datoteci.
+- `init.lua` ima 1119 redaka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
 
 ### Izvan opsega
 
