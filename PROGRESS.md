@@ -5,8 +5,8 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 ## Stanje
 
 - Trenutna faza: 3 — `.docx` i `.doc`: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12);
-  čeka se vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 2 je prihvaćena
-  ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
+  čeka se vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 2 je prihvaćena 2026-11-11:
+  vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
 - Sljedeći korak: vlasnikova ručna provjera faze 3 (popis u odjeljku faze); zatim plan faze 4
