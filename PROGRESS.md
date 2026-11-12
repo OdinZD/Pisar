@@ -1870,8 +1870,16 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
 
 ### Koraci
 
-- [ ] 1. Okruženje procesa: dodatne mape za alate na kraj PATH-a, UTF-8 locale kad nijedna locale varijabla
-      nije postavljena, `PISAR_TOOL_DIRS`
+- [x] 1. Okruženje procesa: `internal/config/environment.go` — `ToolDirs` (ugrađeno `/opt/homebrew/bin`,
+      `/usr/local/bin`; `PISAR_TOOL_DIRS` ih zamjenjuje, prazno = bez dodatnih), `ExtendPath` (čista; dodaje
+      na KRAJ, bez dvostrukih, postojeći unosi netaknuti), `PrepareEnvironment` (PATH + `LC_CTYPE=en_US.UTF-8`
+      kad su `LC_ALL`, `LC_CTYPE` i `LANG` prazni); `main.go` je zove prvu. 5 testova, među njima
+      `TestPrepareEnvironmentMakesToolFindable` (`LookPath` prije ne nalazi, poslije nalazi).
+      - Aplikacija mijenja VLASTITU okolinu, pa to vrijedi za svaki `LookPath` i za Neovim; paketi
+        `nvim`, `convert`, `preview` nisu dirani.
+      - Izmjereno: `env -i X=1 locale charmap` → `US-ASCII`; s `LC_CTYPE=en_US.UTF-8` → `UTF-8`.
+        Stvarno kodiranje u `pbcopy` nije mjereno (ručna provjera).
+      - `gofmt -l .` ispisuje tri datoteke u `build/ios/` (Wailsov predložak, postojeće stanje, nije dirano).
 - [ ] 2. Provjera alata (Go): `EditorService.Tools`; greška pri pokretanju → nativni dijalog
 - [ ] 3. Zaslon u frontendu: što nedostaje, naredba za instalaciju, „Provjeri ponovno”
 - [ ] 4. Naziv, identifikator, verzija: „Pisar”, `com.odinwolf.pisar`, 0.1.0; paket `bin/Pisar.app`

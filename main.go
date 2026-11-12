@@ -66,6 +66,11 @@ func main() {
 }
 
 func run() error {
+	// First of all: a Finder launch has a minimal PATH and no locale, and every
+	// later LookPath and child process (Neovim, pbcopy) inherits what is set here.
+	if err := config.PrepareEnvironment(); err != nil {
+		return err
+	}
 	if os.Getenv(config.EnvLog) == "debug" {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	}
