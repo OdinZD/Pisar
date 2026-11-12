@@ -13,10 +13,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 7, korak 1 (konfiguracija v2); usporedno vlasnikova ručna provjera faze 6
+- Sljedeći korak: `plan-reviewer` za fazu 7, zatim vlasnikova ručna provjera faza 6 i 7
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 7: plan odobren i upisan)
+- Zadnja izmjena: 2026-11-12 (faza 7: svi koraci izvedeni, dokazi upisani)
 
 ## Priprema (2026-11-11)
 
@@ -2171,7 +2171,14 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Neuspjelo slanje colorschemea se samo logira (sučelje je tada u novoj temi, Neovim u staroj).
       - NIJE viđeno (ručna provjera): promjena na klik u meniju, boje terminala i pregleda nakon promjene,
         skrol pregleda, promjena teme usred pokretanja Neovima. Komponente i kontroler nemaju testove.
-- [ ] 9. Dimna provjera s tamnom temom, dokumenti, `plan-reviewer`
+- [x] 9. Dimna provjera i dokumenti: `scripts/smoke.sh` ima još jedno pokretanje (v2 `config.json` s
+      `"theme": "dracula"`; pomoćna `theme_token <paleta> <token>`), prvi prolaz dodatno provjerava
+      `&background = light`; komentar uz `vim.o.background` u `nvim/init.lua`; `DESIGN.md` (tokeni se
+      primjenjuju pri pokretanju i pri promjeni teme, stranica pregleda je `bg.editor`).
+      - Negativna proba (`coder`): s `"theme": "pisar"` u novom odjeljku skripta pada na tri provjere.
+      - Promjena teme klikom u meniju se u skripti ne može dokazati (bez tipki i klikova).
+      - `PROMPT.md` i dalje u sažetku dizajna kaže „Svijetla tema”; vlasnikova datoteka, nije dirana.
+      - `plan-reviewer`: vidi „Pregled” dolje.
 
 ### Izvan opsega
 
@@ -2179,14 +2186,62 @@ Praćenje izgleda macOS-a, vlastite teme korisnika, prozor postavki, zasebne ANS
 sintaksne boje izvan 17 tokena, ponovna primjena highlighta iz `user.lua` nakon promjene teme, sve iz
 faze 8 (which-key, pregled prečaca, otvaranje `user.lua`).
 
+### Dokazi po kriterijima (2026-11-12)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit koraka 9).
+
+1. `task test` → svi Go paketi `ok`; vitest `Test Files 31 passed`, `Tests 1276 passed`. `task test:race` → svi
+   paketi `ok`, bez `DATA RACE`. `task lint` → `0 issues.`, svelte-check `245 FILES 0 ERRORS 0 WARNINGS`.
+   `task build` → exit 0.
+2. `cd frontend && npx vitest run src/theme` → `Test Files 9 passed`, `Tests 597 passed` (kontrast, tablice iz
+   `DESIGN.md`, xterm tema i colorscheme za sve tri teme).
+3. `go test ./internal/config -run 'Theme|Version' -count=1` → `ok`;
+   `go test . -run 'TestEd(SampleAccepted|BadScheme|SetScheme)|TestMenu|TestSettings' -count=1` → `ok`.
+4. `bash scripts/smoke.sh` → `smoke: all checks passed` (157 `ok`, nijedan `FAIL` ni `skip`): svijetli prolaz
+   `Normal uses the tokens text and bg.editor (1D2125 FFFFFF)`, `&background is light`; tamni prolaz
+   `the frontend asked the service for the theme and got dracula`, `&background is dark and the colorscheme
+   is pisar`, `Normal in Neovim has exactly those colours` (`F8F8F2 282A36`), `config.json is byte for byte
+   what it was`.
+5. `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka (exit 1).
+
+### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
+
+Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-teme bin/pisar` (ili bez varijable; tada
+se prava `config.json` pri prvoj promjeni teme prepisuje u verziju 2).
+
+1. Prikaz → Tema ima tri stavke (Pisar, Catppuccin Mocha, Dracula) s kvačicom na aktivnoj.
+2. Izbor teme odmah boji alatnu traku, stablo, terminal, Neovim (statusna traka, redak kursora, naslovi)
+   i pregled, bez ponovnog učitavanja; pregled zadržava položaj skrola.
+3. Nakon ponovnog pokretanja aplikacija kreće u izabranoj temi, kvačica je na njoj, i nema bijelog bljeska
+   prije prvog prikaza (ako ga ima, javi: rješenje je zasebna odluka, vidi rizike u planu).
+4. Promjena teme dok u Neovimu stoji hit-enter prompt (npr. nakon `:echo "a\nb"`): sučelje se promijeni
+   odmah, Neovim nakon Entera.
+5. Čitljivost u obje tamne teme: prigušeni tekst u stablu, brojevi redaka, odabrani red u tražilici,
+   poruke o grešci, tekst na primarnom gumbu.
+6. Promjena teme prije nego je ijedan dokument otvoren, pa otvaranje dokumenta: Neovim kreće u novoj temi.
+
+### Nije provjereno / poznata ograničenja
+
+- Sve iz ručne provjere gore: klik u meniju, kvačice, boja prozora i bljesak pri pokretanju nisu viđeni.
+- Promjena teme usred pokretanja Neovima (`resend` u `Terminal.svelte`) provjerena je samo čitanjem koda.
+- Ako slanje colorschemea Neovimu ne uspije, sučelje je u novoj temi, a Neovim u staroj, do sljedećeg
+  pokretanja ili sljedeće promjene teme; greška je samo u konzoli.
+- Highlight koji korisnik postavi u `user.lua` nestaje nakon promjene teme (`highlight clear`); treba ga
+  vezati uz `ColorScheme` autocmd.
+- 16 ANSI boja terminala izvedeno je iz tokena; u tamnim temama „white” je tamna podloga (tiče se samo
+  programa unutar `:terminal`).
+- Prompt „-- More --” ne zatvara se Enterom; ponašanje promjene teme u njemu nije mjereno.
+
 ### Kriteriji prihvaćanja
 
-- [ ] `task test`, `task test:race`, `task lint`, `task build` prolaze
-- [ ] `cd frontend && npx vitest run src/theme` — kontrast i tablice iz `DESIGN.md` za tri teme
-- [ ] `go test ./internal/config -run 'Theme|Version'` i
-      `go test . -run 'TestEd(SampleAccepted|BadScheme|SetScheme)|TestMenu|TestSettings'` prolaze
-- [ ] `bash scripts/smoke.sh` — svijetli prolaz i prolaz s Draculom (`Normal` = tokeni, `&background` = `dark`)
-- [ ] `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka
+Automatski dio je dokazan (odjeljak „Dokazi po kriterijima”); zadnja kućica čeka vlasnikovu ručnu provjeru.
+
+- [x] `task test`, `task test:race`, `task lint`, `task build` prolaze — dokaz 1
+- [x] `cd frontend && npx vitest run src/theme` — kontrast i tablice iz `DESIGN.md` za tri teme — dokaz 2
+- [x] `go test ./internal/config -run 'Theme|Version'` i
+      `go test . -run 'TestEd(SampleAccepted|BadScheme|SetScheme)|TestMenu|TestSettings'` prolaze — dokaz 3
+- [x] `bash scripts/smoke.sh` — svijetli prolaz i prolaz s Draculom (`Normal` = tokeni, `&background` = `dark`) — dokaz 4
+- [x] `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka — dokaz 5
 - [ ] **[R]** promjena teme boji traku, stablo, terminal, Neovim i pregled bez ponovnog učitavanja; pregled
       zadržava skrol; pokretanje s tamnom temom bez bijelog bljeska; kvačica u meniju točna i nakon
       pokretanja; promjena dok stoji hit-enter prompt primijeni se nakon Entera
