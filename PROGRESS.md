@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 6, korak 1 (okruženje procesa)
+- Sljedeći korak: faza 6, korak 8 (`plan-reviewer`, zatim vlasnikova ručna provjera)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-12 (plan faze 6 odobren)
@@ -1898,10 +1898,45 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
       `.md` i `.txt` otvaraju (terminal zamijeni obavijest). Stanje `failed` ima prednost. Vitest 834.
       - Neuspio poziv `Tools()` se zapiše u konzolu i vrijedi kao „ništa ne nedostaje”.
       - Izgled obavijesti nije viđen u prozoru (ručna provjera).
-- [ ] 4. Naziv, identifikator, verzija: „Pisar”, `com.odinwolf.pisar`, 0.1.0; paket `bin/Pisar.app`
-- [ ] 5. Ikona: SVG iz tokena → `appicon.icon`, `appicon.png` → `icons.icns`, `Assets.car`
-- [ ] 6. Potpisivanje: `task sign` (`$SIGN_IDENTITY`, hardened runtime, bez entitlements datoteke)
-- [ ] 7. Dimna provjera paketa: `scripts/smoke-app.sh` (pokretanje kroz `open`, oba stanja alata)
+- [x] 4. Naziv, identifikator, verzija: `build/config.yml`, `Info.plist`, `Info.dev.plist` uređeni ručno i usklađeni
+      („Pisar”, `com.odinwolf.pisar`, 0.1.0). Paket je `bin/Pisar.app` (nova varijabla `BUNDLE_NAME` u
+      korijenskom `Taskfile.yml`; koriste je `create:app:bundle` i `codesign:adhoc`); binarna datoteka ostaje
+      `bin/pisar` i `Contents/MacOS/pisar`.
+      - `wails3 task common:update:build-assets` namjerno NIJE pokrenut (prepisuje sredstva svih platformi).
+      - Wailsovi `darwin:sign` i `darwin:sign:notarize` i DMG zadaci i dalje računaju na `pisar.app` (nisu dirani).
+- [x] 5. Ikona: `build/appicon.svg` (bijeli list s recima teksta i blok-kursorom na podlozi u boji akcenta; crtala
+      glavna sesija) → `task icon` (`sips` → `build/appicon.png` 1024×1024 → `common:generate:icons` →
+      `build/darwin/icons.icns`, `build/windows/icon.ico`). Ponovljen `task icon` daje iste bajtove.
+      - **Odstupanje od plana, odluka vlasnika 2026-11-12 („Samo icns”):** `Assets.car` se ne može izgraditi,
+        jer `actool` traži puni Xcode, a na stroju su samo Command Line Tools (generator to prešuti i ostavi
+        staru datoteku s Wailsovom ikonom). Zato su `build/darwin/Assets.car` i `build/appicon.icon/` obrisani,
+        a `CFBundleIconName` maknut iz oba plista; paket koristi samo `icons.icns`, kao Trag. Nema Liquid
+        Glass varijante ikone.
+      - Boje u SVG-u su prepisane iz `tokens.ts` (`accent`, `bg.editor`, `text`, `text.muted`,
+        `border.strong`); to je sredstvo za gradnju izvan `frontend/src`, pa ga čuvari boja ne gledaju.
+      - Izgled ikone u Docku i Finderu nije viđen (ručna provjera).
+- [x] 6. Potpisivanje: `task sign` u korijenskom `Taskfile.yml` (`deps: [package]`; `xattr -cr`, `codesign --force
+      --deep --options runtime --sign "$SIGN_IDENTITY"`, `codesign --verify --deep --strict`). Ime identiteta
+      nije u repozitoriju. Bez entitlements datoteke: potpisana aplikacija pod hardened runtimeom pokreće
+      Neovim i pandoc (dokazuje `smoke-app.sh`).
+      - Bez `SIGN_IDENTITY` zadatak pada s jasnom porukom, ali tek NAKON `package` (Task izvršava `deps`
+        prije `preconditions`), pa ostane ad-hoc potpisan paket.
+      - `man codesign` označava `--deep` zastarjelim za potpisivanje; ostavljen je radi istog recepta kao u Tragu.
+- [x] 7. Dimna provjera paketa: `scripts/smoke-app.sh` (24 provjere). A: `.docx` s č ć š ž đ na naredbenom retku →
+      `Tools nvim=true pandoc=true`, Neovim prikazuje pretvoreni tekst, PATH u Neovimu je točno
+      `/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin`, `LC_CTYPE=en_US.UTF-8`, radna mapa `/`,
+      nakon SIGTERM nema procesa ni socketa, `.docx` bajt-identičan. B (`PISAR_TOOL_DIRS=`): `Tools
+      nvim=false pandoc=false`, aplikacija živa i nakon 3 s, bez Neovima.
+      - **Izmjereno, odstupanje od plana:** `open` aplikaciji PRENOSI okolinu procesa koji ga je pozvao, pa
+        sam `open` ne daje Finderovo okruženje. Skripta zato zove `/usr/bin/open` pod `env -i` (PATH sustava,
+        `HOME`, `USER`, `LOGNAME`, `TMPDIR`). To je emulacija; pravi dvoklik ostaje u ručnoj provjeri.
+      - `--env IME=` stiže kao postavljena-a-prazna; `--stderr` radi; PID se nalazi usporedbom popisa prije i poslije.
+      - Mutacijska provjera (`coder`): A s praznim `PISAR_TOOL_DIRS` → 2 pada, exit 1.
+      - Prolazi i nad ad-hoc i nad potpisanim paketom (potpisani: 4 pokretanja kod `coder`-a, 2 kod glavne sesije).
+      - **Incident (2026-11-12, 18:41):** `coder` je u pokusu jednom pokrenuo `nvim --server ''` (prazan socket);
+        vlasnikova `~/.local/state/nvim/shada/main.shada` ima vrijeme izmjene 18:41 i 14 111 bajtova (prije
+        13 882), pa je vjerojatno prepisana i drugi put. Sadržaj nije provjeravan ni vraćan. Skripta sada
+        odbija prazan socket.
 - [ ] 8. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
 
 ### Izvan opsega
