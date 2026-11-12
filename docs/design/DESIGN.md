@@ -101,11 +101,14 @@ Kontrast teksta prema podlozi mora biti najmanje 4.5:1 u svakoj temi. Ako promij
 
 | Potrošač | Kako |
 |---|---|
-| CSS | varijable generirane iz tokena pri pokretanju |
+| CSS | varijable generirane iz tokena aktivne teme, pri pokretanju i pri svakoj promjeni teme |
 | xterm.js | objekt teme (pozadina, tekst, kursor, odabir, 16 ANSI boja) izveden iz tokena |
-| Neovim | colorscheme generiran iz tokena; aplikacija ga zapisuje u svoju konfiguracijsku mapu pri pokretanju |
+| Neovim | colorscheme generiran iz tokena; aplikacija ga zapisuje u svoju konfiguracijsku mapu pri pokretanju i pri promjeni teme, a pokrenuti Neovim ga tada ponovno učita |
 
 Statusnu traku i oznaku moda crta Neovim, ne Svelte.
+
+Promjena teme (Prikaz → Tema) vrijedi odmah, bez ponovnog pokretanja, i pamti se u `config.json`. Pregled
+dokumenta prati temu: njegov okvir dobiva iste varijable. Pozadina nativnog prozora je `bg.app` teme.
 
 ## Tipografija
 
@@ -133,7 +136,7 @@ Odabrani dokument ispunjen je akcentom. Na dnu je „+ Dodaj projekt”.
 Rezultati: naziv s istaknutim podudaranjem (akcent, 600) i projekt desno. Najviše 8 redova, ostalo
 se pomiče. Dolje su natuknice tipki.
 
-**Pregled.** Podloga `bg.desk`, stranica bijela, najviše 420 px široka, unutarnji razmak 40 px,
+**Pregled.** Podloga `bg.desk`, stranica u boji `bg.editor` (bijela u temi Pisar), najviše 420 px široka, unutarnji razmak 40 px,
 blaga sjena. Sadržaj je u sandboxed iframeu sa stilom iz tokena.
 
 **Prazno stanje.** Bez otvorenog dokumenta stupac editora prikazuje „Otvori dokument” i tipke
