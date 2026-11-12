@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12); čeka se
-  vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan faze u izradi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+  prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faze 4 (popis u odjeljku faze); zatim plan faze 5
+- Sljedeći korak: plan faze 5 i vlasnikovo odobrenje
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4 dovršena, čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-12 (faza 4 prihvaćena)
 
 ## Priprema (2026-11-11)
 
@@ -1492,8 +1492,8 @@ postavke za prozu i pravopis, pakiranje, tamna tema.
 - [x] pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava (test) — dokaz 2
 - [x] tražilica: `␣f` i `⌘P`, pretraga kroz sve projekte, `⌃p` sužava, `↵` otvara, `Esc` vraća fokus — dokaz 3
       (tipke u prozoru i fokus su u ručnoj provjeri)
-- [ ] **[R]** izgled odgovara `docs/design/DESIGN.md` — čeka vlasnikovu ručnu provjeru (popis gore); agent
-      ovo ne označava
+- [x] **[R]** izgled odgovara `docs/design/DESIGN.md` — potvrdio vlasnik ručno 2026-11-12 („testirano i radi
+      sve”)
 
 ## Faza 5 — Udobnost pisanja
 
