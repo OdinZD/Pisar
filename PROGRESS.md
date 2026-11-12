@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc`: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12);
-  čeka se vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 2 je prihvaćena 2026-11-11:
+- Trenutna faza: 4 — Pregled i tražilica (plan faze u izradi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+  prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faze 3 (popis u odjeljku faze); zatim plan faze 4
+- Sljedeći korak: plan faze 4 i vlasnikovo odobrenje
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3 dovršena, čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-12 (faza 3 prihvaćena)
 
 ## Priprema (2026-11-11)
 
@@ -1128,8 +1128,8 @@ pakiranje, automatsko pokretanje Worda.
 - [x] `.doc` se uvozi i sprema kao novi `.docx` — dokaz 6
 - [x] simulirani prekid usred zapisa ostavlja izvornik netaknut — dokaz 7
 - [x] oporavak radne kopije nakon rušenja — dokaz 8
-- [ ] **[R]** spremljeni `.docx` otvara se u Wordu ili Pagesu i izgleda kao izvornik — čeka vlasnikovu
-      ručnu provjeru (popis gore); agent ovo ne označava
+- [x] **[R]** spremljeni `.docx` otvara se u Wordu ili Pagesu i izgleda kao izvornik — potvrdio vlasnik ručno
+      2026-11-12 („testirano i radi sve”)
 
 ## Faza 4 — Pregled i tražilica
 
