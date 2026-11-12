@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–4 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–5 gotovi, pregled plana u tijeku). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 5 (dimna provjera)
+- Sljedeći korak: faza 5, korak 6 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, korak 4)
+- Zadnja izmjena: 2026-11-12 (faza 5, korak 5 i dokazi)
 
 ## Priprema (2026-11-11)
 
@@ -1628,8 +1628,80 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
       - Nije provjereno: izbornik u pravom Wails prozoru (testirana je radnja i konstante); tipke
         utipkane nakon `⌘B`, a prije nego događaj stigne u frontend, mogu proći prije oblikovanja
         (nekoliko ms).
-- [ ] 5. Dimna provjera (`scripts/smoke.sh`)
+- [x] 5. Dimna provjera (`scripts/smoke.sh`): novi odjeljak „writing” (55 provjera; ukupno 146, oko 27 s). Tri
+      pokretanja sagrađene aplikacije s istim `PISAR_HOME`: (A) bez `user.lua` — rječnik u homeu je
+      bajt-identičan onome u repozitoriju, `user.lua` nije stvoren, opcije proze i pravopisa, `j`/`k`
+      po prikazanim recima, `␣n` i `␣s`, `␣b` `␣i` `␣h` `␣l` i `u`, `zg` piše u
+      `<home>/spell/pisar.utf-8.add`; (B) s `user.lua` — njegova opcija vrijedi, `hidden` i
+      `laststatus` su vraćeni, riječ dodana sa `zg` i dalje nije označena, datoteka netaknuta; (C)
+      `user.lua` s greškom — aplikacija radi, prva naredba vrijedi, greška je u `g:pisar_user_error` i
+      u logu. Tipke idu samo Neovimu kroz socket; nakon svake se čeka učinak s rokom.
+      - Nije pokriveno skriptom: `⌘B` / `⌘I` iz izbornika (tražilo bi slanje tipki aplikaciji) i izgled
+        valovite crte u prozoru.
 - [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+
+### Dokazi po kriterijima (2026-11-12)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
+
+- `go test -count=1 -race ./...` → svih 8 paketa `ok`; `task test` → exit 0 (vitest `Test Files 28
+  passed`, `Tests 826 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
+  `task build` → exit 0; `bash scripts/smoke.sh` → exit 0 (146 provjera, dvaput zaredom);
+  `bash scripts/shutdown.sh` → exit 0.
+- Go testovi (`go test -list`): `Pisar` 183, `config` 33, `convert` 55, `docsafe` 92, `nvim` 105,
+  `preview` 24, `project` 44, `term` 36. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
+  84,3 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,6 %, `preview` 92,2 %,
+  `project` 96,3 %, `term` 92,6 % (mijenja se za nekoliko desetinki između pokretanja).
+
+1. `init.lua`: prelamanje po riječima, kretanje po prikazanim recima, bez brojeva redaka (prekidač):
+   `TestProseOptions` (i za kasnije otvoren buffer), `TestRows` (`j` ostaje u istom stvarnom retku,
+   `2j` ide dva retka), `TestRowsIns`, `TestRowsPum`, `TestProseSwitches` (`␣n`, `␣s`); `smoke.sh`.
+2. Provjera pravopisa hr + en: `TestSpell` (kriva riječ označena, ispravne hrvatske i engleske nisu),
+   `TestSpellBoot` i `TestSpellNoDl` (pokretanje bez upita i kad rječnika nema), `TestSpellZg`
+   (vlastita riječ preživljava ponovno pokretanje), `TestUndercurl` (valovita crta u boji `danger`),
+   `TestEdWriteConfigDictionary` (rječnik zapisan bajt-identično, drugi put se ne piše),
+   `TestEdWriteConfigKeepsUserWords`, `TestEdStartSpell`; `smoke.sh`.
+3. Prečaci za naslov, bold, italic, listu: `TestFmtBold`, `TestFmtItalic`, `TestFmtBoldIns`,
+   `TestFmtHead`, `TestFmtList`, `TestFmtUndo`, `TestFmtRO`, `TestFmtWait` (svaka radnja kroz
+   mapiranje i kroz `Format`); `TestEdFmt`, `TestEdFmtOrder`, `TestWdFmtRO`; `TestMenuFormat`
+   (`⌘B` / `⌘I` → `menu:format`); vitest `formatAction.test.ts` (odluka o fokusu),
+   `serialSender.test.ts` (redoslijed tipki i oblikovanja); `smoke.sh` (`␣b` `␣i` `␣h` `␣l`).
+4. `user.lua` nakon ugrađene konfiguracije: `TestUOpts` (njegova opcija nadjačava ugrađenu), `TestUErr`
+   (greška ne ruši, ugrađeno vrijedi), `TestUKeep` (vraćeno ono o čemu Go ovisi, događaji stižu i
+   nisu dvostruki), `TestUFile` (bez datoteke, mapa, veze), `TestUNoWrite`, `TestUOut`, `TestUIn`,
+   `TestUSpell`; `TestEdUserPath`, `TestEdUserLua`, `TestEdUserLuaLog`; `smoke.sh` (B i C).
+
+### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
+
+Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
+
+1. Dugi odlomak se prelama po riječima; `j` / `k` i strelice idu po recima koje vidiš; nema brojeva
+   redaka; `␣n` ih pali i gasi.
+2. Kriva riječ ima VALOVITU crvenu crtu (ne ravnu); hrvatske i engleske riječi nisu podcrtane; `␣s`
+   pali i gasi; `z=` nudi prijedloge; `zg` dodaje riječ i ona ostaje nakon ponovnog pokretanja.
+3. `␣b`, `␣i` na riječi i na označenom tekstu; `␣h` kruži kroz razine naslova; `␣l` dodaje i skida
+   oznaku liste; `u` vraća svaku radnju jednim pritiskom.
+4. U insert modu utipkaj „tekst”, odmah `⌘B`, pa „još”, pa `⌘B`: očekuje se `tekst**još**` i kursor
+   iza oznaka. Isto s `⌘I`.
+5. `⌘B` s fokusom u tražilici, u polju za preimenovanje, na stablu i nakon klika u pregled: dokument
+   se ne mijenja. Nakon `⌘B` u terminalu fokus ostaje u terminalu.
+6. Izbornik „Oblikovanje” je između „Uređivanje” i „Prozor”, s `⌘B` i `⌘I`.
+7. Na Wordovom dokumentu samo za čitanje `⌘B` i `␣b` ne rade ništa i ne javljaju grešku.
+8. `~/Library/Application Support/Pisar/user.lua`: opcija iz njega vrijedi nakon ponovnog
+   pokretanja Neovima; s namjernom greškom editor se pokreće i pokaže kratku poruku.
+9. Nakon ponovnog učitavanja stranice (ako ga ikad izazoveš) terminal se ponovno iscrta.
+
+### Otvoreno nakon faze 5
+
+- Bez hrvatskog rječnika (ne bi se smjelo dogoditi: ugrađen je) pravopis radi samo za engleski.
+- `user.lua` i dalje može zamrznuti pokretanje s `vim.fn.input()`, `confirm()`, `getchar()` ili
+  beskrajnom petljom; `Start` tada istekne nakon `NvimStartTimeout`.
+- Tipke utipkane nakon `⌘B`, a prije nego događaj izbornika stigne u frontend (nekoliko ms), mogu
+  proći prije oblikovanja.
+- U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
+- Blokovski odabir se za podebljano i kurziv odbija; naslov zamjenjuje oznaku liste.
+- Valovita crta i izbornik „Oblikovanje” nisu viđeni u prozoru (ručna provjera).
+- `init.lua` ima oko 900 redaka u jednoj datoteci.
 
 ### Izvan opsega
 
@@ -1640,10 +1712,10 @@ pakiranje, tamna tema.
 
 ### Kriteriji prihvaćanja
 
-- [ ] `init.lua`: prelamanje po riječima, kretanje po prikazanim recima, bez brojeva redaka za prozu (prekidač)
-- [ ] provjera pravopisa hr + en **(provjeriti** odakle dolazi hrvatski rječnik i može li se isporučiti s aplikacijom**)**
-- [ ] prečaci za naslov, bold, italic, listu (umeću Markdown oznake)
-- [ ] neobavezni `user.lua` učitava se nakon ugrađene konfiguracije
+- [x] `init.lua`: prelamanje po riječima, kretanje po prikazanim recima, bez brojeva redaka za prozu (prekidač) — dokaz 1
+- [x] provjera pravopisa hr + en (hrvatski rječnik: Vimov službeni, LGPL, isporučen s aplikacijom) — dokaz 2
+- [x] prečaci za naslov, bold, italic, listu (umeću Markdown oznake) — dokaz 3
+- [x] neobavezni `user.lua` učitava se nakon ugrađene konfiguracije — dokaz 4
 
 ## Faza 6 — Pakiranje
 
