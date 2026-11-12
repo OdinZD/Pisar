@@ -220,6 +220,8 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 				// Where zg stores the user's own words; init.lua must not guess
 				// a path outside its own folder.
 				config.EnvNvimSpellFile + "=" + paths.UserWords,
+				// The user's own Neovim file; init.lua loads it when it exists.
+				config.EnvNvimUserLua + "=" + paths.UserLua,
 			},
 			StartTimeout: d.Limits.NvimStartTimeout,
 			StopTimeout:  d.Limits.NvimStopTimeout,
@@ -486,6 +488,12 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	if !wasRunning {
 		// A new Neovim does not know that the preview is on.
 		e.applyPreview(ctx)
+		// The user's file is their own code, not a document: its path and the
+		// first line of the error are fine to log, the text of the file is not
+		// read by anyone but Neovim.
+		if u := e.session.UserConfig(); u.Error != "" || u.Note != "" {
+			slog.Warn("editor: user.lua", "file", e.paths.UserLua, "error", u.FirstLine(), "note", u.Note)
+		}
 	}
 	if wasRunning {
 		// A reloaded page has lost what it knew: tell it again which document

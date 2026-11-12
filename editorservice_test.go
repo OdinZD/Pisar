@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -458,6 +459,147 @@ func TestEdWriteConfigKeepsUserWords(t *testing.T) {
 		}
 		if got := readString(t, path); got != content || !info.ModTime().Equal(old) {
 			t.Errorf("%s was touched: %q, %v", path, got, info.ModTime())
+		}
+	}
+}
+
+// The path of the user's own Neovim file reaches init.lua through the
+// environment, and the file is never written by the application: not by
+// writeConfig, not by Start. The file is the user's, so a test that wrote it
+// would be one that could destroy it.
+func TestEdUserPath(t *testing.T) {
+	e := newEd(t)
+	paths := e.paths()
+	if paths.UserLua != filepath.Join(e.home, "user.lua") {
+		t.Fatalf("UserLua = %q, want <home>/user.lua", paths.UserLua)
+	}
+	// No file: writeConfig makes none, and neither does Start.
+	if err := e.svc.writeConfig(sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(paths.UserLua); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("writeConfig created user.lua: %v", err)
+	}
+	needNvim(t)
+	if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := os.Lstat(paths.UserLua); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Start created user.lua: %v", err)
+	}
+	got := e.eval(`[$PISAR_USER_LUA, get(g:, 'user_ran', 0)]`)
+	if want := []string{paths.UserLua, "0"}; !slices.Equal(got, want) {
+		t.Errorf("PISAR_USER_LUA and user_ran = %q, want %q", got, want)
+	}
+}
+
+// putUserLua writes the user's file into the home, the way the user would, with
+// an old modification time and a mode of their own choosing.
+func (e *edEnv) putUserLua(content string) (os.FileInfo, string) {
+	e.t.Helper()
+	path := e.paths().UserLua
+	if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		e.t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(path, old, old); err != nil {
+		e.t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return info, path
+}
+
+func TestEdUserLua(t *testing.T) {
+	needNvim(t)
+	e := newEd(t)
+	const src = "vim.g.user_ran = 1\nvim.o.number = true\n-- a comment of the user's\n"
+	before, path := e.putUserLua(src)
+	if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	got := e.eval(`[get(g:, 'user_ran', 0), &number, &hidden, &laststatus, &cmdheight, get(g:, 'pisar_user_error', '')]`)
+	if want := []string{"1", "1", "1", "2", "1", ""}; !slices.Equal(got, want) {
+		t.Errorf("state after the user's file = %q, want %q", got, want)
+	}
+
+	// Restarting the page runs Start again, and a second writeConfig: the file is
+	// still the user's, byte for byte, with its own mode and time.
+	if err := e.svc.Start(context.Background(), 90, 25, sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.writeConfig(sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readString(t, path) != src || after.Mode() != before.Mode() || !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("user.lua was touched: %q, %v, %v", readString(t, path), after.Mode(), after.ModTime())
+	}
+	entries, err := os.ReadDir(e.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ent := range entries {
+		if strings.Contains(ent.Name(), "user.lua") && ent.Name() != "user.lua" {
+			t.Errorf("a temporary or backup copy of user.lua was left: %s", ent.Name())
+		}
+	}
+}
+
+// logSink collects what slog writes while a test runs.
+type logSink struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *logSink) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logSink) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// A mistake in user.lua does not stop the editor, is logged with the path and
+// the first line of the error, and is the user's code only: not its text.
+func TestEdUserLuaLog(t *testing.T) {
+	needNvim(t)
+	sink := &logSink{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(sink, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	e := newEd(t)
+	const secret = "a_line_of_the_users_own_code"
+	_, path := e.putUserLua("vim.g.user_ran = 1\nlocal " + secret + " = 1\nerror('boom\\nsecond line')\n")
+	if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	got := e.eval(`[get(g:, 'user_ran', 0), &hidden, get(g:, 'pisar_user_error', '') =~ 'second line']`)
+	if want := []string{"1", "1", "1"}; !slices.Equal(got, want) {
+		t.Errorf("state = %q, want %q: the editor must work, with the full error kept in Neovim", got, want)
+	}
+	log := sink.String()
+	for _, want := range []string{"editor: user.lua", "file=" + path, "user.lua:3: boom"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log = %q, want it to contain %q", log, want)
+		}
+	}
+	for _, not := range []string{"second line", "stack traceback", secret} {
+		if strings.Contains(log, not) {
+			t.Errorf("log = %q, must not contain %q", log, not)
 		}
 	}
 }

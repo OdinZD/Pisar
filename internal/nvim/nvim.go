@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,7 +60,7 @@ const (
 	previewMethod  = "pisar_preview"
 	searchMethod   = "pisar_search"
 	previewVar     = "pisar_preview"
-	socketPrefix   = "nvim-"
+	socketPrefix   = "n" // short on purpose: a socket path may be at most maxSocketPath bytes
 )
 
 // EventKind identifies the type of an Event.
@@ -212,10 +213,11 @@ type Process struct {
 	done   chan struct{} // closed once the process has been reaped
 	reaped chan struct{} // closed when all RPC resources have been released
 
-	mu        sync.Mutex // guards nv, serveDone, serverPid, torn and calls admission
+	mu        sync.Mutex // guards nv, serveDone, serverPid, user, torn and calls admission
 	nv        *nvimrpc.Nvim
 	serveDone chan struct{}
 	serverPid int // Neovim's server process; 0 until known
+	user      UserConfig
 	torn      bool
 	calls     sync.WaitGroup // in-flight RPC calls
 
@@ -256,8 +258,10 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 	} else if !fi.IsDir() {
 		return nil, fmt.Errorf("nvim: socket dir %q is not a directory", opts.SocketDir)
 	}
-	sock := filepath.Join(opts.SocketDir,
-		fmt.Sprintf("%s%d-%d.sock", socketPrefix, os.Getpid(), socketSeq.Add(1)))
+	// Base 36 keeps the name short: the path limit of a Unix socket is tight
+	// once the directory is a long temporary one (as in tests).
+	sock := filepath.Join(opts.SocketDir, socketPrefix+
+		strconv.FormatInt(int64(os.Getpid()), 36)+"-"+strconv.FormatUint(socketSeq.Add(1), 36)+".sock")
 	if len(sock) > maxSocketPath {
 		return nil, fmt.Errorf("%w: %d bytes, limit %d: %s", ErrSocketPathTooLong, len(sock), maxSocketPath, sock)
 	}
@@ -413,9 +417,12 @@ func (p *Process) connect(ctx context.Context, timeout time.Duration) error {
 	p.serverPid = pid
 	p.mu.Unlock()
 
-	return p.call(ctx, "register channel", func(nv *nvimrpc.Nvim) error {
+	if err := p.call(ctx, "register channel", func(nv *nvimrpc.Nvim) error {
 		return nv.SetVar(channelVar, nv.ChannelID())
-	})
+	}); err != nil {
+		return err
+	}
+	return p.readUserConfig(ctx)
 }
 
 // reap waits for the process, then releases everything that depends on it.

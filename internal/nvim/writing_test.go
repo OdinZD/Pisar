@@ -33,6 +33,7 @@ type proseOpts struct {
 	cutDict     bool   // put only the first half of it there
 	words       string // PISAR_SPELLFILE; "" leaves the variable unset
 	colorscheme bool   // install the generator's sample colorscheme
+	user        string // PISAR_USER_LUA; "" leaves the variable unset
 }
 
 // envValue returns the value of key in a list of "K=V" entries.
@@ -88,6 +89,9 @@ func newProse(t *testing.T, o proseOpts) (*Process, *output) {
 		}
 		if o.words != "" {
 			opts.Env = append(opts.Env, "PISAR_SPELLFILE="+o.words)
+		}
+		if o.user != "" {
+			opts.Env = append(opts.Env, "PISAR_USER_LUA="+o.user)
 		}
 	})
 }

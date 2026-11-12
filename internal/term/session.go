@@ -449,6 +449,16 @@ func (s *Session) Format(ctx context.Context, kind string) error {
 	return p.Format(ctx, kind)
 }
 
+// UserConfig reports what became of the user's own user.lua when the running
+// Neovim started; see nvim.Process.UserConfig. Without a process it is empty.
+func (s *Session) UserConfig() nvim.UserConfig {
+	p, err := s.proc()
+	if err != nil {
+		return nvim.UserConfig{}
+	}
+	return p.UserConfig()
+}
+
 // Save writes the current buffer to its file.
 func (s *Session) Save(ctx context.Context) error {
 	p, err := s.proc()

@@ -7,6 +7,19 @@
 -- talks to Neovim over RPC and cannot answer, so that question would freeze the
 -- application. The dictionary Pisar needs is shipped with it, never downloaded.
 vim.g.loaded_spellfile_plugin = 1
+-- The same question comes through a second door, which that variable does not
+-- close. While Neovim is still starting, setting 'spelllang' to a language
+-- without a dictionary makes the core itself add the autocmd
+--   VimEnter * call v:lua.require'nvim.spellfile'.get('xx')|set spell
+-- (measured with Neovim 0.12: nvim_get_autocmds lists it). That is how a
+-- 'spelllang' in the user's own file would ask "Download? [y/N]" after init.lua
+-- has corrected it. The module it calls is replaced by one that does nothing;
+-- the "set spell" half of the autocmd is undone where user.lua is handled.
+package.loaded["nvim.spellfile"] = setmetatable({}, {
+  __index = function()
+    return function() end
+  end,
+})
 
 vim.g.mapleader = " "
 
@@ -126,9 +139,32 @@ vim.o.spellcapcheck = ""
 -- finishes) and would fetch the file from the network. The application writes
 -- hr.utf-8.spl before it starts Neovim, so this should not come up; if the file
 -- is missing anyway, English alone is better than a frozen window.
+--
+-- Whether a dictionary exists for a 'spelllang' entry: Neovim looks for
+-- spell/<name>.<encoding>.spl, with an ASCII file as the fallback, and the
+-- region ("_us" in "en_us") is not part of the file name (:help spell-load).
+-- "cjk" is no language but a flag (:help 'spelllang'). A name outside the
+-- characters the option documents (letters, digits, "-", "_") is refused too,
+-- since it goes into a :set command.
+local function has_dictionary(name)
+  if name == "cjk" then
+    return true
+  end
+  if not name:match("^[%w_%-]+$") then
+    return false
+  end
+  local base = name:match("^(.-)_%l%l$") or name
+  for _, enc in ipairs({ "utf-8", "ascii" }) do
+    if #vim.api.nvim_get_runtime_file("spell/" .. base .. "." .. enc .. ".spl", false) > 0 then
+      return true
+    end
+  end
+  return false
+end
+
 local langs = {}
 for _, lang in ipairs({ "hr", "en" }) do
-  if #vim.api.nvim_get_runtime_file("spell/" .. lang .. ".utf-8.spl", false) > 0 then
+  if has_dictionary(lang) then
     table.insert(langs, lang)
   end
 end
@@ -167,8 +203,6 @@ end
 -- nvim_subscribe() call, which is not part of the documented API in 0.12.
 -- Until the variable is set nothing is sent, so early events cannot error.
 -- The group name and method names must match internal/nvim.
-local group = vim.api.nvim_create_augroup("PisarNotify", { clear = true })
-
 local function notify(method, ...)
   local chan = vim.g.pisar_channel
   if chan then
@@ -209,16 +243,6 @@ local function modified_changed(buf)
   notify("pisar_modified", path_of(buf), modified)
 end
 
--- BufWritePost runs after 'modified' was reset (checked in 0.12), so the saved
--- event comes first and the state change right after it.
-vim.api.nvim_create_autocmd("BufWritePost", {
-  group = group,
-  callback = function(args)
-    notify("pisar_saved", vim.api.nvim_buf_get_name(args.buf))
-    modified_changed(args.buf)
-  end,
-})
-
 -- BufEnter also fires when a window is entered or the buffer is revisited
 -- without a change, so only a different buffer (or a different name for the
 -- same one, which BufFilePost reports: :saveas, :file) is announced. Only the
@@ -245,51 +269,80 @@ local function entered(buf)
   changed()
 end
 
-vim.api.nvim_create_autocmd({ "BufEnter", "BufFilePost" }, {
-  group = group,
-  callback = function(args)
-    if args.buf == vim.api.nvim_get_current_buf() then
-      entered(args.buf)
-    end
-  end,
-})
+-- Everything Go listens to. It is a function because it runs twice: here, and
+-- once more after the user's own file (see "user.lua" at the end), which may
+-- have removed the group or single autocmds of it. "clear = true" empties the
+-- group first, so a second run leaves exactly one copy of each autocmd, never
+-- two. The group name must match internal/nvim.
+local function install_events()
+  local group = vim.api.nvim_create_augroup("PisarNotify", { clear = true })
 
--- The text of the current buffer changed: TextChanged in normal mode,
--- TextChangedI in insert mode, TextChangedP in insert mode while the completion
--- menu is open (:help TextChanged).
-vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
-  group = group,
-  callback = changed,
-})
+  -- BufWritePost runs after 'modified' was reset (checked in 0.12), so the saved
+  -- event comes first and the state change right after it.
+  vim.api.nvim_create_autocmd("BufWritePost", {
+    group = group,
+    callback = function(args)
+      notify("pisar_saved", vim.api.nvim_buf_get_name(args.buf))
+      modified_changed(args.buf)
+    end,
+  })
 
--- Loading the current buffer again from disk (:edit!, a reload after the file
--- changed outside) replaces its text without TextChanged (measured with
--- Neovim 0.12). Only the buffer already announced as current counts: a buffer
--- that is just being opened is announced by BufEnter, through entered().
-vim.api.nvim_create_autocmd("BufReadPost", {
-  group = group,
-  callback = function(args)
-    if args.buf == current.buf then
-      changed()
-    end
-  end,
-})
+  vim.api.nvim_create_autocmd({ "BufEnter", "BufFilePost" }, {
+    group = group,
+    callback = function(args)
+      if args.buf == vim.api.nvim_get_current_buf() then
+        entered(args.buf)
+      end
+    end,
+  })
 
--- Fires for any buffer, not just the current one.
-vim.api.nvim_create_autocmd("BufModifiedSet", {
-  group = group,
-  callback = function(args)
-    modified_changed(args.buf)
-  end,
-})
+  -- The text of the current buffer changed: TextChanged in normal mode,
+  -- TextChangedI in insert mode, TextChangedP in insert mode while the completion
+  -- menu is open (:help TextChanged).
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
+    group = group,
+    callback = changed,
+  })
 
-vim.api.nvim_create_autocmd("BufWipeout", {
-  group = group,
-  callback = function(args)
-    reported[args.buf] = nil
-  end,
-})
+  -- Loading the current buffer again from disk (:edit!, a reload after the file
+  -- changed outside) replaces its text without TextChanged (measured with
+  -- Neovim 0.12). Only the buffer already announced as current counts: a buffer
+  -- that is just being opened is announced by BufEnter, through entered().
+  vim.api.nvim_create_autocmd("BufReadPost", {
+    group = group,
+    callback = function(args)
+      if args.buf == current.buf then
+        changed()
+      end
+    end,
+  })
 
+  -- Fires for any buffer, not just the current one.
+  vim.api.nvim_create_autocmd("BufModifiedSet", {
+    group = group,
+    callback = function(args)
+      modified_changed(args.buf)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    callback = function(args)
+      reported[args.buf] = nil
+    end,
+  })
+
+  -- Notifications on one channel are ordered, so "pisar_bye" reaches Go after
+  -- every event sent before it. That lets Go close its event stream without
+  -- losing the save that came right before `:wq`.
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = group,
+    callback = function()
+      notify("pisar_bye")
+    end,
+  })
+end
+install_events()
 -- Normal mode only; in insert mode a space and "e" are just typed. The
 -- mapping does nothing but notify.
 vim.keymap.set("n", "<leader>e", function()
@@ -543,24 +596,28 @@ local function insert_pair(kind)
   set_cursor(row, col + #mark)
 end
 
--- The pairs belong to one stay in insert mode.
-local format_group = api.nvim_create_augroup("PisarFormat", { clear = true })
-api.nvim_create_autocmd("InsertLeave", {
-  group = format_group,
-  callback = function(args)
-    local open = open_pairs[args.buf]
-    open_pairs[args.buf] = nil
-    for _, id in pairs(open or {}) do
-      pcall(api.nvim_buf_del_extmark, args.buf, format_ns, id)
-    end
-  end,
-})
-api.nvim_create_autocmd("BufWipeout", {
-  group = format_group,
-  callback = function(args)
-    open_pairs[args.buf] = nil
-  end,
-})
+-- The pairs belong to one stay in insert mode. A function, like install_events,
+-- because it is run again after the user's file.
+local function install_format_events()
+  local format_group = api.nvim_create_augroup("PisarFormat", { clear = true })
+  api.nvim_create_autocmd("InsertLeave", {
+    group = format_group,
+    callback = function(args)
+      local open = open_pairs[args.buf]
+      open_pairs[args.buf] = nil
+      for _, id in pairs(open or {}) do
+        pcall(api.nvim_buf_del_extmark, args.buf, format_ns, id)
+      end
+    end,
+  })
+  api.nvim_create_autocmd("BufWipeout", {
+    group = format_group,
+    callback = function(args)
+      open_pairs[args.buf] = nil
+    end,
+  })
+end
+install_format_events()
 
 -- Bold and italic. Visual mode: "v" wraps the selection (or unwraps it), "V"
 -- every line of it that has text, one by one, because emphasis does not go over
@@ -796,7 +853,7 @@ local actions = {
 -- was done or does not apply (a mode that waits for input, a buffer that cannot
 -- be changed: both are normal, not failures), and the text of the error when
 -- something went wrong, so that Go can return it; it never raises one.
-function _G.pisar_format(kind)
+local function pisar_format(kind)
   local action = actions[kind]
   if not action then
     return "unknown format: " .. tostring(kind)
@@ -811,25 +868,252 @@ function _G.pisar_format(kind)
   end
   return ""
 end
+-- Go calls it by this global name; it is set again after the user's file.
+_G.pisar_format = pisar_format
 
 -- Normal and visual mode only: in insert mode a space and a letter are text.
 -- A failure is shown cut to a few columns, so that it cannot open a hit-enter
 -- prompt.
 for key, kind in pairs({ b = "bold", i = "italic", h = "heading", l = "list" }) do
   vim.keymap.set({ "n", "x" }, "<leader>" .. key, function()
-    local err = _G.pisar_format(kind)
+    local err = pisar_format(kind)
     if err ~= "" then
       api.nvim_echo({ { "Pisar: " .. vim.fn.strcharpart(err, 0, 40), "ErrorMsg" } }, true, {})
     end
   end, { silent = true, desc = "Pisar: format " .. kind })
 end
 
--- Notifications on one channel are ordered, so "pisar_bye" reaches Go after
--- every event sent before it. That lets Go close its event stream without
--- losing the save that came right before `:wq`.
-vim.api.nvim_create_autocmd("VimLeavePre", {
-  group = group,
-  callback = function()
-    notify("pisar_bye")
-  end,
-})
+
+-- The user's own file, user.lua, runs last. Pisar never creates, changes or
+-- deletes it: it is a file of the user's, in Pisar's home folder, and its path
+-- arrives in PISAR_USER_LUA. No variable, no file, a folder or a file that is
+-- not a regular one (a dangling link, a FIFO, which would block the read): it
+-- is as if it did not exist, silently. A link to a regular file is loaded: the
+-- user may keep user.lua in their own repository and link it here.
+--
+-- Two things must not happen. A mistake in the file must not stop the editor
+-- from starting, so it is loaded and run under pcall, and the rest of it (after
+-- the error) does not run, which is how Lua works; what the file did before the
+-- error stays in effect. And the file must not break what Go relies on, so after
+-- it that is set again. The user is told of the mistake: Go reads
+-- g:pisar_user_error (the full text with the traceback, the path replaced by
+-- "user.lua") after it connects, logs the first line and shows it on the message
+-- line, cut to fit (internal/nvim, Process.UserError).
+--
+-- THIS COMES BACK AFTER user.lua (it cannot be changed from there):
+--   'hidden' on (opening a document while another has unsaved changes);
+--   the flags "t" and "T" in 'shortmess' (the file and other messages that Go's
+--     :write and :edit produce stay one line); other flags are the user's;
+--   'laststatus' 2 and 'cmdheight' 1 (the search panel is laid out with exactly
+--     these two bottom rows);
+--   the autocmd groups PisarNotify (what Go listens to: saved, entered,
+--     modified, changed, bye) and PisarFormat, rebuilt from scratch: anything a
+--     file added to those two groups is gone, and nothing is doubled;
+--   _G.pisar_format, which Go calls;
+--   'spelllang': names without a dictionary are taken out, with a note (a
+--     missing one would otherwise ask to download it, see above); when none is
+--     left the languages Pisar chose are used.
+--
+-- THE USER MAY CHANGE everything else, among it all the <leader> mappings above
+-- (<leader>e, <leader>p, <leader>f too: the application's actions stay available
+-- from its buttons, the menu and the keyboard shortcuts of the window), options,
+-- colours, their own mappings and autocmds (in groups of their own). A changed
+-- mapleader applies to what the file maps afterwards; Pisar's mappings were
+-- made with the space and stay there.
+--
+-- The messages the file prints while loading (print, vim.notify, :echo) are
+-- caught instead of shown: any of them over one line would open a hit-enter
+-- prompt, and nothing answers it before Go is connected. They are kept in
+-- g:pisar_user_output. A file that asks for a key while loading (input(),
+-- confirm(), getchar()) or never returns still stops the start; that cannot be
+-- guarded against from inside Neovim, and Go ends the start with its timeout.
+--
+-- Note: a callback of the file that fails later (an autocmd, a timer) is
+-- reported by Neovim in the usual way, and a message of several lines opens a
+-- hit-enter prompt then. Go's calls that can be answered ask for that state
+-- first (Format) or refuse (Save).
+
+-- A user.lua that prints without end must not fill memory twice; what is kept
+-- is the start of the output.
+local USER_OUTPUT_MAX = 16 * 1024
+
+local function user_file()
+  local path = vim.env.PISAR_USER_LUA
+  if not path or path == "" then
+    return nil
+  end
+  -- fs_stat follows links: a dangling one has no type, a link to a folder is a
+  -- directory.
+  local st = vim.uv.fs_stat(path)
+  if not st or st.type ~= "file" then
+    return nil
+  end
+  return path
+end
+
+-- Lua cuts the name of a chunk that is long to its end, with "..." in front
+-- (LUA_IDSIZE; measured: "... directory name/Library/Application Support/Pisar/
+-- user.lua:2: boom"), and a path under ~/Library/Application Support/Pisar is
+-- long. The message line has room for little, so the name is made plain.
+local function plain_name(text, path)
+  text = text:gsub(vim.pesc(path), "user.lua")
+  local lines = vim.split(text, "\n", { plain = true })
+  for i, line in ipairs(lines) do
+    line = line:gsub("^(%s*)%.%.%.[^\n]-/user%.lua", "%1user.lua")
+    -- An error of vim.cmd() comes with the way to it: "vim/_core/editor.lua:0:
+    -- <path>..nvim_exec2() called at <path>:0:1, line 1: Vim:E492: ...".
+    lines[i] = line:gsub("^.*nvim_exec2%(%) called at [^\n]-, line %d+: ", "")
+  end
+  return table.concat(lines, "\n")
+end
+
+-- Runs the file; returns the text of the error, or nil.
+local function run_user_file(path)
+  local chunk, err = loadfile(path)
+  if not chunk then
+    return err
+  end
+  local ok, failure = xpcall(chunk, function(e)
+    local trace = debug.traceback(tostring(e), 2)
+    -- The frames below the file are those of this one: of no use to its author.
+    local below = trace:find("\n\t%[C%]: in function 'xpcall'")
+    return below and trace:sub(1, below - 1) or trace
+  end)
+  if not ok then
+    return failure
+  end
+  return nil
+end
+
+local function check_spelllang()
+  local kept, dropped = {}, {}
+  for name in vim.gsplit(vim.o.spelllang, ",", { plain = true }) do
+    name = vim.trim(name)
+    if name ~= "" then
+      table.insert(has_dictionary(name) and kept or dropped, name)
+    end
+  end
+  if #dropped == 0 then
+    return nil
+  end
+  if #kept == 0 then
+    kept = langs
+  end
+  vim.cmd("silent! set spelllang=" .. table.concat(kept, ","))
+  return "spelllang: no dictionary for " .. table.concat(dropped, ",")
+end
+
+-- What Go relies on (the list above). Returns a note when the user's file made
+-- a change that was undone and that they should hear about.
+local function restore_required()
+  vim.o.hidden = true
+  vim.opt.shortmess:append("t")
+  vim.opt.shortmess:append("T")
+  vim.o.laststatus = 2
+  vim.o.cmdheight = 1
+  install_events()
+  install_format_events()
+  _G.pisar_format = pisar_format
+  return check_spelllang()
+end
+
+-- 'messagesopt' without "hit-enter" and with "wait:0" (:help 'messagesopt'): a
+-- message longer than the message line is then neither waited for nor asked
+-- about. It is for the start only. What the file prints while it loads is caught
+-- (below), but what it prints later still during the start (vim.schedule,
+-- vim.defer_fn, a VimEnter autocmd of its own) would open a hit-enter prompt that
+-- nothing answers (measured: Start does not return). Neovim's own setting is back
+-- once VimEnter and the callbacks queued until then have run, so that the prompts
+-- the rest of Pisar is built around work as before. Items other than these two are kept as they are ("history:" must be
+-- there).
+local function startup_messagesopt(current)
+  local items = {}
+  for item in vim.gsplit(current, ",", { plain = true }) do
+    if item ~= "hit-enter" and not item:match("^wait:") then
+      table.insert(items, item)
+    end
+  end
+  table.insert(items, "wait:0")
+  return table.concat(items, ",")
+end
+
+local function load_user_file()
+  local path = user_file()
+  if not path then
+    return
+  end
+
+  local original = vim.o.messagesopt
+  local guarded = startup_messagesopt(original)
+  vim.o.messagesopt = guarded
+
+  local failure
+  -- The function is global only for the duration of the call: nvim_exec2 can
+  -- run Ex commands, not a Lua closure.
+  _G.pisar_run_user_file = function()
+    failure = run_user_file(path)
+  end
+  local ok, res = pcall(vim.api.nvim_exec2, "lua pisar_run_user_file()", { output = true })
+  _G.pisar_run_user_file = nil
+  if ok then
+    if res.output ~= "" then
+      vim.g.pisar_user_output = res.output:sub(1, USER_OUTPUT_MAX)
+    end
+  elseif not failure then
+    -- The file ran to its end, but wrote an error message (vim.notify with
+    -- ERROR, nvim_err_writeln): :lua reports that when it ends, and the output
+    -- caught so far is lost with it. "Vim(lua):" precedes the message.
+    failure = tostring(res):match("Vim%(lua%):(.*)$") or tostring(res)
+  end
+  if failure then
+    vim.g.pisar_user_error = plain_name(failure, path)
+  end
+
+  -- The file may have set 'messagesopt' itself: that is what comes back.
+  local wanted = vim.o.messagesopt
+  if wanted == guarded then
+    wanted = original
+  end
+  vim.o.messagesopt = startup_messagesopt(wanted)
+  vim.api.nvim_create_autocmd("VimEnter", {
+    group = vim.api.nvim_create_augroup("PisarStartup", { clear = true }),
+    once = true,
+    callback = function()
+      -- Callbacks of the file queued with vim.schedule run after VimEnter
+      -- (measured), and this one is queued behind them.
+      vim.schedule(function()
+        vim.o.messagesopt = wanted
+      end)
+    end,
+  })
+end
+
+-- The core's "VimEnter * ...get('xx')|set spell" (see the top of this file) does
+-- nothing now but "set spell", which would switch spelling on against a file
+-- that turned it off. It is undone after it: this autocmd is added later, so it
+-- runs later.
+local function keep_spell_choice()
+  for _, au in ipairs(vim.api.nvim_get_autocmds({ event = "VimEnter" })) do
+    if au.command and au.command:find("nvim.spellfile", 1, true) then
+      local spell = vim.o.spell
+      vim.api.nvim_create_autocmd("VimEnter", {
+        group = vim.api.nvim_create_augroup("PisarSpell", { clear = true }),
+        once = true,
+        callback = function()
+          vim.o.spell = spell
+        end,
+      })
+      return
+    end
+  end
+end
+
+load_user_file()
+local restore_ok, note = pcall(restore_required)
+if not restore_ok then
+  note = "restore after user.lua: " .. tostring(note)
+end
+keep_spell_choice()
+if note then
+  vim.g.pisar_user_note = note
+end

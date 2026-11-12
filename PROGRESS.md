@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–2 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, koraci 1–3 gotovi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 3 (`user.lua`)
+- Sljedeći korak: faza 5, korak 4 (usluga, izbornik „Oblikovanje”, frontend)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, korak 2)
+- Zadnja izmjena: 2026-11-12 (faza 5, korak 3)
 
 ## Priprema (2026-11-11)
 
@@ -1580,9 +1580,34 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
         je otvoren hit-enter prompt, pa Go prvo pita `nvim_get_mode` (uvijek odgovara) i odustaje kad je
         `blocking`. Buffer s `modifiable=false`: ništa, bez greške.
       - Riječ je niz znakova razreda 2 (`charclass`) bez `_`: `\k` u regexu hvata i emoji.
-      - Krhkost s duljinom putanje socketa u testovima paketa `nvim` i dalje vrijedi: najdulja je 100
-        od 103 bajta.
-- [ ] 3. `user.lua`: učitavanje na kraju, hvatanje greške, ponovno postavljanje onoga o čemu Go ovisi
+      - Krhkost s duljinom putanje socketa u testovima paketa `nvim` ublažena je u koraku 3 (kraće ime).
+- [x] 3. `user.lua`: `<home>/user.lua` (putanja kroz `PISAR_USER_LUA`; `NvimPaths.UserLua`) učitava se na kraju
+      `init.lua`, ako postoji; aplikacija je nikad ne stvara ni ne mijenja. Veza na običnu datoteku se
+      učitava; mapa, viseća veza i FIFO se preskaču. `nvim.Process.UserConfig()` nakon spajanja čita
+      grešku (`g:pisar_user_error`) i napomenu (`g:pisar_user_note`); Neovim pokaže jedan skraćeni
+      redak, Go zapiše putanju i prvi redak greške. 10 testova u paketu `nvim`, 3 u glavnom.
+      - **Vraća se nakon `user.lua`:** `hidden`; zastavice `t` i `T` u `shortmess`; `laststatus=2`;
+        `cmdheight=1`; skupine autocmdova `PisarNotify` i `PisarFormat` (grade se iznova, bez dvostrukih);
+        `pisar_format`; `spelllang` bez jezika čiji rječnik ne postoji (uz napomenu).
+      - **Smije se mijenjati:** sve ostalo, uključujući sva `<leader>` mapiranja (radnje aplikacije
+        ostaju dostupne kroz gumbe i izbornik), opcije proze, boje, vlastita mapiranja i autocmdove.
+        Promjena `mapleader` vrijedi samo za nova mapiranja.
+      - Izmjereno i zaštićeno: ispis iz `user.lua` pri učitavanju (30 redaka, dugi redak) hvata se u
+        `g:pisar_user_output` (`silent` bi ga obrisao iz `:messages`); ispis iz `vim.schedule` ili
+        `VimEnter` je ZAMRZAVAO pokretanje, pa je za vrijeme pokretanja `messagesopt` bez `hit-enter` i
+        vraća se nakon `VimEnter`; `spelllang` s jezikom bez rječnika iz `user.lua` zamrzavao je
+        pokretanje i nakon provjere, jer jezgra doda vlastiti `VimEnter` autocmd koji zove
+        `nvim.spellfile`, pa je taj modul zamijenjen praznim.
+      - **I dalje može zamrznuti pokretanje:** `vim.fn.input()`, `confirm()`, `getchar()` ili beskrajna
+        petlja u `user.lua`. `Start` tada istekne (`NvimStartTimeout`) i ne ostavlja proces
+        (`TestUIn`). Višeredna poruka iz tajmera ili autocmda NAKON pokretanja može otvoriti hit-enter;
+        Go pozivi se tada brane kao i dosad (`Format`, `Save`).
+      - Ispravci glavne sesije uz ovaj korak: (1) ime socketa je skraćeno (`n<pid u bazi 36>-<redni broj
+        u bazi 36>.sock` umjesto `nvim-<pid>-<redni broj>.sock`), jer su putanje u testovima paketa
+        `nvim` bile na 100–103 od 103 dopuštena bajta (ovisno o slučajnom sufiksu `t.TempDir()`); (2)
+        `TestTextState` (faza 4) je uspoređivao dva `vim.json.encode` niza, čiji redoslijed ključeva
+        nije određen, pa je jednom pao pod `-race`; snimka sada koristi `vim.inspect` (sortira
+        ključeve). Tvrdnje testa su iste.
 - [ ] 4. Usluga, izbornik „Oblikovanje” (`⌘B`, `⌘I`), frontend
 - [ ] 5. Dimna provjera (`scripts/smoke.sh`)
 - [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak

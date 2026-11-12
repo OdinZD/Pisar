@@ -34,6 +34,11 @@ const (
 // must not guess paths outside its own folder. The two names must match.
 const EnvNvimSpellFile = "PISAR_SPELLFILE"
 
+// EnvNvimUserLua is the environment variable that carries the path of the
+// user's own Neovim file (NvimPaths.UserLua) to nvim/init.lua. The two names
+// must match.
+const EnvNvimUserLua = "PISAR_USER_LUA"
+
 // EnvLog set to "debug" makes the application log every service call to
 // stderr. It is a diagnostic for development and for scripts/smoke.sh.
 const EnvLog = "PISAR_LOG"
@@ -137,6 +142,8 @@ const (
 	// in ".utf-8.add" (:help 'spellfile'); Neovim keeps the compiled list next to
 	// it as "<name>.spl" and uses it for every language in 'spelllang'.
 	nvimUserWordsName = "pisar.utf-8.add"
+	// nvimUserLuaName is the user's own Neovim file in the home folder.
+	nvimUserLuaName = "user.lua"
 
 	NvimBin         = "nvim"
 	NvimAppName     = "pisar" // NVIM_APPNAME: isolates Pisar's Neovim from the user's own
@@ -408,6 +415,12 @@ type NvimPaths struct {
 	// beside it.
 	UserWords string
 
+	// UserLua is <home>/user.lua, the user's own Neovim configuration, which
+	// init.lua loads after its own when the file exists (see EnvNvimUserLua). It
+	// is the user's file: the application never creates, changes or deletes it,
+	// and it lies outside <home>/nvim, which is rewritten at every start.
+	UserLua string
+
 	RunDirPrefix string // see NvimRunDirPrefix
 }
 
@@ -432,6 +445,7 @@ func (s *Store) Nvim() NvimPaths {
 		ColorschemeFile: filepath.Join(appCfg, "colors", NvimColorscheme+".lua"),
 
 		UserWords: filepath.Join(s.home, spellDirName, nvimUserWordsName),
+		UserLua:   filepath.Join(s.home, nvimUserLuaName),
 
 		RunDirPrefix: NvimRunDirPrefix,
 	}

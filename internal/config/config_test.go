@@ -513,6 +513,25 @@ func TestNvimPathsSpell(t *testing.T) {
 	}
 }
 
+func TestNvimPathsUserLua(t *testing.T) {
+	home := t.TempDir()
+	n := mustOpen(t, home).Nvim()
+	// The user's own file: in the home, outside the folder that is rewritten at
+	// every start, named as init.lua looks for it, and never created by Nvim().
+	if want := filepath.Join(home, "user.lua"); n.UserLua != want {
+		t.Errorf("UserLua = %q, want %q", n.UserLua, want)
+	}
+	if strings.HasPrefix(n.UserLua, filepath.Join(home, "nvim")+string(filepath.Separator)) {
+		t.Errorf("UserLua = %q lies under the folder the application rewrites", n.UserLua)
+	}
+	if EnvNvimUserLua != "PISAR_USER_LUA" {
+		t.Errorf("EnvNvimUserLua = %q, nvim/init.lua reads PISAR_USER_LUA", EnvNvimUserLua)
+	}
+	if _, err := os.Lstat(n.UserLua); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Nvim() created the user's file: %v", err)
+	}
+}
+
 func TestNvimPathsSpellCreateNothing(t *testing.T) {
 	home := t.TempDir()
 	_ = mustOpen(t, home).Nvim()
