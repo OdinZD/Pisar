@@ -5,7 +5,8 @@
 # that the frontend loaded the tree and started the editor, that Neovim shows
 # the document with the generated colorscheme, that buffer and state changes
 # reach the application, that a file created from outside refreshes the tree,
-# and that quitting leaves nothing behind.
+# and that quitting leaves nothing behind. A last run proves the chain behind
+# <Space>p (preview) and <Space>f (search) up to the page that comes back.
 #   bash scripts/smoke.sh
 #
 # No keys or clicks are sent: Neovim is driven through its socket. Everything temporary lives in one mktemp
@@ -342,7 +343,7 @@ word_up() {
     done
   fi
   [[ -n "$WSOCK" ]] || return 1
-  [[ "$(nv 'fnamemodify(bufname(""), ":t")' 2>/dev/null)" == doc.md ]]
+  [[ "$(nv 'fnamemodify(bufname(""), ":t")' 2>/dev/null)" == "${WANT_BUF:-doc.md}" ]]
 }
 
 # word_open <label> <document>: everything above; returns 1 (after reporting)
@@ -541,6 +542,178 @@ else
     check "$L: only legacy.doc and legacy.docx are in the folder" only_in "$WUSER" legacy.doc legacy.docx
     word_stop "$L"
   fi
+fi
+
+# ---- preview and document search ----------------------------------------------
+#
+# The same application, started once more with a home and a "user's folder" of
+# its own. Everything goes through Neovim's socket: <Space>p and <Space>f are
+# sent as keys to Neovim (which proves the mappings), and the rest of the chain
+# is read from the debug log: Neovim -> Go (ui:toggle-preview) -> the real
+# frontend in the webview (it calls SetPreview) -> pandoc -> preview:content.
+# The log holds the size of the HTML and the kind of result, never the page.
+# Typing into the search field of the webview would need keys sent to the
+# application itself, which this script never does; the search is covered by
+# the Go and frontend tests, here only its trigger is proved.
+
+# first_line <pattern>: the number of the first log line that matches, or nothing.
+first_line() { grep -En "$1" "$WLOG" 2>/dev/null | head -n 1 | cut -d: -f1 || true; }
+
+# nth <pattern>: how many log lines match.
+nth() { grep -Ec "$1" "$WLOG" 2>/dev/null || true; }
+
+# A result of the preview (any state) and one with a page, for pregled.md.
+PC_ANY='event=preview:content '
+PC_HTML='event=preview:content file=pregled\.md state=html code="?"? html_bytes=[1-9][0-9]*$'
+pc_any() { nth "$PC_ANY"; }
+html_more_than() { [[ "$(nth "$PC_HTML")" -gt "$1" ]]; }
+logged_times() { [[ "$(nth "$1")" -ge "$2" ]]; }
+
+# unchanged_for <seconds> <command...>: the command's output stays the same for
+# that long. A "nothing happens" claim has no event to wait for, so time is the
+# only possible condition; the debounce is 300 ms and this watches for a
+# multiple of it, in steps of 0.1 s so that a late event is seen at once.
+unchanged_for() {
+  local limit=$(($1 * 10)) n=0 first now
+  shift
+  first=$("$@")
+  while [[ $n -lt $limit ]]; do
+    sleep 0.1
+    now=$("$@")
+    [[ "$now" == "$first" ]] || return 1
+    n=$((n + 1))
+  done
+}
+
+buffer_hash() { nv 'sha256(join(getline(1, "$"), "\n"))'; }
+
+if [[ ! -s "$ROOT/testdata/docx/src/pixel.png" ]]; then
+  fail "testdata/docx/src/pixel.png exists"
+else
+  echo "--- preview and search"
+  HAVE_PANDOC=1
+  command -v pandoc >/dev/null 2>&1 || HAVE_PANDOC=0
+
+  L="preview"
+  WBASE="$TMP/preview"
+  WHOME="$WBASE/home"
+  WUSER="$WBASE/user"
+  WLOG="$WBASE/app.log"
+  mkdir -p "$WHOME" "$WUSER"
+  printf '{\n  "version": 1,\n  "projects": []\n}\n' >"$WHOME/config.json"
+  cp "$ROOT/testdata/docx/src/pixel.png" "$WUSER/pixel.png"
+  cat >"$WUSER/pregled.md" <<'MD'
+# Naslov pregleda
+
+Odlomak s dijakriticima: čćšžđ ČĆŠŽĐ.
+
+<script>alert(1)</script>
+
+![lokalna slika](pixel.png)
+
+![udaljena slika](http://127.0.0.1:9/x.png)
+MD
+  printf 'Obični tekst bez pregleda.\n' >"$WUSER/note.txt"
+
+  WANT_BUF=pregled.md
+  word_launch pregled.md
+  if ! wait_for 40 word_up; then
+    fail "$L: the application showed pregled.md in Neovim within 40 s"
+    grep -Ev 'event=pty:data|method=Write' "$WLOG" | tail -n 10 | sed 's/^/     log: /'
+    NVIM_PIDS=$(pgrep -f -- "${WSOCK:-no-socket}" | tr '\n' ' ')
+    word_stop "$L" || true
+  else
+    NVIM_PIDS=$(pgrep -f -- "$WSOCK" | tr '\n' ' ')
+
+    # A1. The frontend reports the closed pane when it starts; nothing is converted.
+    off_reported() { wlogged 'method=SetPreview enabled=false'; }
+    check "$L: the frontend told the service the preview is off at start (SetPreview enabled=false)" wait_for 20 off_reported
+    nv '1' >/dev/null || true
+    check "$L: before any key there is no preview:content" test "$(pc_any)" = 0
+    h0=$(buffer_hash || true)
+
+    # A2. <Space>p in Neovim: the application hears it, the frontend answers
+    # with SetPreview(true), and a page comes back.
+    remote "$WSOCK" --remote-send '<Space>p' >/dev/null || true
+    toggled() { wlogged 'event=ui:toggle-preview'; }
+    check "$L: <Space>p in Neovim gives ui:toggle-preview" wait_for 10 toggled
+    asked_on() { wlogged 'method=SetPreview enabled=true'; }
+    check "$L: the frontend reacted to it with SetPreview enabled=true" wait_for 10 asked_on
+    if [[ "$HAVE_PANDOC" == 1 ]]; then
+      check "$L: preview:content with state=html and a page (html_bytes > 0) for pregled.md" wait_for 20 html_more_than 0
+      # The page has a script line and a picture from a closed port: it must be converted, not refused.
+      check "$L: the document with a script line and a remote picture converted (no error, no failure warning)" \
+        sh -c '! grep -Eq "event=preview:content .*state=error|preview failed" "$1"' _ "$WLOG"
+      check "$L: the order was ui:toggle-preview, SetPreview enabled=true, preview:content" \
+        sh -c '[ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ] && [ "$1" -lt "$2" ] && [ "$2" -lt "$3" ]' _ \
+        "$(first_line 'event=ui:toggle-preview')" "$(first_line 'method=SetPreview enabled=true')" \
+        "$(first_line 'event=preview:content file=pregled\.md state=html ')"
+    else
+      skip "$L: preview:content with state=html (pandoc is not installed)"
+      check "$L: the order was ui:toggle-preview, then SetPreview enabled=true" \
+        sh -c '[ -n "$1" ] && [ -n "$2" ] && [ "$1" -lt "$2" ]' _ \
+        "$(first_line 'event=ui:toggle-preview')" "$(first_line 'method=SetPreview enabled=true')"
+    fi
+    check "$L: <Space>p wrote nothing into the buffer" test -n "$h0" -a "$(buffer_hash || true)" = "$h0"
+
+    # A3. A change of the buffer gives a new page.
+    if [[ "$HAVE_PANDOC" == 1 ]]; then
+      n_html=$(nth "$PC_HTML")
+      U1="Jedinstveni redak pregleda 4711"
+      add_line "$U1"
+      check "$L: a change of the buffer gives a new preview:content with state=html (after $n_html)" wait_for 20 html_more_than "$n_html"
+    else
+      skip "$L: a change of the buffer gives a new preview:content (pandoc is not installed)"
+    fi
+    check "$L: the text of the document is not in the log" sh -c '! grep -Fq -- "$1" "$2"' _ "Jedinstveni redak" "$WLOG"
+
+    # A5. The second <Space>p switches it off; the next change gives nothing.
+    remote "$WSOCK" --remote-send '<Space>p' >/dev/null || true
+    toggled2() { logged_times 'event=ui:toggle-preview' 2 && [[ "$(nth 'method=SetPreview enabled=false')" -ge 2 ]]; }
+    check "$L: the second <Space>p gave ui:toggle-preview and SetPreview enabled=false" wait_for 10 toggled2
+    nv '1' >/dev/null || true
+    n_all=$(pc_any)
+    n_changed=$(nth 'event=changed')
+    add_line "Drugi jedinstveni redak 4712"
+    nv '1' >/dev/null || true
+    # Time is the only condition for "nothing arrives": see unchanged_for.
+    check "$L: after a change with the preview off there is no new preview:content (1 s watched, $n_all so far)" \
+      unchanged_for 1 pc_any
+    check "$L: ... and Neovim did not even notify the application of the change" test "$(nth 'event=changed')" = "$n_changed"
+    check "$L: ... and the count is still $n_all" test "$(pc_any)" = "$n_all"
+
+    # A6. A .txt document has no preview: with the pane on, the pane is told so.
+    remote "$WSOCK" --remote-send '<Cmd>silent write<CR>' >/dev/null || true
+    saved_md() { [[ "$(grep -E 'event=document:state path=.*pregled\.md"? modified=' "$WLOG" | tail -n 1)" == *modified=false ]]; }
+    check "$L: the Markdown buffer was saved (so that leaving it asks nothing)" wait_for 10 saved_md
+    remote "$WSOCK" --remote-send "<Cmd>edit $WUSER/note.txt<CR>" >/dev/null || true
+    on_txt() { [[ "$(nv 'fnamemodify(bufname(""), ":t")' 2>/dev/null)" == note.txt ]]; }
+    check "$L: Neovim shows note.txt" wait_for 10 on_txt
+    remote "$WSOCK" --remote-send '<Space>p' >/dev/null || true
+    unsupported() { wlogged 'event=preview:content file=note\.txt state=unsupported'; }
+    check "$L: with the preview on again, note.txt gives preview:content with state=unsupported" wait_for 20 unsupported
+    check "$L: the third <Space>p gave ui:toggle-preview and SetPreview enabled=true again" \
+      sh -c '[ "$1" -ge 3 ] && [ "$2" -ge 2 ]' _ "$(nth 'event=ui:toggle-preview')" "$(nth 'method=SetPreview enabled=true')"
+
+    # B7, B8. <Space>f: the application is asked to open the search, and neither it nor Neovim is hurt.
+    h1=$(buffer_hash || true)
+    check "$L: no ui:open-search before <Space>f" test "$(nth 'event=ui:open-search')" = 0
+    remote "$WSOCK" --remote-send '<Space>f' >/dev/null || true
+    search_asked() { wlogged 'event=ui:open-search'; }
+    check "$L: <Space>f in Neovim gives ui:open-search" wait_for 10 search_asked
+    got=$(nv 'mode() . " " . &modified') || got=""
+    check "$L: Neovim still answers, in normal mode, buffer unchanged ($got)" test "$got" = "n 0"
+    check "$L: <Space>f wrote nothing into the buffer" test -n "$h1" -a "$(buffer_hash || true)" = "$h1"
+    check "$L: the markdown on disk is the text the buffer had when it was saved" grep -Fq -- "Drugi jedinstveni redak 4712" "$WUSER/pregled.md"
+
+    # C. Quit through the pid; nothing of the run is left.
+    word_stop "$L"
+    check "$L: no process of this run is left (application, Neovim, pandoc)" test -z "$(pgrep -f -- "$WHOME" || true)"
+    if [[ "$HAVE_PANDOC" == 1 ]]; then
+      check "$L: preview/ in the home holds only the filter" only_in "$WHOME/preview" preview-filter.lua
+    fi
+  fi
+  WANT_BUF=""
 fi
 
 check "config.json is unchanged" cmp -s "$CONFIG" "$TMP/config.before"
