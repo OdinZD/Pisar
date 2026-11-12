@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -73,6 +74,9 @@ type workTask struct {
 	// explicit: the user asked for the save (the quit dialog's "Save"), so a
 	// read-only document is an error instead of being skipped.
 	explicit bool
+	// round: the saveAll that queued the task (see exportWatch). Merged tasks
+	// keep the first one.
+	round *exportWatch
 
 	// settled: the export itself is over and only the reports to the frontend
 	// are left, so the document no longer counts as being exported. Guarded by
@@ -109,7 +113,67 @@ type workQueue struct {
 	pending     []*workTask
 	current     *workTask   // the task that is running
 	interrupted []*workTask // export tasks that failed after stop began
+	watches     []*exportWatch
 	stopped     bool
+}
+
+// exportWatch is what one round of saveAll knows about the exports of its
+// documents. The export that saveAll queues is not the only one that can ask
+// the user about a document: the notification of the write SaveAll has just
+// made queues one too, and when that one is already running, the two never
+// merge (see add). So the outcome of the round is the outcome of every export
+// of these documents that finished while the watch was registered, whichever
+// task it was. The maps are guarded by the queue's mu.
+type exportWatch struct {
+	docs     []*wordDoc
+	declined map[*wordDoc]bool  // the user chose Cancel or Reload (sticky)
+	failed   map[*wordDoc]error // the latest failure, cleared by a later success
+}
+
+func (w *exportWatch) record(d *wordDoc, err error) {
+	if !slices.Contains(w.docs, d) {
+		return
+	}
+	switch {
+	case err == nil:
+		delete(w.failed, d)
+	case errors.Is(err, errSaveDeclined):
+		w.declined[d] = true
+	default:
+		w.failed[d] = err
+	}
+}
+
+// watch starts collecting the outcomes of the exports of docs. It must be
+// registered before the write that makes the notification, and ended with endWatch.
+func (q *workQueue) watch(docs []*wordDoc) *exportWatch {
+	w := &exportWatch{docs: docs, declined: map[*wordDoc]bool{}, failed: map[*wordDoc]error{}}
+	q.mu.Lock()
+	q.watches = append(q.watches, w)
+	q.mu.Unlock()
+	return w
+}
+
+// declinedIn reports whether the user already declined the export of d in w's round.
+func (q *workQueue) declinedIn(w *exportWatch, d *wordDoc) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return w.declined[d]
+}
+
+// endWatch stops collecting and tells the outcome: whether the user declined
+// for any document, and the failures that were not made good by a later export.
+func (q *workQueue) endWatch(w *exportWatch) (declined bool, failures []error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.watches = slices.DeleteFunc(q.watches, func(x *exportWatch) bool { return x == w })
+	for _, d := range w.docs { // in the order of the documents, not of the map
+		declined = declined || w.declined[d]
+		if err := w.failed[d]; err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return declined, failures
 }
 
 func newWorkQueue(exec func(ctx context.Context, t *workTask) error) *workQueue {
@@ -161,6 +225,11 @@ func (q *workQueue) finish(t *workTask, err error) {
 		// document has text that is only in the working copy.
 		q.interrupted = append(q.interrupted, t)
 	}
+	if t.kind == workExport {
+		for _, w := range q.watches {
+			w.record(t.doc, err)
+		}
+	}
 	q.mu.Unlock()
 	t.err = err
 	close(t.done)
@@ -182,6 +251,9 @@ func (q *workQueue) add(t *workTask) *workTask {
 		for _, p := range q.pending {
 			if p.kind == workExport && p.doc == t.doc {
 				p.explicit = p.explicit || t.explicit
+				if p.round == nil {
+					p.round = t.round
+				}
 				return p
 			}
 		}
@@ -286,6 +358,10 @@ func (q *workQueue) stop(wait time.Duration) (unfinished []*workTask, ok bool) {
 type exportMarks struct {
 	mu sync.Mutex
 	m  map[*wordDoc]fileStamp
+	// declined: the stamp doc.md had when the user chose Cancel in the question
+	// about an export. The notification of that very write may still be on its
+	// way and would ask the same question again; a later write has another stamp.
+	declined map[*wordDoc]fileStamp
 }
 
 func (k *exportMarks) set(d *wordDoc, st fileStamp) {
@@ -295,6 +371,23 @@ func (k *exportMarks) set(d *wordDoc, st fileStamp) {
 		k.m = make(map[*wordDoc]fileStamp)
 	}
 	k.m[d] = st
+	delete(k.declined, d) // the text is in the file now
+}
+
+func (k *exportMarks) setDeclined(d *wordDoc, st fileStamp) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.declined == nil {
+		k.declined = make(map[*wordDoc]fileStamp)
+	}
+	k.declined[d] = st
+}
+
+func (k *exportMarks) declinedAt(d *wordDoc, st fileStamp) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	known, ok := k.declined[d]
+	return ok && known.same(st)
 }
 
 // setIfAbsent is for a document that is opened again: what is known about the
@@ -322,6 +415,7 @@ func (k *exportMarks) forget(docs ...*wordDoc) {
 	defer k.mu.Unlock()
 	for _, d := range docs {
 		delete(k.m, d)
+		delete(k.declined, d)
 	}
 }
 
@@ -604,14 +698,30 @@ func (e *EditorService) emitExport(path, phase, code string) {
 // saved, errSaveDeclined when the user declined, otherwise the failure.
 func (e *EditorService) runExport(ctx context.Context, t *workTask) error {
 	d := t.doc
+	// The user already answered Cancel or Reload for this document in this round
+	// of saving, through the export of the notification that was running when
+	// saveAll queued this one. The answer stands; asking again would put the same
+	// question twice.
+	if t.round != nil && e.queue.declinedIn(t.round, d) {
+		slog.Debug("editor: the user already declined the export of this document", "file", filepath.Base(d.view().Path))
+		return errSaveDeclined
+	}
 	if len(d.reasons()) > 0 && !t.explicit {
 		slog.Debug("editor: not exporting a read-only document", "file", filepath.Base(d.view().Path))
 		return nil
 	}
 	// Nothing new since the last export: the write this task answers is already in the file.
-	if st, err := stampOf(d.markdownPath()); err == nil && !d.view().Dirty && e.marks.matches(d, st) {
+	st, err := stampOf(d.markdownPath())
+	if err == nil && !d.view().Dirty && e.marks.matches(d, st) {
 		slog.Debug("editor: nothing to export", "file", filepath.Base(d.view().Path))
 		return nil
+	}
+	// The notification of a write that an export has already been declined for:
+	// only a task that nobody asked for explicitly is skipped, the quit dialog's
+	// "Save" always asks again.
+	if err == nil && !t.explicit && e.marks.declinedAt(d, st) {
+		slog.Debug("editor: not asking again about a write that was declined", "file", filepath.Base(d.view().Path))
+		return errSaveDeclined
 	}
 
 	path := d.view().Path
@@ -643,6 +753,9 @@ func (e *EditorService) runExport(ctx context.Context, t *workTask) error {
 		e.announce(ctx, d, res.View.Path != path)
 		return nil
 	case exportCanceled:
+		if stampErr == nil {
+			e.marks.setDeclined(d, stamp)
+		}
 		e.emitExport(path, phaseCanceled, "")
 		return errSaveDeclined
 	case exportReloaded:
@@ -785,6 +898,10 @@ func (e *EditorService) saveAllWords(ctx context.Context) error {
 	}
 	docs := e.unsavedWords(bufs)
 
+	// Before SaveAll, whose write makes a notification that queues an export of
+	// its own, possibly ahead of ours (see exportWatch).
+	watch := e.queue.watch(docs)
+
 	saveErr := e.session.SaveAll(bctx)
 	if errors.Is(saveErr, nvim.ErrNotRunning) && len(docs) > 0 {
 		// Neovim ended; what is left to write are the exports (:wq or :q
@@ -797,12 +914,11 @@ func (e *EditorService) saveAllWords(ctx context.Context) error {
 	tasks := make([]*workTask, 0, len(docs))
 	for _, d := range docs {
 		t := newWorkTask(workExport)
-		t.doc, t.explicit = d, true
+		t.doc, t.explicit, t.round = d, true, watch
 		tasks = append(tasks, e.queue.add(t))
 	}
 
 	var failures []error
-	declined := false
 	for _, t := range tasks {
 		select {
 		case <-t.done:
@@ -810,14 +926,14 @@ func (e *EditorService) saveAllWords(ctx context.Context) error {
 			failures = append(failures, errWorkStopped)
 			continue
 		}
-		switch {
-		case t.err == nil:
-		case errors.Is(t.err, errSaveDeclined):
-			declined = true
-		default:
+		// What the tasks that ran tell is in the watch; only the ones the queue
+		// finished without running them are not.
+		if errors.Is(t.err, errWorkStopped) {
 			failures = append(failures, t.err)
 		}
 	}
+	declined, failed := e.queue.endWatch(watch)
+	failures = append(failures, failed...)
 	if err := errors.Join(append([]error{saveErr}, failures...)...); err != nil {
 		return err
 	}

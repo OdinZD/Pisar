@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1080,6 +1081,77 @@ func TestWorkQueueCoalesce(t *testing.T) {
 	}
 }
 
+// A watch collects the outcome of every export of its documents, whichever task
+// ran it: a decline is kept, a failure only until a later export of the document
+// succeeds, and documents it does not watch are not recorded.
+func TestWorkQueueWatch(t *testing.T) {
+	boom := errors.New("boom")
+	a, b, other := &wordDoc{}, &wordDoc{}, &wordDoc{}
+	for _, c := range []struct {
+		name         string
+		results      map[*wordDoc][]error // what the successive exports of a document return
+		order        []*wordDoc
+		wantDeclined bool
+		wantFailures []error
+	}{
+		{"failure made good", map[*wordDoc][]error{a: {boom, nil}}, []*wordDoc{a, a}, false, nil},
+		{"failure stays", map[*wordDoc][]error{a: {nil, boom}}, []*wordDoc{a, a}, false, []error{boom}},
+		{"decline is kept", map[*wordDoc][]error{a: {errSaveDeclined, nil}}, []*wordDoc{a, a}, true, nil},
+		{"decline and failure", map[*wordDoc][]error{a: {errSaveDeclined}, b: {boom}}, []*wordDoc{a, b}, true, []error{boom}},
+		{"not watched", map[*wordDoc][]error{other: {boom, errSaveDeclined}}, []*wordDoc{other, other}, false, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			q := newWorkQueue(func(_ context.Context, task *workTask) error {
+				mu.Lock()
+				defer mu.Unlock()
+				r := c.results[task.doc]
+				c.results[task.doc] = r[1:]
+				return r[0]
+			})
+			t.Cleanup(func() { q.stop(edWait) })
+			w := q.watch([]*wordDoc{a, b})
+			for _, d := range c.order {
+				task := q.add(exportTask(d, true))
+				<-task.done // one at a time: nothing is merged
+			}
+			declined, failures := q.endWatch(w)
+			if declined != c.wantDeclined || !slices.Equal(failures, c.wantFailures) {
+				t.Errorf("declined %v, failures %v; want %v, %v", declined, failures, c.wantDeclined, c.wantFailures)
+			}
+			if len(q.watches) != 0 {
+				t.Error("the watch is still registered")
+			}
+		})
+	}
+}
+
+// The round of a task that waits is not lost when another export of the document
+// is merged into it, whichever of them has one.
+func TestWorkQueueRound(t *testing.T) {
+	probe := newProbe()
+	q := newWorkQueue(probe.exec)
+	t.Cleanup(func() { q.stop(edWait) })
+	a, b := &wordDoc{}, &wordDoc{}
+	round := q.watch([]*wordDoc{a, b})
+
+	q.add(exportTask(a, false))
+	recv(t, probe.started) // running: later exports of a are not merged into it
+
+	plain := q.add(exportTask(a, false))
+	asked := exportTask(a, true)
+	asked.round = round
+	if got := q.add(asked); got != plain || got.round != round {
+		t.Errorf("the round was lost when an explicit export was merged: round %v", got.round)
+	}
+	first := exportTask(b, true)
+	first.round = round
+	waiting := q.add(first)
+	if got := q.add(exportTask(b, false)); got != waiting || got.round != round {
+		t.Error("a merge took the round away")
+	}
+}
+
 // Tasks run one at a time, in the order they were queued.
 func TestWorkQueueOrder(t *testing.T) {
 	var order []string
@@ -1206,5 +1278,161 @@ func TestWdRunning(t *testing.T) {
 	wc, found, err := w.ops.FindWork(context.Background(), path)
 	if err != nil || !found || !wc.Meta.Dirty {
 		t.Errorf("working copy found %v, dirty %v, %v", found, wc.Meta.Dirty, err)
+	}
+}
+
+// --- the order of the notification and the explicit export ---
+
+// heldQuestion holds the first conflict question until open is called, like a
+// user who has not answered yet, so a test decides what happens in the meantime.
+type heldQuestion struct {
+	asked chan struct{}
+	open  func()
+	first atomic.Bool
+}
+
+func holdFirstQuestion(t *testing.T, w *wdEnv) *heldQuestion {
+	t.Helper()
+	release := make(chan struct{})
+	h := &heldQuestion{asked: make(chan struct{}), open: sync.OnceFunc(func() { close(release) })}
+	t.Cleanup(h.open) // a failed test must not leave the export goroutine stuck in the question
+	w.dlg.during = func() {
+		if h.first.CompareAndSwap(false, true) {
+			close(h.asked)
+			<-release
+		}
+	}
+	return h
+}
+
+func (h *heldQuestion) waitAsked(t *testing.T) {
+	t.Helper()
+	select {
+	case <-h.asked:
+	case <-time.After(edWait):
+		t.Fatal("timeout waiting for the question")
+	}
+}
+
+// The notification of the write SaveAll made and the explicit export of
+// saveAll are two tasks, and either may be the one the user is asked about.
+// Whatever order they come in: the question is asked once, and saveAll reports
+// that the user declined, so the quit gate keeps the application open.
+//
+// "first": the export from the notification is already waiting for the user's
+// answer when saveAll queues its own. "last": saveAll's export asks, and the
+// export from the notification comes after it.
+func TestWdOrder(t *testing.T) {
+	for _, order := range []string{"first", "last"} {
+		for _, c := range []struct {
+			name   string
+			choice conflictChoice
+		}{{"cancel", conflictCancel}, {"reload", conflictReload}} {
+			t.Run(order+"/"+c.name, func(t *testing.T) {
+				w := startWd(t)
+				w.open("basic.docx")
+				path := w.path("basic.docx")
+				outside := readFile(t, filepath.Join("testdata", "docx", "header-image.docx"))
+				if err := os.WriteFile(path, outside, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				w.typeText("basic.docx", newText)
+				d, ok := w.words.byPath(path)
+				if !ok {
+					t.Fatal("the document is not open")
+				}
+
+				errc := make(chan error, 1)
+				saveAll := func() { errc <- w.svc.saveAll(context.Background()) }
+				var asked int
+				var held *heldQuestion
+				switch order {
+				case "first":
+					// The write of the buffer; its notification starts the export, which asks.
+					w.dlg.conflicts = []conflictChoice{c.choice}
+					held = holdFirstQuestion(t, w)
+					w.save()
+					held.waitAsked(t)
+					go saveAll()
+				case "last":
+					// A first save the user cancelled leaves the text only in the working copy.
+					w.dlg.conflicts = []conflictChoice{conflictCancel}
+					from := w.rec.mark()
+					w.save()
+					w.rec.waitExport(t, from, phaseCanceled)
+					waitCond(t, "the first export to end", w.svc.queue.idle)
+					// SaveAll writes doc.md again: a new stamp, and a notification that
+					// arrives while saveAll's export is already asking.
+					later := time.Now().Add(time.Hour)
+					if err := os.Chtimes(d.markdownPath(), later, later); err != nil {
+						t.Fatal(err)
+					}
+					_, asked, _ = w.dlg.counts()
+					w.dlg.conflicts = []conflictChoice{c.choice}
+					held = holdFirstQuestion(t, w)
+					go saveAll()
+					held.waitAsked(t)
+					w.svc.queueExport(d.markdownPath())
+				}
+				waitCond(t, "the second export to wait", func() bool { return w.svc.queue.waiting(d) })
+				held.open()
+
+				var err error
+				select {
+				case err = <-errc:
+				case <-time.After(edWait):
+					t.Fatal("saveAll did not return")
+				}
+				if !errors.Is(err, errSaveDeclined) {
+					t.Fatalf("saveAll = %v, want errSaveDeclined", err)
+				}
+				wantCode(t, err, codeCanceled)
+				// Nothing may be left to ask: a question after saveAll returned would
+				// be one for nothing.
+				waitCond(t, "the queue to end", w.svc.queue.idle)
+				if _, n, _ := w.dlg.counts(); n-asked != 1 {
+					t.Errorf("the conflict question was asked %d times, want 1", n-asked)
+				}
+				sameBytes(t, path, outside)
+			})
+		}
+	}
+}
+
+// The case that used to quit the application: the user chose Reload in the
+// question of the export from the notification, saveAll's own export then found
+// nothing to do and said "saved". The gate must not quit.
+func TestWdOrderGate(t *testing.T) {
+	w := startWd(t)
+	w.open("basic.docx")
+	path := w.path("basic.docx")
+	if err := os.WriteFile(path, readFile(t, filepath.Join("testdata", "docx", "header-image.docx")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w.typeText("basic.docx", newText)
+	d, ok := w.words.byPath(path)
+	if !ok {
+		t.Fatal("the document is not open")
+	}
+	w.dlg.conflicts = []conflictChoice{conflictReload}
+	held := holdFirstQuestion(t, w)
+	w.save()
+	held.waitAsked(t)
+
+	dlg := &fakeQuitDialogs{choice: quitChoiceSave}
+	g := &quitGate{editor: w.svc, dialogs: dlg, text: uiTextFor(t), timeout: edWait, names: 5}
+	probe := &quitProbe{g: g}
+	g.quit = probe.quit
+	if g.request() {
+		t.Fatal("the first request must be refused")
+	}
+	waitCond(t, "saveAll to queue its export", func() bool { return w.svc.queue.waiting(d) })
+	held.open()
+	g.wait()
+	if probe.quits() != 0 {
+		t.Error("the application quit although the user chose Reload")
+	}
+	if len(dlg.errors) != 0 {
+		t.Errorf("an error dialog was shown: %q", dlg.errors)
 	}
 }
