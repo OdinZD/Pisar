@@ -124,3 +124,14 @@ export interface ProjectInfo {
      */
     "missing": boolean;
 }
+
+/**
+ * ToolStatus says whether an external tool the application needs was found.
+ */
+export interface ToolStatus {
+    /**
+     * "nvim" | "pandoc"
+     */
+    "name": string;
+    "found": boolean;
+}

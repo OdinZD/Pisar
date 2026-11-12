@@ -13,5 +13,6 @@ export type {
     DocumentExport,
     DocumentState,
     PreviewContent,
-    ProjectInfo
+    ProjectInfo,
+    ToolStatus
 } from "./models.js";

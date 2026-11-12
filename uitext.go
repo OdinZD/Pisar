@@ -86,6 +86,8 @@ type uiText struct {
 	SaveCopyTitle         string `json:"saveCopyTitle"`
 	SaveCopySuffix        string `json:"saveCopySuffix"`
 	ImportSaveTitle       string `json:"importSaveTitle"`
+	StartFailedTitle      string `json:"startFailedTitle"`
+	StartFailed           string `json:"startFailed"` // placeholder {reason}
 }
 
 // nvimText are the texts Neovim shows (internal/nvim, Options.Text): every key

@@ -14,6 +14,10 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * Copy yanks Neovim's visual selection into the system clipboard. It reports
  * false when Neovim has no visual selection.
@@ -98,6 +102,15 @@ export function SetPreview(enabled: boolean): $CancellablePromise<void> {
  */
 export function Start(cols: number, rows: number, colorscheme: string): $CancellablePromise<void> {
     return $Call.ByID(4057299268, cols, rows, colorscheme);
+}
+
+/**
+ * Tools looks both tools up again on every call and always returns both, nvim
+ * first. Nothing is remembered: the user may install a tool while the
+ * application runs and ask again. The lookup does not start the tool.
+ */
+export function Tools(): $CancellablePromise<$models.ToolStatus[] | null> {
+    return $Call.ByID(3974036707);
 }
 
 /**
