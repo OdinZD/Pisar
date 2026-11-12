@@ -1675,9 +1675,10 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
   passed`, `Tests 826 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0; `bash scripts/smoke.sh` → exit 0 (146 provjera, dvaput zaredom);
   `bash scripts/shutdown.sh` → exit 0.
-- Go testovi (`go test -list`): `Pisar` 183, `config` 33, `convert` 55, `docsafe` 92, `nvim` 105,
+- Go testovi (`go test -list`, nakon ispravaka kruga 1 i prevođenja poruka): `Pisar` 188, `config` 33,
+  `convert` 55, `docsafe` 92, `nvim` 117,
   `preview` 24, `project` 44, `term` 36. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
-  84,3 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,6 %, `preview` 92,2 %,
+  84,4 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 88,8 %, `preview` 92,2 %,
   `project` 96,3 %, `term` 92,6 % (mijenja se između pokretanja; `nvim` za do oko jedan postotni bod,
   jer grane ovise o vremenu pokretanja i gašenja Neovima).
 
@@ -1730,7 +1731,7 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
 - U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
 - Blokovski odabir se za podebljano i kurziv odbija; naslov zamjenjuje oznaku liste.
 - Valovita crta i izbornik „Oblikovanje” nisu viđeni u prozoru (ručna provjera).
-- `init.lua` ima više od 1100 redaka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
+- `init.lua` ima 1443 retka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
 - `.md` bez dozvole pisanja (Neovimov `readonly`, ne `nomodifiable`): oblikovanje mijenja tekst uz
   Neovimovo upozorenje W10, isto kao tipkanje. Wordovi dokumenti samo za čitanje su `nomodifiable` i
   zaštićeni.
