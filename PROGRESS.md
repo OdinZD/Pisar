@@ -12,10 +12,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 6, korak 8 (`plan-reviewer`, zatim vlasnikova ručna provjera)
+- Sljedeći korak: vlasnikova ručna provjera faze 6 i odluka o prihvaćanju
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 6: koraci 1–7 izvedeni, pregled plana u tijeku)
+- Zadnja izmjena: 2026-11-12 (faza 6: svi koraci izvedeni, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -1935,9 +1935,11 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
       - Prolazi i nad ad-hoc i nad potpisanim paketom (potpisani: 4 pokretanja kod `coder`-a, 2 kod glavne sesije).
       - **Incident (2026-11-12, 18:41):** `coder` je u pokusu jednom pokrenuo `nvim --server ''` (prazan socket);
         vlasnikova `~/.local/state/nvim/shada/main.shada` ima vrijeme izmjene 18:41 i 14 111 bajtova (prije
-        13 882), pa je vjerojatno prepisana i drugi put. Sadržaj nije provjeravan ni vraćan. `remote()` u obje dimne skripte od kruga 1 pregleda odbija prazan socket i
+        13 882), pa je vjerojatno prepisana i drugi put. Sadržaj nije provjeravan ni vraćan. I mapa
+        `~/.local/state/nvim/swap` ima vrijeme izmjene 18:41 (swap datoteka je nastala i nestala; ostataka nema). `remote()` u obje dimne skripte od kruga 1 pregleda odbija prazan socket i
         klijenta pokreće s `-i NONE` i `XDG_*` u privremenoj mapi.
-- [ ] 8. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+- [x] 8. Kraj faze: dokazi po kriterijima, popis za ručnu provjeru, `plan-reviewer` (krug 1 FAIL, krug 2 **PASS**),
+      sažetak vlasniku
 
 ### Pregled plana — krug 1 (2026-11-12): FAIL, jedan bloker; ispravljeno
 
@@ -1961,6 +1963,13 @@ Napomene bez izmjene: u pokretanju B dimne skripte dokument je na naredbenom ret
 stanje `failed` s `errorNvimMissing` (i ono nosi naredbu za instalaciju), a ne obavijest s gumbom — obavijest
 ostaje u ručnoj provjeri; dijalog o neuspjelom pokretanju umeće engleski tekst greške u hrvatsku rečenicu
 (isti obrazac kao `nvimUserLuaError`); `task package` traži `wails3` na PATH-u (`~/go/bin`; postojeće stanje).
+
+### Pregled plana — krug 2 (2026-11-12): PASS
+
+Reviewer je potvrdio sva četiri ispravka (prazan socket i `XDG_*` pokusom s lažnim `nvim`-om; novi efekt u
+`EditorPane` bez petlje: 1 poziv `Tools` pri pokretanju, 2 nakon `:qa!`), sam ponovio sve provjere i pratio
+vlasnikove Neovim datoteke kroz sva pokretanja (nepromijenjene). Dvije napomene, obje unesene u zapis: mapa
+`swap` u incidentu od 18:41 i potpunija naredba u ručnoj provjeri 6.
 
 ### Dokazi po kriterijima (2026-11-12)
 
@@ -1998,7 +2007,8 @@ Paket: `SIGN_IDENTITY="…" task sign` → `bin/Pisar.app` (po želji ga povuci 
 5. `.docx` iz mape u Documents: macOS pita za pristup mapi JEDNOM; nakon ponovnog `task sign` i pokretanja ne
    pita opet.
 6. Obavijest o alatu koji nedostaje: `open --env PISAR_TOOL_DIRS= bin/Pisar.app` iz terminala s golim PATH-om
-   (`env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/open -n --env PISAR_TOOL_DIRS= bin/Pisar.app`):
+   (iz korijena repozitorija: `env -i HOME="$HOME" USER="$USER" TMPDIR="$TMPDIR" PATH=/usr/bin:/bin:/usr/sbin:/sbin
+   /usr/bin/open -n --env PISAR_TOOL_DIRS= bin/Pisar.app`):
    u praznom editoru naslov, dva retka s naredbama `brew install …` i gumb „Provjeri ponovno”; stablo radi.
 
 ### Otvoreno nakon faze 6
@@ -2020,6 +2030,9 @@ nekorištenih platformi iz `build/`, teme.
 
 ### Kriteriji prihvaćanja
 
-- [ ] `.app` se gradi i pokreće izvan razvojnog okruženja
-- [ ] provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom
-- [ ] ikona, naziv, verzija; potpisivanje za lokalnu upotrebu
+Automatski dio je dokazan (odjeljak „Dokazi po kriterijima”); kućice ostaju prazne dok vlasnik ne prođe ručnu
+provjeru (dvoklik iz Findera, izgled ikone i obavijesti, clipboard).
+
+- [ ] `.app` se gradi i pokreće izvan razvojnog okruženja — dokaz 1; dvoklik iz Findera čeka vlasnika
+- [ ] provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom — dokaz 2; izgled obavijesti čeka vlasnika
+- [ ] ikona, naziv, verzija; potpisivanje za lokalnu upotrebu — dokaz 3; izgled ikone čeka vlasnika
