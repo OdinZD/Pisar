@@ -485,6 +485,44 @@ func TestNvimPathsCreateNothing(t *testing.T) {
 	}
 }
 
+func TestNvimPathsSpell(t *testing.T) {
+	home := t.TempDir()
+	n := mustOpen(t, home).Nvim()
+
+	// The dictionary: Neovim looks for spell/<lang>.utf-8.spl on the runtimepath,
+	// and stdpath("config") is on it.
+	appCfg := filepath.Join(n.ConfigHome, n.AppName)
+	if n.SpellDir != filepath.Join(appCfg, "spell") || n.HrDictionary != filepath.Join(n.SpellDir, "hr.utf-8.spl") {
+		t.Errorf("dictionary outside stdpath(config)/spell: %q, %q", n.SpellDir, n.HrDictionary)
+	}
+
+	// The user's words: a name Neovim accepts for 'spellfile' (:help 'spellfile'),
+	// under the home, and outside the folder that is rewritten at every start.
+	if !strings.HasSuffix(n.UserWords, ".utf-8.add") {
+		t.Errorf("UserWords = %q must end in .utf-8.add", n.UserWords)
+	}
+	if want := filepath.Join(home, "spell", "pisar.utf-8.add"); n.UserWords != want {
+		t.Errorf("UserWords = %q, want %q", n.UserWords, want)
+	}
+	nvimDir := filepath.Join(home, "nvim") + string(filepath.Separator)
+	if strings.HasPrefix(n.UserWords, nvimDir) {
+		t.Errorf("UserWords = %q lies under %q, which the application rewrites", n.UserWords, nvimDir)
+	}
+	if EnvNvimSpellFile != "PISAR_SPELLFILE" {
+		t.Errorf("EnvNvimSpellFile = %q, nvim/init.lua reads PISAR_SPELLFILE", EnvNvimSpellFile)
+	}
+}
+
+func TestNvimPathsSpellCreateNothing(t *testing.T) {
+	home := t.TempDir()
+	_ = mustOpen(t, home).Nvim()
+	for _, name := range []string{"nvim", "spell"} {
+		if _, err := os.Lstat(filepath.Join(home, name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("Nvim() must not create %s: %v", name, err)
+		}
+	}
+}
+
 func TestLimitsColorscheme(t *testing.T) {
 	if l := mustOpen(t, t.TempDir()).Limits(); l.MaxColorscheme != DefaultMaxColorscheme || l.MaxColorscheme <= 0 {
 		t.Fatalf("unexpected MaxColorscheme %d", l.MaxColorscheme)

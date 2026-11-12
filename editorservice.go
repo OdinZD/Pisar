@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"errors"
@@ -72,6 +73,14 @@ type DocumentState struct {
 //
 //go:embed nvim/init.lua
 var initLuaSource []byte
+
+// The Croatian dictionary (Vim's own hr.utf-8.spl, LGPL; see nvim/spell/README_hr.txt).
+// Neovim ships only English and would ask the user whether to download any other
+// language, a question nobody can answer over RPC, so the application brings
+// this one and init.lua switches the download off.
+//
+//go:embed nvim/spell/hr.utf-8.spl
+var hrDictionary []byte
 
 const (
 	// Files and folders under <home>/nvim belong to the application.
@@ -208,6 +217,9 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 				"XDG_DATA_HOME=" + paths.DataHome,
 				"XDG_STATE_HOME=" + paths.StateHome,
 				"XDG_CACHE_HOME=" + paths.CacheHome,
+				// Where zg stores the user's own words; init.lua must not guess
+				// a path outside its own folder.
+				config.EnvNvimSpellFile + "=" + paths.UserWords,
 			},
 			StartTimeout: d.Limits.NvimStartTimeout,
 			StopTimeout:  d.Limits.NvimStopTimeout,
@@ -395,11 +407,26 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	return os.Rename(tmp.Name(), path)
 }
 
-// writeConfig makes the Neovim folders and writes init.lua and the colorscheme.
+// hasContent reports whether path is an ordinary file with exactly these bytes.
+// Any failure to find out counts as "no": the caller then writes the file, and
+// that write reports a real problem.
+func hasContent(path string, want []byte) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() != int64(len(want)) {
+		return false
+	}
+	got, err := os.ReadFile(path)
+	return err == nil && bytes.Equal(got, want)
+}
+
+// writeConfig makes the Neovim folders and writes init.lua, the colorscheme and
+// the Croatian dictionary. It never writes the user's own words: it only makes
+// their folder, and Neovim creates the file at the first zg.
 func (e *EditorService) writeConfig(colorscheme string) error {
 	for _, dir := range []string{
-		filepath.Dir(e.paths.InitLua), filepath.Dir(e.paths.ColorschemeFile),
+		filepath.Dir(e.paths.InitLua), filepath.Dir(e.paths.ColorschemeFile), e.paths.SpellDir,
 		e.paths.DataHome, e.paths.StateHome, e.paths.CacheHome,
+		filepath.Dir(e.paths.UserWords),
 	} {
 		if err := os.MkdirAll(dir, nvimDirPerm); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
@@ -410,6 +437,13 @@ func (e *EditorService) writeConfig(colorscheme string) error {
 	}
 	if err := writeFileAtomic(e.paths.ColorschemeFile, []byte(colorscheme), nvimFilePerm); err != nil {
 		return fmt.Errorf("write colorscheme: %w", err)
+	}
+	// 1.2 MiB is not written at every start. A file that differs (a cut or
+	// damaged one from a crash, a different version) is replaced.
+	if !hasContent(e.paths.HrDictionary, hrDictionary) {
+		if err := writeFileAtomic(e.paths.HrDictionary, hrDictionary, nvimFilePerm); err != nil {
+			return fmt.Errorf("write Croatian dictionary: %w", err)
+		}
 	}
 	return nil
 }

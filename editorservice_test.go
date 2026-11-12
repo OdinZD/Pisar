@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -318,6 +320,145 @@ func TestEdStart(t *testing.T) {
 	}
 	if got[4] != "pisar" {
 		t.Errorf("g:colors_name = %q", got[4])
+	}
+}
+
+func TestEdStartSpell(t *testing.T) {
+	e := startEd(t)
+	e.rec.waitName(t, 0, eventPtyData)
+	paths := e.paths()
+	if got := readString(t, paths.HrDictionary); got != string(hrDictionary) {
+		t.Error("the dictionary in the spell folder is not the shipped one")
+	}
+	// The dictionary is found through the runtimepath, the words file through the
+	// environment, and Croatian words are accepted without any download.
+	got := e.eval(`[&spell, &spelllang, &spellfile, spellbadword('sjećanja')[0], spellbadword('rijč')[0], spellbadword('document')[0]]`)
+	want := []string{"1", "hr,en", paths.UserWords, "", "rijč", ""}
+	if !slices.Equal(got, want) {
+		t.Errorf("spell state = %q, want %q", got, want)
+	}
+	// Neovim has not created the words file: nothing was added.
+	if _, err := os.Lstat(paths.UserWords); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the words file exists without a zg: %v", err)
+	}
+}
+
+func TestEdWriteConfigDictionary(t *testing.T) {
+	e := newEd(t)
+	paths := e.paths()
+	write := func() {
+		t.Helper()
+		if err := e.svc.writeConfig(sample(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An old modification time makes a rewrite visible: a new file would have "now".
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	setOld := func() {
+		t.Helper()
+		if err := os.Chtimes(paths.HrDictionary, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mtime := func() time.Time {
+		t.Helper()
+		info, err := os.Stat(paths.HrDictionary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.ModTime()
+	}
+
+	write()
+	if got := readString(t, paths.HrDictionary); got != string(hrDictionary) {
+		t.Fatal("the dictionary is not byte-identical to the embedded one")
+	}
+	if info, err := os.Stat(paths.HrDictionary); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("dictionary: %v %v", info, err)
+	}
+	if info, err := os.Stat(paths.SpellDir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("spell folder: %v %v", info, err)
+	}
+
+	setOld()
+	write()
+	if !mtime().Equal(old) {
+		t.Error("a dictionary that is already right was written again")
+	}
+
+	for _, tc := range []struct {
+		name   string
+		damage func() []byte
+	}{
+		{"cut off", func() []byte { return hrDictionary[:len(hrDictionary)/2] }},
+		{"empty", func() []byte { return nil }},
+		{"same size, other bytes", func() []byte {
+			b := append([]byte(nil), hrDictionary...)
+			b[len(b)/2] ^= 0xff
+			return b
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(paths.HrDictionary, tc.damage(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.svc.writeConfig(sample(t)); err != nil {
+				t.Fatal(err)
+			}
+			if got := readString(t, paths.HrDictionary); got != string(hrDictionary) {
+				t.Error("a damaged dictionary was not replaced")
+			}
+		})
+	}
+	// No temporary file is left in the folder.
+	entries, err := os.ReadDir(paths.SpellDir)
+	if err != nil || len(entries) != 1 {
+		t.Errorf("spell folder holds %v (%v), want only the dictionary", entries, err)
+	}
+}
+
+// The words the user added are never written by the application: writeConfig
+// makes their folder and leaves the file, and its compiled list, as they are.
+func TestEdWriteConfigKeepsUserWords(t *testing.T) {
+	e := newEd(t)
+	paths := e.paths()
+	nvimDir := filepath.Join(e.home, "nvim") + string(filepath.Separator)
+	if strings.HasPrefix(paths.UserWords, nvimDir) {
+		t.Fatalf("the words file %s is under %s, which is rewritten at every start", paths.UserWords, nvimDir)
+	}
+
+	if err := e.svc.writeConfig(sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(paths.UserWords)
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("words folder: %v %v", info, err)
+	}
+	if _, err := os.Lstat(paths.UserWords); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("writeConfig created the words file: %v", err)
+	}
+
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	files := map[string]string{paths.UserWords: "blorptastic\n", paths.UserWords + ".spl": "compiled"}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.svc.writeConfig(sample(t)); err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := readString(t, path); got != content || !info.ModTime().Equal(old) {
+			t.Errorf("%s was touched: %q, %v", path, got, info.ModTime())
+		}
 	}
 }
 

@@ -1,5 +1,13 @@
--- Minimal configuration shipped with Pisar. Only what the Go side relies on:
--- no plugins, no network, no prose settings (those come later).
+-- Configuration shipped with Pisar: what the Go side relies on, and the
+-- defaults for writing prose. No plugins, no network.
+
+-- First, before anything can load a runtime plugin: Neovim's own spellfile
+-- plugin (runtime/plugin/spellfile.lua, guarded by this variable) asks the user
+-- whether to download a dictionary that is missing when 'spelllang' is set. Go
+-- talks to Neovim over RPC and cannot answer, so that question would freeze the
+-- application. The dictionary Pisar needs is shipped with it, never downloaded.
+vim.g.loaded_spellfile_plugin = 1
+
 vim.g.mapleader = " "
 
 -- The application is light. Set it explicitly instead of relying on Neovim's
@@ -19,6 +27,131 @@ vim.o.hidden = true
 -- edit of this file cannot silently remove them.
 vim.opt.shortmess:append("t")
 vim.opt.shortmess:append("T")
+
+-- The two bottom rows: the status line and a one-row command line. The search
+-- panel of the application is laid out with exactly these two rows. Both are
+-- Neovim's defaults; stated here so that a later edit of this file cannot
+-- silently move them.
+vim.o.laststatus = 2
+vim.o.cmdheight = 1
+
+-- Prose. A paragraph is one long line, so it has to wrap on screen:
+--   wrap + linebreak: wrap between words, not inside them (the default breaks
+--   at the last column that fits).
+--   breakindent: a wrapped row of a list item or quote lines up under its text.
+-- Line numbers are off: they count lines of the file, which for prose are
+-- paragraphs. <leader>n brings them back. 'display' already has "lastline" in
+-- Neovim's default, so a paragraph taller than the window is cut with "@@@"
+-- instead of being replaced by "@" rows; 'list' is off by default and stays so.
+-- These are window-local options. :set (vim.o) changes the global value as
+-- well, which is what a window gives to a buffer it has not shown before, so
+-- the toggles below carry over to documents opened later.
+vim.o.wrap = true
+vim.o.linebreak = true
+vim.o.breakindent = true
+vim.o.number = false
+vim.o.relativenumber = false
+
+-- Moving by display rows: a paragraph of ten wrapped rows would otherwise be
+-- crossed in one keystroke. With a count (5j) the keys keep their meaning of
+-- real lines, which is what a count is used for. Only normal and visual mode:
+-- an operator (dj) must stay linewise, and gj is not (:help gj). With
+-- remap = false the "j" returned for a count is the built-in one.
+local function by_rows(key, rows_key)
+  return function()
+    return vim.v.count == 0 and rows_key or key
+  end
+end
+for _, m in ipairs({
+  { "j", "gj" },
+  { "k", "gk" },
+  { "<Down>", "gj" },
+  { "<Up>", "gk" },
+}) do
+  vim.keymap.set({ "n", "x" }, m[1], by_rows(m[1], m[2]), {
+    expr = true,
+    silent = true,
+    desc = "Pisar: move by display rows",
+  })
+end
+
+-- Insert mode: <C-o> runs one command and returns to insert mode, so the mode
+-- does not change. While the completion menu is open the keys must keep
+-- choosing its items, hence pumvisible(). A count cannot be typed here.
+local function insert_by_rows(key, rows_key)
+  return function()
+    if vim.fn.pumvisible() == 1 then
+      return key
+    end
+    return "<C-o>" .. rows_key
+  end
+end
+vim.keymap.set("i", "<Down>", insert_by_rows("<Down>", "gj"), {
+  expr = true,
+  silent = true,
+  desc = "Pisar: move by display rows",
+})
+vim.keymap.set("i", "<Up>", insert_by_rows("<Up>", "gk"), {
+  expr = true,
+  silent = true,
+  desc = "Pisar: move by display rows",
+})
+
+-- Spelling, Croatian and English together. Neovim ships only English; the
+-- application writes hr.utf-8.spl into the "spell" folder of this configuration
+-- (stdpath("config") is on the runtimepath, where Neovim looks for it) before
+-- it starts Neovim.
+--
+-- The words the user adds with zg go to the file Go names in PISAR_SPELLFILE, a
+-- folder the application never rewrites. It has to be set before 'spell' and
+-- 'spelllang', which read it when they load the dictionaries. Without the
+-- variable Neovim picks its own place (stdpath("data")); that is only so that
+-- a Neovim started by hand with this file still works.
+local spellfile = vim.env.PISAR_SPELLFILE
+if spellfile and spellfile ~= "" then
+  -- The option is a comma-separated list, so a comma in the path would split it
+  -- (E474, which also ends the rest of this file); "\," is a literal comma.
+  vim.o.spellfile = (spellfile:gsub(",", "\\,"))
+end
+-- The default pattern flags a lower-case word after "." as a missing capital.
+-- In Croatian prose that is mostly wrong ("npr. riječ", "itd. sutra", "tj. što")
+-- and in Markdown it hits every numbered list item ("1. kupiti"). Misspelled
+-- words are still marked; only the capital-letter check is off.
+vim.o.spellcapcheck = ""
+-- Only languages whose dictionary file exists are asked for. Measured with
+-- Neovim 0.12: when 'spelllang' names a language without a file while Neovim is
+-- still starting, the core registers a VimEnter autocmd that calls
+-- require("nvim.spellfile").get(), whatever g:loaded_spellfile_plugin says. That
+-- asks "Download? [y/N]" (a prompt Go cannot answer, and the start never
+-- finishes) and would fetch the file from the network. The application writes
+-- hr.utf-8.spl before it starts Neovim, so this should not come up; if the file
+-- is missing anyway, English alone is better than a frozen window.
+local langs = {}
+for _, lang in ipairs({ "hr", "en" }) do
+  if #vim.api.nvim_get_runtime_file("spell/" .. lang .. ".utf-8.spl", false) > 0 then
+    table.insert(langs, lang)
+  end
+end
+-- A file that exists but is damaged is loaded when these are set, and Neovim
+-- reports it with messages that end in a hit-enter prompt (measured with a cut
+-- file). "silent!" hides them; the options are set either way and English
+-- still works.
+if #langs > 0 then
+  vim.cmd("silent! set spelllang=" .. table.concat(langs, ","))
+  vim.cmd("silent! set spell")
+end
+
+-- Switches for the two defaults above. Normal mode only, like the other
+-- mappings: in insert mode a space and a letter are text. They use vim.o so the
+-- global value follows (see the prose options above): a document opened later
+-- gets the last choice, not the old default.
+vim.keymap.set("n", "<leader>s", function()
+  vim.o.spell = not vim.o.spell
+end, { silent = true, desc = "Pisar: toggle spell checking" })
+
+vim.keymap.set("n", "<leader>n", function()
+  vim.o.number = not vim.o.number
+end, { silent = true, desc = "Pisar: toggle line numbers" })
 
 -- The colorscheme uses true colours, and the TUI runs inside xterm.js.
 vim.o.termguicolors = true

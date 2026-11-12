@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, u tijeku korak 1). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, korak 1 gotov). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 5, korak 1 (proza i pravopis)
+- Sljedeći korak: faza 5, korak 2 (oblikovanje u Neovimu)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (plan faze 5 odobren)
+- Zadnja izmjena: 2026-11-12 (faza 5, korak 1)
 
 ## Priprema (2026-11-11)
 
@@ -1532,8 +1532,36 @@ event "menu:format" string                      // "bold" | "italic" (izbornik �
 
 ### Koraci
 
-- [ ] 1. Proza i pravopis: putanje u `config`, rječnik u aplikaciji, zadane opcije, kretanje po prikazanim
-      recima, `␣n`, `␣s`
+- [x] 1. Proza i pravopis. `init.lua`: `wrap`, `linebreak`, `breakindent`, bez brojeva redaka; `j` `k` `↓` `↑` po
+      prikazanim recima (s brojem ispred po stvarnim), i u insert modu; `spell` s `spelllang=hr,en`;
+      `␣s` i `␣n`; `laststatus=2` i `cmdheight=1` sada izričito. Rječnik `nvim/spell/hr.utf-8.spl`
+      (+ `README_hr.txt`, LGPL) je ugrađen (`go:embed`) i `writeConfig` ga zapisuje u
+      `<home>/nvim/config/pisar/spell/` samo kad se razlikuje. Vlastite riječi (`zg`):
+      `<home>/spell/pisar.utf-8.add` (putanja stiže kroz `PISAR_SPELLFILE`; izvan mape koju aplikacija
+      prepisuje; preživljava ponovno pokretanje).
+      - **Odstupanje od plana:** `loaded_spellfile_plugin=1` NIJE dovoljan. Kad `spelllang` traži jezik
+        bez datoteke, jezgra Neovima sama postavi upit „Download? [y/N]” i pokretanje se zamrzne
+        (izmjereno). Zato `init.lua` u `spelllang` stavlja samo jezike čija datoteka postoji (bez
+        hrvatskog rječnika ostaje `en`) i postavlja ga kroz `silent!` (oštećen rječnik inače daje
+        hit-enter). `TestSpellBoot` to dokazuje.
+      - `spellcapcheck=""`: zadani uzorak je označavao mala slova nakon „npr.”, „itd.”, „tj.” i svaku
+        stavku „1. kupiti” kao grešku velikog slova.
+      - **Valovita crta:** Neovim pri pokretanju pita terminal (DECRQSS) podržava li je; xterm.js 6.0.0
+        odgovara `0m` (taj mu je dio označen kao neispravan), pa je kriva riječ bila podcrtana ravnom
+        crtom u boji teksta. Go sada na taj upit odgovara sam (`termAnswers`, kao za DSR i DA1) s
+        `0;4:3m`; Neovim tada šalje `CSI 4:3 m` i boju `58:2::180:35:24` (`danger`), a DOM renderer
+        xterm.js-a stil 3 crta kao valovitu crtu (provjereno u izvoru, ne okom). Prepoznavanje upita
+        razlomljenog preko dva čitanja izdvojeno je u `queryScanner` i dobilo test.
+      - **Ispravak greške iz faze 2 (nađena ovdje):** `Process.Redraw` je zvao `:redraw!`, koji ne
+        šalje nijedan bajt kad se ekran nije promijenio, pa je nakon ponovnog učitavanja stranice
+        prozor mogao ostati prazan. Sada zove `:mode` („Clears and redraws the screen”, `:help
+        :mode`). `TestRedrawSends`; `TestEdInitial`, koji je zbog toga postao nestabilan (13 od 30
+        padova), nije mijenjan i prolazi 30 od 30 (kod glavne sesije 20 od 20).
+      - `scripts/smoke.sh`: popis sadržaja privremenog homea dobio je `spell` (jedan redak).
+      - Krhkost u testovima: putanja Neovimovog socketa u testovima paketa `nvim` je `t.TempDir()` +
+        `nvim-<pid>-<redni broj>.sock`; redni broj je zajednički za cijeli testni program, pa kasniji
+        testovi s dugim imenom mogu prijeći 103 bajta. Novi `writing_test.go` se zato po imenu sortira
+        zadnji. Nije ispravljeno (ispravak bi socket stavio izvan `t.TempDir()`).
 - [ ] 2. Oblikovanje u Neovimu: Lua funkcije, `␣b` `␣i` `␣h` `␣l`, `Format(ctx, kind)`
 - [ ] 3. `user.lua`: učitavanje na kraju, hvatanje greške, ponovno postavljanje onoga o čemu Go ovisi
 - [ ] 4. Usluga, izbornik „Oblikovanje” (`⌘B`, `⌘I`), frontend

@@ -29,6 +29,11 @@ const (
 	WindowMinHeight = 600
 )
 
+// EnvNvimSpellFile is the environment variable that carries the path of the
+// file with the user's own words (NvimPaths.UserWords) to nvim/init.lua, which
+// must not guess paths outside its own folder. The two names must match.
+const EnvNvimSpellFile = "PISAR_SPELLFILE"
+
 // EnvLog set to "debug" makes the application log every service call to
 // stderr. It is a diagnostic for development and for scripts/smoke.sh.
 const EnvLog = "PISAR_LOG"
@@ -125,6 +130,14 @@ const (
 // Neovim as Pisar runs it. These are the only places the names are written down
 // (nvim/init.lua refers to the colorscheme by the same name).
 const (
+	// NvimHrDictionary is the Croatian dictionary the application ships; Neovim
+	// looks for "spell/<lang>.utf-8.spl" on the runtimepath (:help spell-load).
+	NvimHrDictionary = "hr.utf-8.spl"
+	// nvimUserWordsName is the file of the user's own words. 'spellfile' must end
+	// in ".utf-8.add" (:help 'spellfile'); Neovim keeps the compiled list next to
+	// it as "<name>.spl" and uses it for every language in 'spelllang'.
+	nvimUserWordsName = "pisar.utf-8.add"
+
 	NvimBin         = "nvim"
 	NvimAppName     = "pisar" // NVIM_APPNAME: isolates Pisar's Neovim from the user's own
 	NvimColorscheme = "pisar"
@@ -165,6 +178,9 @@ const (
 	backupsDirName = "backups"
 	// previewDirName holds the files the preview needs next to pandoc (its filter).
 	previewDirName = "preview"
+	// spellDirName holds the user's own spelling words. Pisar never rewrites it,
+	// unlike the Neovim configuration folder, which is replaced at every start.
+	spellDirName = "spell"
 )
 
 // Project is one registered folder.
@@ -380,7 +396,17 @@ type NvimPaths struct {
 	ConfigHome, DataHome, StateHome, CacheHome string
 
 	InitLua         string // <ConfigHome>/<AppName>/init.lua, passed to `nvim -u`
+	SpellDir        string // <ConfigHome>/<AppName>/spell: stdpath("config") is on the runtimepath, so Neovim finds the shipped dictionaries here
+	HrDictionary    string // <SpellDir>/hr.utf-8.spl
 	ColorschemeFile string // <ConfigHome>/<AppName>/colors/<Colorscheme>.lua; stdpath("config") is on the runtimepath
+
+	// UserWords is the file for the words added with zg, <home>/spell/pisar.utf-8.add,
+	// handed to Neovim as 'spellfile' (see EnvNvimSpellFile). It lies outside
+	// <home>/nvim on purpose: the application rewrites that folder at every
+	// start, and these words are the user's. The folder is created by the
+	// application, the file only by Neovim, and Neovim writes "<UserWords>.spl"
+	// beside it.
+	UserWords string
 
 	RunDirPrefix string // see NvimRunDirPrefix
 }
@@ -401,7 +427,11 @@ func (s *Store) Nvim() NvimPaths {
 		CacheHome:  filepath.Join(base, "cache"),
 
 		InitLua:         filepath.Join(appCfg, "init.lua"),
+		SpellDir:        filepath.Join(appCfg, "spell"),
+		HrDictionary:    filepath.Join(appCfg, "spell", NvimHrDictionary),
 		ColorschemeFile: filepath.Join(appCfg, "colors", NvimColorscheme+".lua"),
+
+		UserWords: filepath.Join(s.home, spellDirName, nvimUserWordsName),
 
 		RunDirPrefix: NvimRunDirPrefix,
 	}

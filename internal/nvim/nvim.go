@@ -144,11 +144,53 @@ func (o Options) validate() error {
 //     for the reply, which would delay every shutdown by that second.
 //     "\x1b[?1;2c" is the VT100 answer; claiming nothing extra is right,
 //     since Neovim then falls back to plain features.
+//   - At startup Neovim sends "CSI 4:3 m" (curly underline) followed by the
+//     query DECRQSS "m" ("\x1bP$qm\x1b\\") and reads from the answer whether the
+//     terminal can draw it: only an answer that contains "4:3" turns the curly
+//     underline (and the underline colour, SGR 58) on; anything else gives a
+//     plain straight underline in the text colour, which loses the wavy red
+//     line of a misspelled word (measured with Neovim 0.12, see writing_test.go).
+//     xterm.js 6.0.0 answers "0m" to this query whatever was set (its
+//     requestStatusString marks the SGR report as broken), although its DOM
+//     renderer draws style 3 as a wavy underline. When both answers arrive,
+//     in either order, the one with "4:3" wins, so the later answer of
+//     xterm.js changes nothing.
 //
 // A later duplicate answer from xterm.js is harmless.
 var termAnswers = []struct{ query, reply string }{
 	{"\x1b[5n", "\x1b[0n"},
 	{"\x1b[c", "\x1b[?1;2c"},
+	{"\x1bP$qm\x1b\\", "\x1bP1$r0;4:3m\x1b\\"},
+}
+
+// queryScanner finds the queries of termAnswers in PTY output that arrives in
+// pieces of any size: a query may be cut between two reads.
+type queryScanner struct {
+	window []byte // the end of the output so far, long enough to hold the start of a cut query
+}
+
+// feed adds the next piece of output and returns the answers to the queries
+// that end in it.
+func (q *queryScanner) feed(data []byte) []string {
+	tail := len(q.window)
+	q.window = append(q.window, data...)
+	var replies []string
+	for _, a := range termAnswers {
+		for i := 0; i+len(a.query) <= len(q.window); i++ {
+			// Only matches ending in the new data, or the tail would be answered twice.
+			if i+len(a.query) > tail && string(q.window[i:i+len(a.query)]) == a.query {
+				replies = append(replies, a.reply)
+			}
+		}
+	}
+	keep := 0
+	for _, a := range termAnswers {
+		keep = max(keep, len(a.query)-1)
+	}
+	if len(q.window) > keep {
+		q.window = append(q.window[:0], q.window[len(q.window)-keep:]...)
+	}
+	return replies
 }
 
 // socketSeq makes socket names unique within this process; the pid in the
@@ -456,27 +498,13 @@ func (p *Process) pump(w *os.File) {
 	}()
 
 	buf := make([]byte, 32<<10)
-	var window []byte // previous tail + new data: a query may arrive split across reads
+	var scan queryScanner
 	for {
 		n, err := p.pty.Read(buf)
 		if n > 0 {
-			tail := len(window)
-			window = append(window, buf[:n]...)
-			for _, a := range termAnswers {
-				for i := 0; i+len(a.query) <= len(window); i++ {
-					// Only matches ending in the new data, or the tail would be answered twice.
-					if i+len(a.query) > tail && string(window[i:i+len(a.query)]) == a.query {
-						// If this fails the PTY is going away, which the pump sees on its next read.
-						_, _ = p.pty.Write([]byte(a.reply))
-					}
-				}
-			}
-			keep := 0
-			for _, a := range termAnswers {
-				keep = max(keep, len(a.query)-1)
-			}
-			if len(window) > keep {
-				window = append(window[:0], window[len(window)-keep:]...)
+			for _, reply := range scan.feed(buf[:n]) {
+				// If this fails the PTY is going away, which the pump sees on its next read.
+				_, _ = p.pty.Write([]byte(reply))
 			}
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				return // Close closed the read end
@@ -969,11 +997,15 @@ func (p *Process) CopyVisual(ctx context.Context) (bool, error) {
 	return copied, nil
 }
 
-// Redraw forces Neovim to repaint the whole screen (what a re-attached terminal needs).
+// Redraw makes Neovim send the whole screen again (what a re-attached terminal
+// needs). It uses ":mode" ("Clears and redraws the screen", :help :mode), the
+// documented way to clear and repaint. ":redraw!" is not enough: measured with
+// Neovim 0.12, it sends no byte at all when a file is open and nothing on the
+// screen changed, so a reloaded page could stay blank. nvim__redraw() is
+// documented as experimental. ":mode" does not change the size and leaves the
+// buffers alone; it only wipes the message line, like CTRL-L does.
 func (p *Process) Redraw(ctx context.Context) error {
-	// ":redraw!" is the stable command for a full repaint (:help :redraw);
-	// nvim__redraw() is documented as experimental.
-	return p.execLua(ctx, "redraw", nil, `vim.cmd.redraw({ bang = true })`)
+	return p.execLua(ctx, "redraw", nil, `vim.cmd.mode()`)
 }
 
 // Events returns the notification stream. It is buffered (eventBuffer
