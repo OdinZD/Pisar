@@ -4,18 +4,18 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 6 — Pakiranje (plan faze u izradi). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
-  provjeru i potvrdio da sve radi (o predloženoj granici oko `user.lua` se nije izričito izjasnio; pitanje ide uz
-  plan faze 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 6 — Pakiranje (plan odobren 2026-11-12, u izvedbi). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+  provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
+  prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 6 i vlasnikovo odobrenje
+- Sljedeći korak: faza 6, korak 1 (okruženje procesa)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5 prihvaćena)
+- Zadnja izmjena: 2026-11-12 (plan faze 6 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -1822,6 +1822,70 @@ pakiranje, tamna tema.
 - [x] neobavezni `user.lua` učitava se nakon ugrađene konfiguracije — dokaz 4
 
 ## Faza 6 — Pakiranje
+
+Effort high. Plan faze odobren 2026-11-12 („kreni” na plan s četiri preporuke, bez izmjena).
+
+### Odluke vlasnika (2026-11-12)
+
+Vlasnik je plan odobrio jednom riječju, pa su sve četiri preporuke iz plana prihvaćene kako su napisane:
+
+- Ikona: glavna sesija crta jednostavan znak iz boja tokena (list s recima teksta i blok-kursorom u boji
+  akcenta); izgled vlasnik odobrava kao **[R]**.
+- Potpis: stabilan identitet kroz `$SIGN_IDENTITY`, kao u Tragu („Trag Dev” može poslužiti); nikad ad-hoc
+  za paket koji se koristi.
+- **Granica oko `user.lua` iz faze 5 je prihvaćena:** zaštita pokriva učitavanje i kraj pokretanja; ono što
+  `user.lua` promijeni kasnije (autocmd, tajmer, zamjena Neovimovih funkcija) vlasnikova je odgovornost.
+- Greška pri pokretanju prikazuje nativni dijalog umjesto tihog izlaska (dodatak izvan kriterija plana).
+
+### Ovisnosti (odobrene)
+
+- Nema novih Go ni npm ovisnosti.
+
+### Izmjereno prije plana (macOS 27.2)
+
+- Grafičke aplikacije dobivaju PATH `/usr/bin:/bin:/usr/sbin:/sbin` (`launchctl getenv PATH` je prazan);
+  `nvim` i `pandoc` su u `/opt/homebrew/bin`, pa ih aplikacija pokrenuta iz Findera ne bi našla
+  (`env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin sh -c 'command -v nvim pandoc'` → ništa, exit 1).
+- U tom okruženju locale je `C`. `man pbcopy`: „pbcopy and pbpaste use locale environment variables to
+  determine the encoding”; Neovimov `"+y` ide kroz njih (`init.lua` ne postavlja vlastiti provider).
+  Ponašanje s č ć š ž đ NIJE mjereno (diralo bi sistemski clipboard) — ide u ručnu provjeru.
+- pandoc 3.13 u golom okruženju: md → html, md → docx → md s imenom datoteke `čćšžđ.md` rade ispravno.
+- Predložak za pakiranje je netaknut: `Info.plist` „My Product” / `com.example.pisar`, Wailsova ikona
+  (`appicon.png`, `appicon.icon`, `icons.icns`, `Assets.car`), paket `bin/pisar.app`, potpis ad-hoc.
+- Jedan valjan identitet za potpisivanje: „Trag Dev”. Trag: `codesign --force --deep --options runtime
+  --entitlements … --sign "$SIGN_IDENTITY"`; entitlement mu treba samo zbog wazera (Pisar ga nema).
+- `open` ima `--env`, `--stdout`, `--stderr`, `-n`, `-W`; postoje `actool`, `iconutil`, `sips`, `qlmanage`;
+  `locale -a` ima `hr_HR.UTF-8` i `en_US.UTF-8`. Wailsov izbornik „About” zove standardni macOS prozor
+  (`orderFrontStandardAboutPanel:`), koji naziv, verziju i ikonu čita iz paketa.
+
+### Ugovor Go ↔ frontend
+
+```go
+type ToolStatus struct { Name string; Found bool } // Name: "nvim" | "pandoc"
+EditorService.Tools(ctx) []ToolStatus               // pri svakom pozivu traži iznova; uvijek oba, tim redom
+```
+
+Okolina: `PISAR_TOOL_DIRS` (popis mapa odvojen dvotočkom) zamjenjuje ugrađeni popis dodatnih mapa za
+alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `PISAR_HOME`.
+
+### Koraci
+
+- [ ] 1. Okruženje procesa: dodatne mape za alate na kraj PATH-a, UTF-8 locale kad nijedna locale varijabla
+      nije postavljena, `PISAR_TOOL_DIRS`
+- [ ] 2. Provjera alata (Go): `EditorService.Tools`; greška pri pokretanju → nativni dijalog
+- [ ] 3. Zaslon u frontendu: što nedostaje, naredba za instalaciju, „Provjeri ponovno”
+- [ ] 4. Naziv, identifikator, verzija: „Pisar”, `com.odinwolf.pisar`, 0.1.0; paket `bin/Pisar.app`
+- [ ] 5. Ikona: SVG iz tokena → `appicon.icon`, `appicon.png` → `icons.icns`, `Assets.car`
+- [ ] 6. Potpisivanje: `task sign` (`$SIGN_IDENTITY`, hardened runtime, bez entitlements datoteke)
+- [ ] 7. Dimna provjera paketa: `scripts/smoke-app.sh` (pokretanje kroz `open`, oba stanja alata)
+- [ ] 8. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+
+### Izvan opsega
+
+DMG, notarizacija, Developer ID, univerzalna binarna datoteka, kopiranje u `/Applications`, otvaranje
+dokumenata dvoklikom iz Findera i pridruživanje vrsta datoteka, provjera najmanje verzije Neovima i
+pandoca, hrvatske stavke Wailsovog izbornika aplikacije, postavka putanje alata u `config.json`, brisanje
+nekorištenih platformi iz `build/`, teme.
 
 ### Kriteriji prihvaćanja
 
