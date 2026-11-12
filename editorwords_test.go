@@ -1456,3 +1456,31 @@ func TestWdOrderGate(t *testing.T) {
 		t.Errorf("an error dialog was shown: %q", dlg.errors)
 	}
 }
+
+// A user.lua that ignores all events must not stop the export: pisar_saved is
+// the only trigger of it, so a :w would otherwise write the working copy and
+// leave the user's .docx old, with no message.
+func TestWdIgnore(t *testing.T) {
+	parts := &wdParts{}
+	e := newEd(t, parts.apply(t))
+	needNvim(t)
+	e.putUserLua("vim.o.eventignore = 'all'\nvim.o.eventignorewin = 'all'\n")
+	if err := e.svc.Start(context.Background(), 100, 30, sample(t)); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	p, dir := e.addProject("proj")
+	w := &wdEnv{edEnv: e, wdParts: parts, proj: p, dir: dir}
+
+	w.open("basic.docx")
+	path := w.path("basic.docx")
+	if docxHas(t, path, newText) {
+		t.Fatal("the sample already has the new text")
+	}
+	w.typeText("basic.docx", newText)
+	from := w.rec.mark()
+	w.save()
+	w.rec.waitExport(t, from, phaseSaved)
+	if !docxHas(t, path, newText) {
+		t.Error("the .docx lacks the new text: the save was not exported")
+	}
+}

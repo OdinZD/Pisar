@@ -21,8 +21,11 @@ var formatKinds = map[string]bool{"bold": true, "italic": true, "heading": true,
 // mapping of the same name would in the mode Neovim is in now: kind is "bold",
 // "italic", "heading" or "list" (see "Markdown formatting" in init.lua for what
 // each does in normal, insert and visual mode). The whole action is one change
-// for undo and does not touch registers, marks, the search pattern or the
-// message line.
+// for undo and does not touch registers, the search pattern or the message
+// line. Marks do move: the change sets the mark '. as any change does (measured
+// with Neovim 0.12: nvim_buf_set_text leaves '[ and '] alone), and a visual-mode
+// action sets '< and '> on purpose, to the text it formatted, so that gv
+// selects it again.
 //
 // It does nothing, and returns nil, when the action does not apply: Neovim is
 // waiting for more input (an operator, the command line, a prompt), is in a

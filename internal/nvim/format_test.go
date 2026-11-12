@@ -334,6 +334,118 @@ func TestFmtItalic(t *testing.T) {
 	})
 }
 
+// TestFmtSpan: a word inside a bold or italic span, with the marks not at the
+// word, takes the marks of the whole span off. Only the line of the cursor is
+// looked at, and a line whose marks do not pair up is treated as before.
+func TestFmtSpan(t *testing.T) {
+	f := newFx(t)
+	f.runCases(t, []fcase{
+		{name: "bold last word", lines: one("**jedna riječ**"), mode: "n", at: [2]int{1, 9}, kind: "bold",
+			want: one("jedna riječ"), cur: [2]int{1, 7}},
+		{name: "bold first word", lines: one("**jedna riječ**"), mode: "n", at: [2]int{1, 3}, kind: "bold",
+			want: one("jedna riječ"), cur: [2]int{1, 1}},
+		{name: "italic", lines: one("*jedna riječ*"), mode: "n", at: [2]int{1, 8}, kind: "italic",
+			want: one("jedna riječ"), cur: [2]int{1, 7}},
+		{name: "both, bold off", lines: one("***a b***"), mode: "n", at: [2]int{1, 3}, kind: "bold",
+			want: one("*a b*"), cur: [2]int{1, 1}},
+		{name: "both, bold off at b", lines: one("***a b***"), mode: "n", at: [2]int{1, 5}, kind: "bold",
+			want: one("*a b*"), cur: [2]int{1, 3}},
+		{name: "both, italic off", lines: one("***a b***"), mode: "n", at: [2]int{1, 3}, kind: "italic",
+			want: one("**a b**"), cur: [2]int{1, 2}},
+		{name: "nested italic", lines: one("**a *b* c**"), mode: "n", at: [2]int{1, 8}, kind: "bold",
+			want: one("a *b* c"), cur: [2]int{1, 6}},
+		{name: "second span", lines: one("**a** b **c d**"), mode: "n", at: [2]int{1, 12}, kind: "bold",
+			want: one("**a** b c d"), cur: [2]int{1, 10}},
+		{name: "after a bullet", lines: one("* **a b**"), mode: "n", at: [2]int{1, 6}, kind: "bold",
+			want: one("* a b"), cur: [2]int{1, 4}},
+		{name: "italic in bold wraps", lines: one("**jedna riječ**"), mode: "n", at: [2]int{1, 9}, kind: "italic",
+			want: one("**jedna *riječ***"), cur: [2]int{1, 10}},
+		{name: "bold in italic wraps", lines: one("*jedna riječ*"), mode: "n", at: [2]int{1, 8}, kind: "bold",
+			want: one("*jedna **riječ***"), cur: [2]int{1, 10}},
+
+		// Marks that do not pair up: the word is wrapped, as before.
+		{name: "unpaired", lines: one("**jedna riječ"), mode: "n", at: [2]int{1, 9}, kind: "bold",
+			want: one("**jedna **riječ**"), cur: [2]int{1, 11}},
+		{name: "unpaired later", lines: one("**a** x **b"), mode: "n", at: [2]int{1, 6}, kind: "bold",
+			want: one("**a** **x** **b"), cur: [2]int{1, 8}},
+		{name: "unequal", lines: one("**jedna riječ*"), mode: "n", at: [2]int{1, 9}, kind: "bold",
+			want: one("**jedna **riječ***"), cur: [2]int{1, 11}},
+		{name: "times", lines: one("2 * 3 * 4"), mode: "n", at: [2]int{1, 4}, kind: "bold",
+			want: one("2 * **3** * 4"), cur: [2]int{1, 6}},
+		// The span is on another line: only the line of the cursor is looked at.
+		{name: "other line", lines: []string{"**jedna", "riječ**"}, mode: "n", at: [2]int{1, 3}, kind: "italic",
+			want: []string{"***jedna*", "riječ**"}, cur: [2]int{1, 4}},
+	})
+}
+
+// TestFmtApos: an apostrophe between two letters is part of the word, one at its
+// edge is not; a "_" at the edge is not either. A script without spaces is no
+// word at all.
+func TestFmtApos(t *testing.T) {
+	f := newFx(t)
+	f.runCases(t, []fcase{
+		{name: "dont", lines: one("don't stop"), mode: "n", at: [2]int{1, 1}, kind: "bold",
+			want: one("**don't** stop"), cur: [2]int{1, 3}},
+		{name: "dont, after it", lines: one("don't stop"), mode: "n", at: [2]int{1, 4}, kind: "bold",
+			want: one("**don't** stop"), cur: [2]int{1, 6}},
+		{name: "on the apostrophe", lines: one("don't stop"), mode: "n", at: [2]int{1, 3}, kind: "bold",
+			want: one("**don't** stop"), cur: [2]int{1, 5}},
+		{name: "typographic", lines: one("don’t stop"), mode: "n", at: [2]int{1, 0}, kind: "bold",
+			want: one("**don’t** stop"), cur: [2]int{1, 2}},
+		{name: "italic", lines: one("don't stop"), mode: "n", at: [2]int{1, 1}, kind: "italic",
+			want: one("*don't* stop"), cur: [2]int{1, 2}},
+		{name: "unwrap", lines: one("**don't** stop"), mode: "n", at: [2]int{1, 4}, kind: "bold",
+			want: one("don't stop"), cur: [2]int{1, 2}},
+		{name: "two", lines: one("rock'n'roll"), mode: "n", at: [2]int{1, 0}, kind: "bold",
+			want: one("**rock'n'roll**"), cur: [2]int{1, 2}},
+		{name: "edge", lines: one("'riječ' x"), mode: "n", at: [2]int{1, 3}, kind: "bold",
+			want: one("'**riječ**' x"), cur: [2]int{1, 5}},
+		{name: "edge typographic", lines: one("’riječ’ x"), mode: "n", at: [2]int{1, 5}, kind: "bold",
+			want: one("’**riječ**’ x"), cur: [2]int{1, 7}},
+		{name: "on the edge one", lines: one("'riječ' x"), mode: "n", at: [2]int{1, 0}, kind: "bold",
+			cur: [2]int{1, 0}},
+		{name: "alone", lines: one("a ' b"), mode: "n", at: [2]int{1, 2}, kind: "bold", cur: [2]int{1, 2}},
+		{name: "underscore at the edge", lines: one("_riječ_"), mode: "n", at: [2]int{1, 3}, kind: "bold",
+			want: one("_**riječ**_"), cur: [2]int{1, 5}},
+		{name: "no spaces in the script", lines: one("x 漢字 y"), mode: "n", at: [2]int{1, 2}, kind: "bold",
+			cur: [2]int{1, 2}},
+	})
+}
+
+// TestFmtSel: the end of a characterwise selection follows 'selection'.
+// "exclusive" leaves the character at the later end out, "inclusive" and "old"
+// take it in; one character selected counts as inclusive in every case.
+func TestFmtSel(t *testing.T) {
+	f := newFx(t)
+	text := one("jedna riječ dva")
+	for _, sel := range []string{"inclusive", "old", "exclusive"} {
+		t.Run(sel, func(t *testing.T) {
+			f.lua(t, nil, `vim.o.selection = ...`, sel)
+			t.Cleanup(func() { f.lua(t, nil, `vim.o.selection = "inclusive"`) })
+			whole, wholeCur := one("jedna **riječ** dva"), [2]int{1, 15}
+			part, partCur := whole, wholeCur
+			if sel == "exclusive" {
+				part, partCur = one("jedna **rije**č dva"), [2]int{1, 13}
+			}
+			f.runCases(t, []fcase{
+				{name: "v4l", lines: text, mode: "v", at: [2]int{1, 6}, keys: "4l", kind: "bold", want: part, cur: partCur},
+				{name: "backwards", lines: text, mode: "v", at: [2]int{1, 10}, keys: "4h", kind: "bold", want: part, cur: partCur},
+				{name: "one char", lines: text, mode: "v", at: [2]int{1, 6}, kind: "bold",
+					want: one("jedna **r**iječ dva"), cur: [2]int{1, 10}},
+				{name: "two lines", lines: []string{"prvi redak", "drugi redak"}, mode: "v", at: [2]int{1, 5}, to: [2]int{2, 4},
+					kind: "bold", want: map[bool][]string{
+						false: {"prvi **redak", "drugi** redak"},
+						true:  {"prvi **redak", "drug**i redak"},
+					}[sel == "exclusive"], cur: map[bool][2]int{false: {2, 6}, true: {2, 5}}[sel == "exclusive"]},
+				{name: "to the end", lines: one("jedna riječ"), mode: "v", at: [2]int{1, 0}, keys: "$", kind: "bold",
+					want: one("**jedna riječ**"), cur: [2]int{1, 15}},
+				{name: "V", lines: []string{"a", "b"}, mode: "V", at: [2]int{1, 0}, to: [2]int{2, 0}, kind: "bold",
+					want: []string{"**a**", "**b**"}, cur: [2]int{2, 4}},
+			})
+		})
+	}
+}
+
 func TestFmtBoldIns(t *testing.T) {
 	f := newFx(t)
 	f.runCases(t, []fcase{

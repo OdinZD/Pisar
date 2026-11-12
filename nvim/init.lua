@@ -403,15 +403,25 @@ local function format_mode()
 end
 
 -- A word is a run of letters, digits and combining marks. charclass() 2 is the
--- class of Vim's word characters, which follows 'iskeyword': letters of every
--- script, digits and "_" (left out: it is Markdown's own emphasis mark). Emoji
--- and punctuation are other classes, so "riječ," and "🙂riječ" end where the
--- word ends. Returns the byte range [from, to) of the word at byte column col,
--- or nil when the cursor is not on a word character.
+-- class of Vim's word characters, which follows 'iskeyword': the letters of the
+-- scripts that put spaces between words (Latin, Cyrillic, Greek, Hebrew, Arabic,
+-- Thai...), digits and "_". Han, kana and Hangul have a class of their own each,
+-- so a word in them is not found and "x 漢字 y" is left as it is. "_" is left out
+-- of the class here: it is Markdown's own emphasis mark. Emoji and punctuation
+-- are other classes, so "riječ," and "🙂riječ" end where the word ends.
 local function is_word_char(ch)
   return ch ~= "_" and vim.fn.charclass(ch) == 2
 end
 
+-- An apostrophe, straight or typographic. Between two word characters it is part
+-- of the word ("don't", "l’homme"); at the edge of a word it is a quotation mark
+-- ("'riječ'") and is not.
+local function is_apostrophe(ch)
+  return ch == "'" or ch == "’"
+end
+
+-- Returns the byte range [from, to) of the word at byte column col, or nil when
+-- the cursor is not on a word character.
 local function word_at(line, col)
   local starts = vim.str_utf_pos(line)
   local n = #starts
@@ -421,6 +431,13 @@ local function word_at(line, col)
   local function piece(i)
     return line:sub(starts[i], stop(i))
   end
+  local function in_word(i)
+    local ch = piece(i)
+    if is_word_char(ch) then
+      return true
+    end
+    return is_apostrophe(ch) and i > 1 and i < n and is_word_char(piece(i - 1)) and is_word_char(piece(i + 1))
+  end
   local at
   for i = 1, n do
     if starts[i] - 1 <= col and col < stop(i) then
@@ -428,14 +445,14 @@ local function word_at(line, col)
       break
     end
   end
-  if not at or not is_word_char(piece(at)) then
+  if not at or not in_word(at) then
     return nil
   end
   local first, last = at, at
-  while first > 1 and is_word_char(piece(first - 1)) do
+  while first > 1 and in_word(first - 1) do
     first = first - 1
   end
-  while last < n and is_word_char(piece(last + 1)) do
+  while last < n and in_word(last + 1) do
     last = last + 1
   end
   return starts[first] - 1, stop(last)
@@ -495,6 +512,70 @@ local function toggle_marks(kind, sr, sc, er, ec)
   return sc, ec + runs.R + (same and 2 * k or k)
 end
 
+-- The pairs of "*" marks of a line, for a word that is inside a span that is
+-- bold or italic without the marks touching it ("**one word**" with the cursor
+-- on "word"). Runs of "*" are matched like brackets: a run closes the open one
+-- before it when they are equally long and the text in front of it is not white
+-- space, and opens one when the text after it is not white space. Runs with
+-- white space on both sides ("2 * 3") and the bullet of a list item are plain
+-- text. A run that opens nothing and closes nothing, or is never closed, means
+-- the line is not understood: no spans at all, and the word is wrapped as if
+-- there were none. Columns are bytes: os and cs are where the opening and the
+-- closing run start, oe and ce where they end (exclusive), n is their length.
+local function star_spans(line)
+  local indent = #line:match("^[ \t]*")
+  local spans, open = {}, {}
+  local pos = 1
+  while true do
+    local s, e = line:find("%*+", pos)
+    if not s then
+      break
+    end
+    pos = e + 1
+    local before, after = line:sub(s - 1, s - 1), line:sub(e + 1, e + 1)
+    local bullet = e == s and s == indent + 1 and (after == "" or after:match("%s") ~= nil)
+    local can_close = before ~= "" and not before:match("%s")
+    local can_open = after ~= "" and not after:match("%s")
+    if not bullet and (can_close or can_open) then
+      local top = open[#open]
+      if can_close and top and top.len == e - s + 1 then
+        open[#open] = nil
+        spans[#spans + 1] = { os = top.s - 1, oe = top.e, cs = s - 1, ce = e, n = e - s + 1 }
+      elseif can_open then
+        open[#open + 1] = { s = s, e = e, len = e - s + 1 }
+      else
+        return {}
+      end
+    end
+  end
+  if #open > 0 then
+    return {}
+  end
+  return spans
+end
+
+-- The innermost span of this kind (bold: two stars or more, italic: an odd
+-- number) that has the range [from, to) of the line inside it.
+local function enclosing_span(kind, line, from, to)
+  local best
+  for _, sp in ipairs(star_spans(line)) do
+    local applies = kind == "bold" and sp.n >= 2 or kind == "italic" and sp.n % 2 == 1
+    if applies and sp.oe <= from and to <= sp.cs and (not best or sp.os > best.os) then
+      best = sp
+    end
+  end
+  return best
+end
+
+-- Takes one mark of this kind off each end of the span. From "***a b***" bold
+-- leaves "*a b*" and italic "**a b**". The end goes first, so that the start
+-- does not move it.
+local function unwrap_span(kind, row, span)
+  local k = #MARKERS[kind]
+  set_text(row, span.ce - k, span.ce, "")
+  set_text(row, span.os, span.os + k, "")
+end
+
 -- Start byte of the character that ends at byte offset stop (0 for none). The
 -- pattern is the same one Neovim's cursor uses for a character, so it takes a
 -- base letter with its combining marks as one.
@@ -525,13 +606,18 @@ local function leave_visual()
 end
 
 -- The selection in order: first row and byte column, last row and byte column
--- of the last character (inclusive).
+-- of the later end, and whether that end is left out of the selection. It is
+-- with 'selection' "exclusive" (:help 'selection'); "inclusive" and "old" both
+-- include the character there ("old" only differs in how far the cursor may go
+-- past the end of a line). One character selected is the exception: Neovim
+-- treats it as inclusive then, as there is no empty selection.
 local function selection()
   local a, b = vim.fn.getpos("v"), vim.fn.getpos(".")
+  local single = a[2] == b[2] and a[3] == b[3]
   if a[2] > b[2] or (a[2] == b[2] and a[3] > b[3]) then
     a, b = b, a
   end
-  return a[2] - 1, a[3] - 1, b[2] - 1, b[3] - 1
+  return a[2] - 1, a[3] - 1, b[2] - 1, b[3] - 1, vim.o.selection == "exclusive" and not single
 end
 
 -- Marks must hug the text: "** word **" is not bold in Markdown. Moves the
@@ -636,10 +722,20 @@ local function emphasis(kind, mode)
     if not from then
       return
     end
-    local runs = star_runs(get_line(row), from, get_line(row), to, true)
+    local line = get_line(row)
+    local runs = star_runs(line, from, line, to, true)
     local shift = #MARKERS[kind]
     if is_wrapped(kind, runs) then
       shift = -shift
+    else
+      -- The marks are not at the word, but the word may be inside a span that
+      -- has them further away: that span is what the action takes off.
+      local span = enclosing_span(kind, line, from, to)
+      if span then
+        unwrap_span(kind, row, span)
+        set_cursor(row, col - shift)
+        return
+      end
     end
     toggle_marks(kind, row, from, row, to)
     set_cursor(row, col + shift)
@@ -650,7 +746,7 @@ local function emphasis(kind, mode)
     return
   end
 
-  local sr, sc, er, ec = selection()
+  local sr, sc, er, ec, exclusive = selection()
   leave_visual()
 
   if mode == "V" then
@@ -690,9 +786,14 @@ local function emphasis(kind, mode)
     return
   end
 
-  -- "v": the end column of the selection is that of its last character.
+  -- "v": the end of the range is after the last character of the selection; with
+  -- an exclusive selection that is where the later end starts.
   local last_line = get_line(er)
-  ec = char_after(last_line, math.min(ec, #last_line))
+  if exclusive then
+    ec = math.min(ec, #last_line)
+  else
+    ec = char_after(last_line, math.min(ec, #last_line))
+  end
   sc = math.min(sc, #get_line(sr))
   sr, sc, er, ec = trim_range(sr, sc, er, ec)
   if not sr then
@@ -883,7 +984,6 @@ for key, kind in pairs({ b = "bold", i = "italic", h = "heading", l = "list" }) 
   end, { silent = true, desc = "Pisar: format " .. kind })
 end
 
-
 -- The user's own file, user.lua, runs last. Pisar never creates, changes or
 -- deletes it: it is a file of the user's, in Pisar's home folder, and its path
 -- arrives in PISAR_USER_LUA. No variable, no file, a folder or a file that is
@@ -909,7 +1009,17 @@ end
 --   the autocmd groups PisarNotify (what Go listens to: saved, entered,
 --     modified, changed, bye) and PisarFormat, rebuilt from scratch: anything a
 --     file added to those two groups is gone, and nothing is doubled;
+--   'eventignore' and 'eventignorewin' (the global value and that of every
+--     window): "all" and the events the two groups listen to are taken out, with
+--     a note. The other entries are the user's. An ignored BufWritePost would
+--     leave the saved .docx old after a :w, with no message;
 --   _G.pisar_format, which Go calls;
+--   g:pisar_reloading, g:pisar_preview and g:pisar_channel, Pisar's own
+--     variables, are unset: a true g:pisar_reloading would silence every buffer
+--     switch, a true g:pisar_preview would send a change event for every key
+--     while the preview is off, and a g:pisar_channel that is no channel would
+--     make every notification an error. Go sets g:pisar_channel after it
+--     connects, and g:pisar_preview when the preview is turned on;
 --   'spelllang': names without a dictionary are taken out, with a note (a
 --     missing one would otherwise ask to download it, see above); when none is
 --     left the languages Pisar chose are used.
@@ -1003,6 +1113,77 @@ local function check_spelllang()
   return "spelllang: no dictionary for " .. table.concat(dropped, ",")
 end
 
+-- Whether an item of 'eventignore' names an event that PisarNotify or PisarFormat
+-- listens to. The two groups are the one list of them, so it cannot drift from
+-- what is registered above. nvim_get_autocmds() takes an event in any case and
+-- under its alias too ("BufRead" is BufReadPost), which is how the option
+-- reads them; it raises for what is no event ("all", "-WinLeave"), hence pcall.
+local function pisar_listens_to(event)
+  for _, group in ipairs({ "PisarNotify", "PisarFormat" }) do
+    local ok, found = pcall(api.nvim_get_autocmds, { group = group, event = event })
+    if ok and #found > 0 then
+      return true
+    end
+  end
+  return false
+end
+
+-- The value of an event list ('eventignore', 'eventignorewin') without "all" and
+-- without the events Pisar listens to, also in the form "-Event" (:help
+-- 'eventignore': "all,-WinLeave" ignores all but WinLeave). The other items stay
+-- as they are. Returns the new value and the items taken out.
+local function without_pisar_events(value)
+  local kept, removed = {}, {}
+  for item in vim.gsplit(value, ",", { plain = true }) do
+    if item ~= "" then
+      local event = item:gsub("^%-", "")
+      if item:lower() == "all" or pisar_listens_to(event) then
+        table.insert(removed, item)
+      else
+        table.insert(kept, item)
+      end
+    end
+  end
+  return table.concat(kept, ","), removed
+end
+
+-- Takes Pisar's events out of 'eventignore' and 'eventignorewin' (the global
+-- value, which windows opened later start from, and that of each window now).
+-- Only an option that changes is written. Returns a note, or nil.
+local function restore_eventignore()
+  local taken, seen = {}, {}
+  local function clean(current, set)
+    local value, removed = without_pisar_events(current)
+    if #removed == 0 then
+      return
+    end
+    set(value)
+    for _, item in ipairs(removed) do
+      if not seen[item:lower()] then
+        seen[item:lower()] = true
+        table.insert(taken, item)
+      end
+    end
+  end
+
+  clean(vim.go.eventignore, function(value)
+    vim.go.eventignore = value
+  end)
+  clean(vim.go.eventignorewin, function(value)
+    vim.go.eventignorewin = value
+  end)
+  for _, win in ipairs(api.nvim_list_wins()) do
+    local opts = { scope = "local", win = win }
+    clean(api.nvim_get_option_value("eventignorewin", opts), function(value)
+      api.nvim_set_option_value("eventignorewin", value, opts)
+    end)
+  end
+  if #taken == 0 then
+    return nil
+  end
+  return "eventignore: " .. table.concat(taken, ",") .. " taken out"
+end
+
 -- What Go relies on (the list above). Returns a note when the user's file made
 -- a change that was undone and that they should hear about.
 local function restore_required()
@@ -1014,7 +1195,25 @@ local function restore_required()
   install_events()
   install_format_events()
   _G.pisar_format = pisar_format
-  return check_spelllang()
+  vim.g.pisar_reloading = nil
+  vim.g.pisar_preview = nil
+  vim.g.pisar_channel = nil
+
+  -- After install_events(): the event list is read from what it registered.
+  -- Not ipairs() over a list: it stops at the first nil.
+  local notes = {}
+  local ei_note = restore_eventignore()
+  if ei_note then
+    table.insert(notes, ei_note)
+  end
+  local spell_note = check_spelllang()
+  if spell_note then
+    table.insert(notes, spell_note)
+  end
+  if #notes == 0 then
+    return nil
+  end
+  return table.concat(notes, "; ")
 end
 
 -- 'messagesopt' without "hit-enter" and with "wait:0" (:help 'messagesopt'): a
@@ -1024,8 +1223,8 @@ end
 -- vim.defer_fn, a VimEnter autocmd of its own) would open a hit-enter prompt that
 -- nothing answers (measured: Start does not return). Neovim's own setting is back
 -- once VimEnter and the callbacks queued until then have run, so that the prompts
--- the rest of Pisar is built around work as before. Items other than these two are kept as they are ("history:" must be
--- there).
+-- the rest of Pisar is built around work as before. Items other than these two
+-- are kept as they are ("history:" must be there).
 local function startup_messagesopt(current)
   local items = {}
   for item in vim.gsplit(current, ",", { plain = true }) do

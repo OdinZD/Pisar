@@ -22,7 +22,8 @@ type UserConfig struct {
 	// the content of any document, so it may be logged.
 	Error string
 	// Note is something init.lua undid after the file and the user should hear
-	// of: a 'spelllang' entry without a dictionary.
+	// of: a 'spelllang' entry without a dictionary, an event taken out of
+	// 'eventignore'. Several are joined with "; ".
 	Note string
 }
 
@@ -63,9 +64,15 @@ func (p *Process) UserConfig() UserConfig {
 // other message of this package (see messageLua): the full text stays in the
 // variable. A hit-enter prompt at this point would freeze the start.
 func (p *Process) readUserConfig(ctx context.Context) error {
+	// Only text counts. The file runs before Go is connected and can put anything
+	// into any variable; a table or a number there is not a report of init.lua,
+	// and decoding it into a string would end the whole start.
 	var vars []string
-	err := p.execLua(ctx, "user.lua result", &vars,
-		`return { vim.g.`+userErrorVar+` or "", vim.g.`+userNoteVar+` or "" }`)
+	err := p.execLua(ctx, "user.lua result", &vars, `
+		local function text(v)
+			return type(v) == "string" and v or ""
+		end
+		return { text(vim.g.`+userErrorVar+`), text(vim.g.`+userNoteVar+`) }`)
 	if err != nil {
 		return err
 	}

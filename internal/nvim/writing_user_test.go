@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -585,5 +586,206 @@ func TestUSpellOff(t *testing.T) {
 	}
 	if m := p.messages(t); strings.Contains(m, "Download") || strings.Contains(m, "Created") {
 		t.Errorf("messages = %q: the download question was asked", m)
+	}
+}
+
+// userFlow runs through the events Go listens to, with the preview on for the
+// last part, and requires each exactly once. It is what a user.lua that ignores
+// events must not be able to silence.
+func userFlow(t *testing.T, p *Process) {
+	t.Helper()
+	ctx := testCtx(t)
+	dir := tempDir(t)
+	a := mkFile(t, dir, "a.md", "alpha\n")
+	b := mkFile(t, dir, "b.md", "beta\n")
+
+	if err := p.OpenFile(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	wantEvents(t, p, Event{Kind: EventBufferEntered, Path: a})
+	p.write(t, "ix\x1b")
+	wantEvents(t, p, Event{Kind: EventModifiedChanged, Path: a, Modified: true})
+	p.write(t, ":w\r")
+	wantEvents(t, p, Event{Kind: EventSaved, Path: a}, Event{Kind: EventModifiedChanged, Path: a})
+	if extra := settled(t, p); len(extra) != 0 {
+		t.Errorf("more events than expected: %+v", extra)
+	}
+
+	if err := p.SetPreview(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	settled(t, p)
+	p.write(t, "iy")
+	waitKind(t, p, EventChanged)
+	p.write(t, "\x1b")
+	if n := changedCount(settled(t, p)); n != 0 {
+		t.Errorf("%d change events too many for one character", n)
+	}
+	// Going to another buffer is announced (and is a change for the preview).
+	if err := p.OpenFile(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	evs := settled(t, p)
+	if !hasEvent(evs, Event{Kind: EventBufferEntered, Path: b}) {
+		t.Errorf("no buffer entered for %s: %+v", b, evs)
+	}
+}
+
+// ignoring returns 'eventignore', the global 'eventignorewin' and that of the
+// current window.
+func (p *Process) ignoring(t *testing.T) (ei, eiwGlobal, eiwWin string) {
+	t.Helper()
+	var v []string
+	p.lua(t, &v, `
+		return {
+			vim.go.eventignore,
+			vim.go.eventignorewin,
+			vim.api.nvim_get_option_value("eventignorewin", { scope = "local", win = 0 }),
+		}`)
+	return v[0], v[1], v[2]
+}
+
+// TestUEi: a user.lua that ignores events cannot silence what Go listens to:
+// the events are taken out of the options, the file's other entries stay, and
+// the user is told.
+func TestUEi(t *testing.T) {
+	const every = "BufWritePost,BufEnter,BufFilePost,TextChanged,TextChangedI,TextChangedP," +
+		"BufReadPost,BufModifiedSet,BufWipeout,VimLeavePre,InsertLeave"
+	tests := []struct {
+		name string
+		src  string
+		want [3]string // 'eventignore', 'eventignorewin' global and of the window
+		note string    // "" for no note at all
+	}{
+		{"all", `vim.o.eventignore = "all"`, [3]string{"", "", ""}, "all"},
+		{"every", `vim.o.eventignore = "` + every + `,CursorHold"`, [3]string{"CursorHold", "", ""}, "BufEnter"},
+		{"case", `vim.o.eventignore = "bufwritepost,CursorHold,BUFENTER"`, [3]string{"CursorHold", "", ""}, "bufwritepost"},
+		{"alias", `vim.o.eventignore = "BufRead,CursorHold"`, [3]string{"CursorHold", "", ""}, "BufRead"},
+		{"minus", `vim.o.eventignore = "all,-CursorHold,-BufWritePost"`, [3]string{"-CursorHold", "", ""}, "all"},
+		{"winall", `vim.o.eventignorewin = "all"`, [3]string{"", "", ""}, "all"},
+		{"winone", `vim.o.eventignorewin = "BufWritePost,CursorHold,TextChanged"`, [3]string{"", "CursorHold", "CursorHold"}, "BufWritePost"},
+		{"winloc", `vim.api.nvim_set_option_value("eventignorewin", "all,-CursorHold", { scope = "local" })`,
+			[3]string{"", "", "-CursorHold"}, "all"},
+		{"winglob", `vim.api.nvim_set_option_value("eventignorewin", "BufEnter", { scope = "global" })`,
+			[3]string{"", "", ""}, "BufEnter"},
+		{"both", "vim.o.eventignore = 'all'\nvim.o.eventignorewin = 'all'", [3]string{"", "", ""}, "all"},
+		{"other", `vim.o.eventignore = "CursorHold,CursorMoved"
+vim.o.eventignorewin = "CursorHold"`, [3]string{"CursorHold,CursorMoved", "CursorHold", "CursorHold"}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := startUser(t, "vim.g.user_ran = true\n"+tc.src+"\n")
+			if !p.ranUser(t) {
+				t.Fatal("user.lua did not run")
+			}
+			p.notBlocked(t)
+			ei, eiwG, eiwW := p.ignoring(t)
+			if got := [3]string{ei, eiwG, eiwW}; got != tc.want {
+				t.Errorf("eventignore, eventignorewin (global, window) = %q, want %q", got, tc.want)
+			}
+			u := p.UserConfig()
+			switch {
+			case tc.note == "":
+				if u != (UserConfig{}) {
+					t.Errorf("UserConfig = %+v, want it empty: nothing of Pisar's was ignored", u)
+				}
+			case u.Error != "" || !strings.HasPrefix(u.Note, "eventignore: ") || !strings.Contains(u.Note, tc.note):
+				t.Errorf("UserConfig = %+v, want a note on eventignore naming %q and no error", u, tc.note)
+			}
+			if tc.note != "" {
+				if m := p.messages(t); !strings.Contains(m, "eventignore") || strings.Count(strings.TrimSpace(m), "\n") != 0 {
+					t.Errorf("messages = %q, want one line about eventignore", m)
+				}
+			}
+			userFlow(t, p)
+		})
+	}
+}
+
+// TestUOne: each event of the two groups, ignored alone, comes back. The events
+// are read from the groups themselves, so the test follows init.lua.
+func TestUOne(t *testing.T) {
+	control, _ := newProse(t, proseOpts{})
+	var events []string
+	control.lua(t, &events, `
+		local seen, list = {}, {}
+		for _, group in ipairs({ "PisarNotify", "PisarFormat" }) do
+			for _, au in ipairs(vim.api.nvim_get_autocmds({ group = group })) do
+				if not seen[au.event] then
+					seen[au.event] = true
+					table.insert(list, au.event)
+				end
+			end
+		end
+		table.sort(list)
+		return list`)
+	if len(events) < 8 {
+		t.Fatalf("events of the groups = %v", events)
+	}
+	for i, event := range events {
+		t.Run("e"+strconv.Itoa(i), func(t *testing.T) {
+			p := startUser(t, "vim.o.eventignore = '"+event+",CursorHold'\nvim.o.eventignorewin = '"+event+"'\n")
+			ei, eiwG, eiwW := p.ignoring(t)
+			if ei != "CursorHold" || eiwG != "" || eiwW != "" {
+				t.Errorf("%s ignored alone: eventignore %q, eventignorewin %q and %q", event, ei, eiwG, eiwW)
+			}
+			if note := p.UserConfig().Note; !strings.Contains(note, event) {
+				t.Errorf("note = %q, want it to name %s", note, event)
+			}
+		})
+	}
+}
+
+// TestURel: Pisar's own variables are unset after the file, whatever it put in
+// them. A true g:pisar_reloading would silence every buffer switch.
+func TestURel(t *testing.T) {
+	p := startUser(t, `
+vim.g.user_ran = true
+vim.g.pisar_reloading = true
+vim.g.pisar_preview = true
+vim.g.pisar_channel = "not a channel"
+`)
+	if !p.ranUser(t) {
+		t.Fatal("user.lua did not run")
+	}
+	p.notBlocked(t)
+	for _, name := range []string{"pisar_reloading", "pisar_preview"} {
+		if v := p.global(t, name); v != nil && v != false {
+			t.Errorf("g:%s = %#v after the file, want it unset", name, v)
+		}
+	}
+	// With the preview off typing sends no change event, buffer switches are
+	// announced, and Go's own channel is in place (userFlow depends on all three).
+	userFlow(t, p)
+	if u := p.UserConfig(); u != (UserConfig{}) {
+		t.Errorf("UserConfig = %+v, want it empty: nothing was undone that needs a note", u)
+	}
+}
+
+// TestUVar: the variables init.lua reports in cannot be made to fail the start
+// by a file that puts something other than text in them.
+func TestUVar(t *testing.T) {
+	tests := []struct{ name, value string }{
+		{"table", "{ 1, 2 }"},
+		{"dict", "{ code = 1 }"},
+		{"number", "5"},
+		{"float", "1.5"},
+		{"bool", "true"},
+		{"nil", "vim.NIL"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := startUser(t, "vim.g.user_ran = true\nvim.g.pisar_user_error = "+tc.value+"\nvim.g.pisar_user_note = "+tc.value+"\n")
+			if !p.ranUser(t) {
+				t.Fatal("user.lua did not run")
+			}
+			p.notBlocked(t)
+			if u := p.UserConfig(); u != (UserConfig{}) {
+				t.Errorf("UserConfig = %+v, want it empty: a value that is no text is no report", u)
+			}
+			if m := p.messages(t); m != "" {
+				t.Errorf("messages = %q, want none", m)
+			}
+		})
 	}
 }
