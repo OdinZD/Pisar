@@ -74,6 +74,11 @@ type workTask struct {
 	// read-only document is an error instead of being skipped.
 	explicit bool
 
+	// settled: the export itself is over and only the reports to the frontend
+	// are left, so the document no longer counts as being exported. Guarded by
+	// the queue's mu.
+	settled bool
+
 	done chan struct{}
 	err  error
 }
@@ -205,7 +210,16 @@ func (q *workQueue) waiting(d *wordDoc) bool {
 
 // running and waits need q.mu.
 func (q *workQueue) running(d *wordDoc) bool {
-	return q.current != nil && q.current.kind == workExport && q.current.doc == d
+	return q.current != nil && q.current.kind == workExport && q.current.doc == d && !q.current.settled
+}
+
+// settle marks the export of t as over before its outcome is reported. Without
+// it "saved" would reach the frontend while the document still counted as
+// unsaved, and a rename right after a save would be refused.
+func (q *workQueue) settle(t *workTask) {
+	q.mu.Lock()
+	t.settled = true
+	q.mu.Unlock()
 }
 
 func (q *workQueue) waits(d *wordDoc) bool {
@@ -610,6 +624,9 @@ func (e *EditorService) runExport(ctx context.Context, t *workTask) error {
 	res, err := e.words.export(ctx, d)
 	if err != nil {
 		return e.exportFailed(path, err)
+	}
+	if res.Outcome == exportSaved || res.Outcome == exportReloaded {
+		e.queue.settle(t)
 	}
 	switch res.Outcome {
 	case exportSaved:
