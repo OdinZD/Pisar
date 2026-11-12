@@ -43,6 +43,34 @@ func (o *output) bytes() []byte {
 // the socket path inside it must fit sun_path (103 bytes on macOS, where
 // $TMPDIR alone is about 50).
 
+// testTexts are the interface texts, read from the file the application embeds,
+// so that the tests see the very sentences a user would.
+func testTexts(t *testing.T) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "frontend", "src", "strings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts map[string]string
+	if err := json.Unmarshal(data, &texts); err != nil {
+		t.Fatal(err)
+	}
+	return texts
+}
+
+// testText is Options.Text as the application gives it: every text whose key
+// starts with "nvim".
+func testText(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for key, value := range testTexts(t) {
+		if strings.HasPrefix(key, "nvim") {
+			out[key] = value
+		}
+	}
+	return out
+}
+
 // newProc starts Neovim confined to t.TempDir() and registers cleanup. The
 // returned output is already being read in the background.
 func newProc(t *testing.T, mutate func(*Options)) (*Process, *output) {
@@ -71,6 +99,7 @@ func newProc(t *testing.T, mutate func(*Options)) (*Process, *output) {
 		Rows:         24,
 		StartTimeout: testWait,
 		StopTimeout:  testWait,
+		Text:         testText(t),
 		// Everything Neovim writes (config, shada, swap, logs, its temp dir) stays in root.
 		Env: []string{
 			"XDG_CONFIG_HOME=" + mk("c"),

@@ -139,6 +139,7 @@ func run() error {
 		InitialFile: initialFile(os.Args),
 		Words:       words,
 		Preview:     renderer,
+		Text:        nvimText(text),
 	})
 	if err != nil {
 		return err

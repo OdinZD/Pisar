@@ -13,18 +13,29 @@ const (
 	userNoteVar  = "pisar_user_note"
 )
 
+// frame puts value into the one placeholder of a text of Options.Text, in one
+// pass: a value that itself holds "{reason}" is left alone. A text that is
+// missing gives the value alone.
+func frame(text, placeholder, value string) string {
+	if text == "" {
+		return value
+	}
+	return strings.NewReplacer("{"+placeholder+"}", value).Replace(text)
+}
+
 // UserConfig is what became of the user's own user.lua while Neovim started.
-// Both fields are "" when all went well, and when there is no such file.
+// All fields are "" when all went well, and when there is no such file.
 type UserConfig struct {
 	// Error is the full text of the error the file raised (a syntax error, or one
 	// at run time, with the traceback). The rest of the file did not run, what it
 	// did before the error is in effect. It is the user's code that is meant, not
 	// the content of any document, so it may be logged.
 	Error string
-	// Note is something init.lua undid after the file and the user should hear
-	// of: a 'spelllang' entry without a dictionary, an event taken out of
-	// 'eventignore'. Several are joined with "; ".
-	Note string
+	// What init.lua undid after the file and the user should hear of. They are
+	// data, not sentences: the sentence is a text of Options.Text.
+	Spell   string // 'spelllang' entries without a dictionary, comma separated
+	Events  string // what was removed from 'eventignore', comma separated
+	Restore string // why restoring the settings failed (an error of init.lua itself)
 }
 
 // FirstLine returns the first line of the error: what the message line and the
@@ -34,20 +45,24 @@ func (u UserConfig) FirstLine() string {
 	return strings.TrimSpace(first)
 }
 
-// notice is the one line the user sees in Neovim: the error and the note, in
-// that order. "" when there is neither.
-func (u UserConfig) notice() string {
-	var parts []string
+// notices are the messages the user sees in Neovim, one each, with the one that
+// matters most last: it is the one left on the screen, the others stay in
+// :messages. Empty when there is nothing to tell. m is Options.Text.
+func (u UserConfig) notices(m map[string]string) []string {
+	var out []string
+	if u.Spell != "" {
+		out = append(out, frame(m["nvimSpellMissing"], "languages", u.Spell))
+	}
+	if u.Events != "" {
+		out = append(out, frame(m["nvimEventsRestored"], "events", u.Events))
+	}
+	if u.Restore != "" {
+		out = append(out, frame(m["nvimRestoreFailed"], "reason", u.Restore))
+	}
 	if first := u.FirstLine(); first != "" {
-		if !strings.HasPrefix(first, "user.lua") {
-			first = "user.lua: " + first
-		}
-		parts = append(parts, first)
+		out = append(out, frame(m["nvimUserLuaError"], "reason", first))
 	}
-	if u.Note != "" {
-		parts = append(parts, u.Note)
-	}
-	return strings.Join(parts, "; ")
+	return out
 }
 
 // UserConfig returns what is known about user.lua since Start. Reading the two
@@ -66,26 +81,31 @@ func (p *Process) UserConfig() UserConfig {
 func (p *Process) readUserConfig(ctx context.Context) error {
 	// Only text counts. The file runs before Go is connected and can put anything
 	// into any variable; a table or a number there is not a report of init.lua,
-	// and decoding it into a string would end the whole start.
+	// and decoding it into a string would end the whole start. The note is a
+	// table of init.lua's making, with text in it.
 	var vars []string
 	err := p.execLua(ctx, "user.lua result", &vars, `
 		local function text(v)
 			return type(v) == "string" and v or ""
 		end
-		return { text(vim.g.`+userErrorVar+`), text(vim.g.`+userNoteVar+`) }`)
+		local note = vim.g.`+userNoteVar+`
+		if type(note) ~= "table" then
+			note = {}
+		end
+		return { text(vim.g.`+userErrorVar+`), text(note.spell), text(note.events), text(note.restore) }`)
 	if err != nil {
 		return err
 	}
-	if len(vars) != 2 {
+	if len(vars) != 4 {
 		return nil
 	}
-	u := UserConfig{Error: vars[0], Note: vars[1]}
+	u := UserConfig{Error: vars[0], Spell: vars[1], Events: vars[2], Restore: vars[3]}
 	p.mu.Lock()
 	p.user = u
 	p.mu.Unlock()
-	if msg := u.notice(); msg != "" {
+	if msgs := u.notices(p.texts); len(msgs) > 0 {
 		return p.call(ctx, "show user.lua result", func(nv *nvimrpc.Nvim) error {
-			return nv.ExecLua(messageLua+"\n\tshow((...))", nil, msg)
+			return nv.ExecLua(messageLua+"\n\tfor _, m in ipairs((...)) do show(m) end", nil, msgs)
 		})
 	}
 	return nil

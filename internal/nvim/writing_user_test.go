@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // Tests of the "user.lua" part of nvim/init.lua, in a real Neovim with the
@@ -204,9 +205,9 @@ vim.api.nvim_create_autocmd("InsertEnter", {
 	var found bool
 	p.lua(t, &found, `
 		for _, m in ipairs(vim.api.nvim_get_keymap("n")) do
-			if m.desc == "Pisar: toggle spell checking" then return true end
+			if m.desc == ... then return true end
 		end
-		return false`)
+		return false`, testTexts(t)["nvimMapSpell"])
 	if !found {
 		t.Error("a mapping of Pisar's is gone")
 	}
@@ -263,17 +264,17 @@ func TestUErr(t *testing.T) {
 	tests := []struct {
 		name  string
 		src   string
-		first string // what the first line of the error starts with
+		first string // what the first line of the error (the reason in the message) starts with
 		ran   bool   // the first command ran (the rest of the file does not after an error)
 	}{
 		{"syntax", "vim.g.user_ran = true\nlocal = = 1\n", "user.lua:2:", false},
 		{"run", "vim.g.user_ran = true\nvim.o.number = true\nerror('boom')\nvim.o.wrap = false\n", "user.lua:3: boom", true},
 		{"multi", "vim.g.user_ran = true\nerror('first\\nsecond\\nthird')\n", "user.lua:2: first", true},
 		{"long", "vim.g.user_ran = true\nerror(string.rep('long ', 200))\n", "user.lua:2: long long", true},
-		{"level0", "vim.g.user_ran = true\nerror('no position', 0)\n", "user.lua: no position", true},
-		{"table", "vim.g.user_ran = true\nerror({ code = 1 })\n", "user.lua: table:", true},
-		{"cmd", "vim.g.user_ran = true\nvim.cmd('nonexistentcommand')\n", "user.lua: Vim:E492", true},
-		{"notify", "vim.g.user_ran = true\nvim.notify('an error message', vim.log.levels.ERROR)\n", "user.lua: an error message", true},
+		{"level0", "vim.g.user_ran = true\nerror('no position', 0)\n", "no position", true},
+		{"table", "vim.g.user_ran = true\nerror({ code = 1 })\n", "table:", true},
+		{"cmd", "vim.g.user_ran = true\nvim.cmd('nonexistentcommand')\n", "Vim:E492", true},
+		{"notify", "vim.g.user_ran = true\nvim.notify('an error message', vim.log.levels.ERROR)\n", "an error message", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -284,10 +285,11 @@ func TestUErr(t *testing.T) {
 				t.Errorf("first command ran = %v, want %v", got, tc.ran)
 			}
 			u := p.UserConfig()
-			if !strings.HasPrefix(u.notice(), tc.first) {
-				t.Errorf("notice = %q, want it to start with %q", u.notice(), tc.first)
+			const frame = "user.lua: greška ("
+			if n := u.notices(p.texts); len(n) != 1 || !strings.HasPrefix(n[0], frame+tc.first) {
+				t.Errorf("notices = %q, want one that starts with %q", n, frame+tc.first)
 			}
-			if u.Error == "" || u.Note != "" {
+			if u.Error == "" || u.Spell != "" || u.Events != "" || u.Restore != "" {
 				t.Errorf("UserConfig = %+v, want an error and no note", u)
 			}
 			if got, ok := p.global(t, "pisar_user_error").(string); !ok || got != u.Error {
@@ -304,8 +306,8 @@ func TestUErr(t *testing.T) {
 			// One line on the message line, within its width (80 columns, minus
 			// what the ruler area keeps), kept in :messages.
 			lines := strings.Split(strings.TrimSpace(p.messages(t)), "\n")
-			if len(lines) != 1 || !strings.HasPrefix(lines[0], tc.first[:min(len(tc.first), 8)]) {
-				t.Errorf("messages = %q, want one line of the error", lines)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], frame) {
+				t.Errorf("messages = %q, want one line of Pisar's text about the error", lines)
 			}
 			if w := len([]rune(lines[0])); w > 68 {
 				t.Errorf("the message is %d cells wide, over 68", w)
@@ -566,11 +568,11 @@ func TestUSpell(t *testing.T) {
 				}
 				return
 			}
-			if u.Error != "" || !strings.Contains(u.Note, tc.note) {
-				t.Errorf("UserConfig = %+v, want a note naming %q and no error", u, tc.note)
+			if u.Error != "" || u.Spell != tc.note || u.Events != "" || u.Restore != "" {
+				t.Errorf("UserConfig = %+v, want the languages %q and nothing else", u, tc.note)
 			}
-			if m := p.messages(t); !strings.Contains(m, "spelllang") || strings.Count(strings.TrimSpace(m), "\n") != 0 {
-				t.Errorf("messages = %q, want one line about spelllang", m)
+			if m := strings.TrimSpace(p.messages(t)); !strings.HasPrefix(m, "Nema rječnika za: "+tc.note) || strings.Contains(m, "\n") {
+				t.Errorf("messages = %q, want one line about the missing dictionary of %q", m, tc.note)
 			}
 		})
 	}
@@ -689,12 +691,12 @@ vim.o.eventignorewin = "CursorHold"`, [3]string{"CursorHold,CursorMoved", "Curso
 				if u != (UserConfig{}) {
 					t.Errorf("UserConfig = %+v, want it empty: nothing of Pisar's was ignored", u)
 				}
-			case u.Error != "" || !strings.HasPrefix(u.Note, "eventignore: ") || !strings.Contains(u.Note, tc.note):
-				t.Errorf("UserConfig = %+v, want a note on eventignore naming %q and no error", u, tc.note)
+			case u.Error != "" || u.Spell != "" || u.Restore != "" || !strings.Contains(u.Events, tc.note):
+				t.Errorf("UserConfig = %+v, want the events taken out, naming %q, and nothing else", u, tc.note)
 			}
 			if tc.note != "" {
-				if m := p.messages(t); !strings.Contains(m, "eventignore") || strings.Count(strings.TrimSpace(m), "\n") != 0 {
-					t.Errorf("messages = %q, want one line about eventignore", m)
+				if m := strings.TrimSpace(p.messages(t)); !strings.HasPrefix(m, "user.lua je isključio događaje") || strings.Contains(m, "\n") {
+					t.Errorf("messages = %q, want one line about the events", m)
 				}
 			}
 			userFlow(t, p)
@@ -729,8 +731,8 @@ func TestUOne(t *testing.T) {
 			if ei != "CursorHold" || eiwG != "" || eiwW != "" {
 				t.Errorf("%s ignored alone: eventignore %q, eventignorewin %q and %q", event, ei, eiwG, eiwW)
 			}
-			if note := p.UserConfig().Note; !strings.Contains(note, event) {
-				t.Errorf("note = %q, want it to name %s", note, event)
+			if events := p.UserConfig().Events; !strings.Contains(events, event) {
+				t.Errorf("events taken out = %q, want it to name %s", events, event)
 			}
 		})
 	}
@@ -786,6 +788,195 @@ func TestUVar(t *testing.T) {
 			if m := p.messages(t); m != "" {
 				t.Errorf("messages = %q, want none", m)
 			}
+		})
+	}
+}
+
+// TestUMsg: everything Pisar tells about user.lua is Croatian, one line each,
+// cut to the screen without cutting a character, and the most important one
+// (the error) is the one left on the screen. Neovim has all three to say: a
+// language without a dictionary, an ignored event and an error.
+func TestUMsg(t *testing.T) {
+	const src = `vim.g.user_ran = true
+vim.o.spelllang = "de"
+vim.o.eventignore = "all"
+error("šđčćž " .. string.rep("ŽĐČĆŠ", 30))
+`
+	tests := []struct {
+		name  string
+		cols  uint16
+		texts bool
+		want  []string // what the three lines start with
+	}{
+		{"c80", 80, true, []string{"Nema rječnika za: de.", "user.lua je isključio događaje koje", "user.lua: greška (user.lua:4: šđčćž"}},
+		{"c40", 40, true, []string{"Nema rječnika za: de. Pravo…", "user.lua je isključio događ…", "user.lua: greška (user.lua:…"}},
+		{"c20", 20, true, []string{"Nema rj…", "user.lu…", "user.lu…"}},
+		// No texts: the facts alone, without Pisar's sentences.
+		{"raw", 80, false, []string{"de", "all", "user.lua:4: šđčćž"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _ := newProse(t, proseOpts{cols: tc.cols, user: userLua(t, src), noTexts: !tc.texts})
+			p.notBlocked(t)
+			lines := strings.Split(strings.TrimSpace(p.messages(t)), "\n")
+			if len(lines) != len(tc.want) {
+				t.Fatalf("messages = %q, want %d lines", lines, len(tc.want))
+			}
+			for i, line := range lines {
+				if !utf8.ValidString(line) {
+					t.Errorf("line %d is cut inside a character: %q", i, line)
+				}
+				if w := utf8.RuneCountInString(line); w > int(tc.cols)-12 {
+					t.Errorf("line %d is %d cells wide, at most %d fit: %q", i, w, int(tc.cols)-12, line)
+				}
+				if !strings.HasPrefix(line, tc.want[i]) {
+					t.Errorf("line %d = %q, want it to start with %q", i, line, tc.want[i])
+				}
+			}
+			// The full texts are not lost by the cut.
+			if u := p.UserConfig(); u.Spell != "de" || u.Events != "all" || !strings.Contains(u.Error, "ŽĐČĆŠŽĐČĆŠ") {
+				t.Errorf("UserConfig = %+v", u)
+			}
+		})
+	}
+}
+
+// TestUFail: when init.lua cannot restore what Go relies on after user.lua, the
+// start still succeeds and the user is told, in Croatian, with the reason.
+func TestUFail(t *testing.T) {
+	const src = "vim.g.user_ran = true\nvim.opt = nil\n"
+	for _, cols := range []uint16{80, 40} {
+		t.Run("c"+strconv.Itoa(int(cols)), func(t *testing.T) {
+			p, _ := newProse(t, proseOpts{cols: cols, user: userLua(t, src)})
+			p.notBlocked(t)
+			u := p.UserConfig()
+			if !strings.Contains(u.Restore, "opt") || u.Error != "" || u.Spell != "" || u.Events != "" {
+				t.Errorf("UserConfig = %+v, want only the reason of the failed restore", u)
+			}
+			m := strings.TrimSpace(p.messages(t))
+			if strings.Contains(m, "\n") || !strings.HasPrefix(m, "Postavke nakon user.lua nisu"[:20]) ||
+				!utf8.ValidString(m) || utf8.RuneCountInString(m) > int(cols)-12 {
+				t.Errorf("messages = %q, want one line of Pisar's text within %d cells", m, int(cols)-12)
+			}
+			if strings.Contains(m, "restore after") {
+				t.Errorf("messages = %q holds the old English frame", m)
+			}
+		})
+	}
+}
+
+// TestUNoEn guards against the English sentences coming back: what Pisar puts in
+// front of the user is Croatian and lives in frontend/src/strings.json, so none
+// of the old texts may be in the Lua file or in the Go files that send text to
+// Neovim.
+func TestUNoEn(t *testing.T) {
+	old := []string{
+		"Neovim is waiting", "waiting for an answer", "no dictionary for", "taken out",
+		"restore after", "nothing was written", "nothing was reloaded", "no buffer was removed",
+		`"Pisar: " ..`, "Formatting failed", "format failed",
+		// The descriptions of the mappings.
+		"move by display rows", "toggle spell", "toggle line numbers", "focus the project tree",
+		"toggle the preview", "open the document search", `"Pisar: format "`,
+	}
+	for _, file := range []string{
+		filepath.Join("..", "..", "nvim", "init.lua"), "nvim.go", "userlua.go", "format.go", "preview.go",
+	} {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, text := range old {
+			if strings.Contains(string(data), text) {
+				t.Errorf("%s holds %q: that sentence belongs in strings.json, in Croatian", file, text)
+			}
+		}
+	}
+	// Each text the package takes is in the file, and says what it has to.
+	texts := testTexts(t)
+	for key, placeholder := range map[string]string{
+		"nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}", "nvimSpellMissing": "{languages}",
+		"nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}", "nvimPromptOpen": "",
+	} {
+		if texts[key] == "" || !strings.Contains(texts[key], placeholder) {
+			t.Errorf("%s = %q, want a text with %q", key, texts[key], placeholder)
+		}
+	}
+}
+
+// pisarMaps are the mappings init.lua makes, with the key of the text that
+// describes each (the rows' keys are made for normal and visual mode, and for
+// insert mode only the arrows).
+var pisarMaps = []struct{ mode, lhs, key string }{
+	{"n", "j", "nvimMapRows"}, {"x", "j", "nvimMapRows"}, {"n", "k", "nvimMapRows"}, {"x", "k", "nvimMapRows"},
+	{"n", "<Down>", "nvimMapRows"}, {"x", "<Down>", "nvimMapRows"}, {"i", "<Down>", "nvimMapRows"},
+	{"n", "<Up>", "nvimMapRows"}, {"x", "<Up>", "nvimMapRows"}, {"i", "<Up>", "nvimMapRows"},
+	{"n", "<leader>e", "nvimMapTree"}, {"n", "<leader>p", "nvimMapPreview"}, {"n", "<leader>f", "nvimMapSearch"},
+	{"n", "<leader>s", "nvimMapSpell"}, {"n", "<leader>n", "nvimMapNumbers"},
+	{"n", "<leader>b", "nvimMapBold"}, {"x", "<leader>b", "nvimMapBold"},
+	{"n", "<leader>i", "nvimMapItalic"}, {"x", "<leader>i", "nvimMapItalic"},
+	{"n", "<leader>h", "nvimMapHeading"}, {"x", "<leader>h", "nvimMapHeading"},
+	{"n", "<leader>l", "nvimMapList"}, {"x", "<leader>l", "nvimMapList"},
+}
+
+// TestUMap: every mapping of Pisar's has its description in Croatian, from
+// PISAR_TEXT. Without the variable or with JSON that does not decode the
+// mappings are there and work, with no description and no sentence of a
+// fallback; the start does not fail.
+func TestUMap(t *testing.T) {
+	texts := testTexts(t)
+	tests := []struct {
+		name string
+		env  string // PISAR_TEXT; "" leaves it as Options.Text makes it
+		none bool   // no Options.Text
+		want bool   // the descriptions are there
+	}{
+		{"texts", "", false, true},
+		{"none", "", true, false},
+		{"bad", "{not json", false, false},
+		{"array", "[1, 2]", false, false},
+		{"null", "null", false, false},
+		{"notext", `{"nvimMapSpell": 5, "nvimMapBold": {"a": 1}}`, false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _ := newProc(t, func(o *Options) {
+				if tc.none {
+					o.Text = nil
+				}
+				if tc.env != "" {
+					o.Env = append(o.Env, textEnv+"="+tc.env)
+				}
+			})
+			for _, m := range pisarMaps {
+				var got struct {
+					Exists bool
+					Desc   string
+				}
+				p.lua(t, &got, `
+					local m = vim.fn.maparg((...), select(2, ...), false, true)
+					return { Exists = m.lhs ~= nil, Desc = m.desc or "" }`, m.lhs, m.mode)
+				if !got.Exists {
+					t.Errorf("no mapping of %s in mode %s", m.lhs, m.mode)
+					continue
+				}
+				want := ""
+				if tc.want {
+					want = texts[m.key]
+				}
+				if got.Desc != want {
+					t.Errorf("%s in mode %s has the description %q, want %q", m.lhs, m.mode, got.Desc, want)
+				}
+			}
+			// They work: <leader>s switches spelling, <leader>b makes a word bold.
+			p.setBuffer(t, "riječ")
+			spell := p.state(t).Spell
+			p.write(t, " s")
+			eventually(t, "<leader>s", func() bool { return p.state(t).Spell != spell })
+			p.write(t, " b")
+			eventually(t, "<leader>b", func() bool {
+				l := p.lines(t)
+				return len(l) == 1 && l[0] == "**riječ**"
+			})
 		})
 	}
 }

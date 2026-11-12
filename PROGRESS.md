@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 5, korak 6 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, ispravci nakon pregleda, krug 1)
+- Zadnja izmjena: 2026-11-12 (faza 5, poruke i opisi mapiranja na hrvatskom)
 
 ## Priprema (2026-11-11)
 
@@ -1736,10 +1736,24 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
   zaštićeni.
 - Pismo bez razmaka između riječi (kineski, japanski): podebljano i kurziv u normal modu ne nalaze
   riječ pod kursorom; visual mod radi.
-- **Odluka vlasnika (2026-11-12, tijekom pregleda): „Poruke neka budu na hrvatskom”.** Poruke koje
-  Pisar sam ispisuje u Neovimovom retku poruka (`"Pisar: …"`, `"spelllang: no dictionary for …"`,
-  prefiks `"user.lua: "`, i tri poruke iz ranijih faza u `internal/nvim`) sele se u `strings.json`
-  i idu na hrvatski; provodi se nakon ispravaka iz kruga 1.
+- **Odluke vlasnika tijekom pregleda (2026-11-12): „Poruke neka budu na hrvatskom” i „i opisi mapiranja
+  neka budu na hrvatskom”.** Provedeno: 16 novih ključeva `nvim*` u `strings.json` (6 poruka, 10 opisa
+  mapiranja). Jedan put do Neovima: Go složi tekstove iz `uiText` u JSON i preda ih kroz okolinu
+  procesa (`PISAR_TEXT`, `nvim.Options.Text`); `init.lua` ih čita na vrhu i nema nijedne vlastite
+  rečenice. Bez varijable ili s neispravnim JSON-om mapiranja nemaju opis, a poruka nosi samo
+  činjenicu (nema engleskog rezervnog teksta). Poruke nastale pri pokretanju `init.lua` ostavlja kao
+  strukturirane podatke (`g:pisar_user_note`), a Go nakon spajanja složi hrvatski tekst. Skraćivanje
+  poruke na širinu ide po ćelijama i ne presijeca znak. `Save`, `SaveAll`, `Wipe`, `Reload` za
+  otvoreni upit vraćaju `nvim.ErrPromptOpen`, a dijalog pri gašenju za njega pokazuje hrvatski tekst
+  (time je zatvoreno ograničenje iz faze 2 „sirova poruka greške pri gašenju”).
+  - Ostaje na engleskom: tekstovi samog Neovima i Lue (E-kodovi, tekst greške iz `user.lua`, razlog
+    greške oblikovanja), tekstovi grešaka za programera i log.
+  - Namjerno izmijenjeni testovi (uspoređivali su engleski tekst; tvrdnje o ponašanju iste): `TestUErr`,
+    `TestUSpell`, `TestUEi`, `TestUOne`, `TestUOpts` (`writing_user_test.go`); `TestSwap`, `TestSaveAsk`
+    (`nvim_prompt_test.go`: sada `errors.Is(err, ErrPromptOpen)`). Novi: `TestFmtMsg`, `TestUMsg` (80,
+    40 i 20 stupaca), `TestUFail`, `TestUMap` (23 mapiranja), `TestUNoEn` (zaštita od povratka
+    engleskih rečenica i opisa), `TestUITextNvim`, `TestEdText`.
+  - `EditorService.Save` (`⌘S`) uz otvoren upit i dalje vraća opći kod greške (frontend ga samo zapiše).
 - **Incident tijekom pregleda (2026-11-12, 14:33):** `plan-reviewer` je jednom pokrenuo
   `nvim --headless -u NONE` bez `-i NONE` i bez preusmjerenog homea (da nađe `VIMRUNTIME`), pa je
   Neovim prepisao vlasnikovu `~/.local/state/nvim/shada/main.shada` (povijest i oznake vlasnikovog

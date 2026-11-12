@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -187,6 +188,7 @@ func newEd(t *testing.T, mutate ...func(*editorServiceDeps)) *edEnv {
 		Clipboard: e.clip.set,
 		Limits:    limits,
 		RunDir:    mk("r"),
+		Text:      nvimText(uiTextFor(t)),
 	}
 	for _, m := range mutate {
 		m(&deps)
@@ -2084,5 +2086,38 @@ func TestEdRunning(t *testing.T) {
 	e.svc.shutdown()
 	if e.svc.running() {
 		t.Error("running after shutdown")
+	}
+}
+
+// Neovim gets the interface texts through its environment, from uiText: init.lua
+// reads them while it loads, so they cannot come later. The descriptions of the
+// mappings are in Croatian, from strings.json.
+func TestEdText(t *testing.T) {
+	e := startEd(t)
+	text := uiTextFor(t)
+	got := e.eval(`[$PISAR_TEXT]`)
+	if len(got) != 1 {
+		t.Fatalf("PISAR_TEXT = %q", got)
+	}
+	var env map[string]string
+	if err := json.Unmarshal([]byte(got[0]), &env); err != nil {
+		t.Fatalf("PISAR_TEXT is not JSON: %v: %q", err, got[0])
+	}
+	want := nvimText(text)
+	if len(want) < 16 {
+		t.Fatalf("nvimText has %d texts: %v", len(want), want)
+	}
+	if !maps.Equal(env, want) {
+		t.Errorf("PISAR_TEXT = %v, want %v", env, want)
+	}
+	for key, value := range env {
+		if !strings.HasPrefix(key, "nvim") || value == "" {
+			t.Errorf("PISAR_TEXT has %q = %q", key, value)
+		}
+	}
+	for lhs, desc := range map[string]string{"<leader>s": text.NvimMapSpell, "<leader>b": text.NvimMapBold, "<leader>f": text.NvimMapSearch} {
+		if got := e.eval(`[maparg('` + lhs + `', 'n', 0, 1).desc]`); !slices.Equal(got, []string{desc}) {
+			t.Errorf("description of %s = %q, want %q", lhs, got, desc)
+		}
 	}
 }

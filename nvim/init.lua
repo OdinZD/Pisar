@@ -23,6 +23,31 @@ package.loaded["nvim.spellfile"] = setmetatable({}, {
 
 vim.g.mapleader = " "
 
+-- The texts the user may see from here (the descriptions of the mappings, the
+-- message about a failed formatting action) are Croatian and live in
+-- frontend/src/strings.json, the one place for the interface's text. Go hands
+-- them over as JSON in PISAR_TEXT, because they are needed now, while this file
+-- loads, before Go is connected. Without the variable (Neovim started by hand
+-- with this file) or with JSON that does not decode, there are none: a mapping
+-- has no description and a message only the facts, and everything works. There
+-- is no sentence of Pisar's in this file.
+local texts = {}
+do
+  local raw = vim.env.PISAR_TEXT
+  if raw and raw ~= "" then
+    local ok, decoded = pcall(vim.json.decode, raw)
+    if ok and type(decoded) == "table" then
+      texts = decoded
+    end
+  end
+end
+
+-- The text under key; nil when there is none (also for a value that is no text).
+local function text(key)
+  local value = texts[key]
+  return type(value) == "string" and value or nil
+end
+
 -- The application is light. Set it explicitly instead of relying on Neovim's
 -- background detection, which asks the terminal and can guess wrong.
 vim.o.background = "light"
@@ -84,7 +109,7 @@ for _, m in ipairs({
   vim.keymap.set({ "n", "x" }, m[1], by_rows(m[1], m[2]), {
     expr = true,
     silent = true,
-    desc = "Pisar: move by display rows",
+    desc = text("nvimMapRows"),
   })
 end
 
@@ -102,12 +127,12 @@ end
 vim.keymap.set("i", "<Down>", insert_by_rows("<Down>", "gj"), {
   expr = true,
   silent = true,
-  desc = "Pisar: move by display rows",
+  desc = text("nvimMapRows"),
 })
 vim.keymap.set("i", "<Up>", insert_by_rows("<Up>", "gk"), {
   expr = true,
   silent = true,
-  desc = "Pisar: move by display rows",
+  desc = text("nvimMapRows"),
 })
 
 -- Spelling, Croatian and English together. Neovim ships only English; the
@@ -183,11 +208,11 @@ end
 -- gets the last choice, not the old default.
 vim.keymap.set("n", "<leader>s", function()
   vim.o.spell = not vim.o.spell
-end, { silent = true, desc = "Pisar: toggle spell checking" })
+end, { silent = true, desc = text("nvimMapSpell") })
 
 vim.keymap.set("n", "<leader>n", function()
   vim.o.number = not vim.o.number
-end, { silent = true, desc = "Pisar: toggle line numbers" })
+end, { silent = true, desc = text("nvimMapNumbers") })
 
 -- The colorscheme uses true colours, and the TUI runs inside xterm.js.
 vim.o.termguicolors = true
@@ -347,16 +372,118 @@ install_events()
 -- mapping does nothing but notify.
 vim.keymap.set("n", "<leader>e", function()
   notify("pisar_focus")
-end, { silent = true, desc = "Pisar: focus the project tree" })
+end, { silent = true, desc = text("nvimMapTree") })
 
 -- Normal mode only, like <leader>e: in insert mode these are plain text.
 vim.keymap.set("n", "<leader>p", function()
   notify("pisar_preview")
-end, { silent = true, desc = "Pisar: toggle the preview" })
+end, { silent = true, desc = text("nvimMapPreview") })
 
 vim.keymap.set("n", "<leader>f", function()
   notify("pisar_search")
-end, { silent = true, desc = "Pisar: open the document search" })
+end, { silent = true, desc = text("nvimMapSearch") })
+
+-- What Pisar puts on the message line, from here and from Go (internal/nvim
+-- takes these functions as they are: messageLua, _G.pisar_msg). One copy, because
+-- a message that is not cut to the line opens a hit-enter prompt (:help
+-- hit-enter), and inside an RPC call that freezes Neovim until a key arrives: it
+-- answers no further calls, and the call that caused it never returns. nvim_echo()
+-- and emsg() do not shorten anything ('shortmess' T and t only shorten messages
+-- Neovim builds itself). Measured with Neovim 0.12: an echo of N cells at 80
+-- columns prompts as soon as N > 68, at 20 columns as soon as N > 8.
+--
+-- The usable width follows Neovim's comp_col(): the message line stops before
+-- the area reserved for 'showcmd' and, when the last window has no status line,
+-- for the 'ruler'. The numbers are the 10 cells of 'showcmd' and the 17 of the
+-- ruler (:help 'rulerformat'; "%N(" changes it), plus one separating cell for
+-- each, plus one cell that must stay free. They are not documented; they were
+-- confirmed by measuring the hit-enter threshold for the combinations of
+-- 'showcmd', 'ruler', 'laststatus' and 'showcmdloc' that TestWidth runs. The
+-- default (showcmd on, ruler on, laststatus=2) reserves 11 cells + 1: width
+-- columns - 12. 'cmdheight' > 1 would allow more; we ignore it and stay on one
+-- line.
+--
+-- The texts themselves are Croatian and come from PISAR_TEXT (see text() at the
+-- top): without them only the text of the error is shown, without Pisar's frame.
+local msg = {}
+
+function msg.width()
+  local o = vim.o
+  local wins = 0
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_config(w).relative == "" then
+      wins = wins + 1
+    end
+  end
+  local status = o.laststatus >= 2 or (o.laststatus == 1 and wins > 1)
+  local reserved = 0
+  if o.ruler and not status then
+    reserved = (tonumber(o.rulerformat:match("^%%%-?(%d+)%(")) or 17) + 1
+  end
+  if o.showcmd and o.showcmdloc == "last" then
+    reserved = reserved + 10 + ((not o.ruler or status) and 1 or 0)
+  end
+  return math.max(o.columns - reserved - 1, 1)
+end
+
+-- Cuts text to at most max screen cells, ending in "…" when it had to cut.
+-- Cells, not bytes or characters: č is two bytes, an emoji or CJK character is
+-- two cells, and the cut never goes through a character. The cut is a binary
+-- search because the width of a prefix never shrinks as the prefix grows.
+function msg.fit(text, max)
+  text = text:gsub("%s*[\r\n]+%s*", " "):gsub("\t", " ")
+  if vim.fn.strdisplaywidth(text) <= max then
+    return text
+  end
+  local ell = "…"
+  local room = max - vim.fn.strdisplaywidth(ell)
+  if room < 0 then
+    ell, room = "", max
+  end
+  local lo, hi = 0, vim.fn.strchars(text)
+  while lo < hi do
+    local mid = math.ceil((lo + hi) / 2)
+    if vim.fn.strdisplaywidth(vim.fn.strcharpart(text, 0, mid)) <= room then
+      lo = mid
+    else
+      hi = mid - 1
+    end
+  end
+  return vim.fn.strcharpart(text, 0, lo) .. ell
+end
+
+-- "Vim(write):" and "Vim:" are how Lua prefixes errors raised by commands.
+local function plain(text)
+  return (tostring(text):gsub("^Vim%(?%w*%)?:", ""))
+end
+
+-- Puts a message on the message line, cut to fit, and redraws. Only the screen
+-- copy is cut; callers hand the full text to Go. The ErrorMsg echo (not err =
+-- true) and the redraw also matter in insert and visual mode: Neovim otherwise
+-- blocks the main loop, ignoring keys, to keep a message on screen (1 s for an
+-- error, 3 s for the "written" message of a successful :write; measured with
+-- Neovim 0.12).
+function msg.show(text)
+  vim.api.nvim_echo({ { msg.fit(plain(text), msg.width()), "ErrorMsg" } }, true, {})
+  vim.cmd.redraw()
+end
+
+-- The template with "{name}" replaced by value, in one pass: a value that
+-- contains "{name}" itself is left as it is. Without a template (Go has not set
+-- the texts) it is the value alone.
+function msg.framed(template, name, value)
+  value = plain(value)
+  if type(template) ~= "string" or template == "" then
+    return value
+  end
+  local from, to = template:find("{" .. name .. "}", 1, true)
+  if not from then
+    return template
+  end
+  return template:sub(1, from - 1) .. value .. template:sub(to + 1)
+end
+
+_G.pisar_msg = msg
 
 -- Markdown formatting: bold, italic, heading, list.
 --
@@ -973,15 +1100,16 @@ end
 _G.pisar_format = pisar_format
 
 -- Normal and visual mode only: in insert mode a space and a letter are text.
--- A failure is shown cut to a few columns, so that it cannot open a hit-enter
--- prompt.
+-- A failure is shown cut to the message line (msg.show), so that it cannot open
+-- a hit-enter prompt.
+local map_desc = { bold = "nvimMapBold", italic = "nvimMapItalic", heading = "nvimMapHeading", list = "nvimMapList" }
 for key, kind in pairs({ b = "bold", i = "italic", h = "heading", l = "list" }) do
   vim.keymap.set({ "n", "x" }, "<leader>" .. key, function()
     local err = pisar_format(kind)
     if err ~= "" then
-      api.nvim_echo({ { "Pisar: " .. vim.fn.strcharpart(err, 0, 40), "ErrorMsg" } }, true, {})
+      msg.show(msg.framed(text("nvimFormatFailed"), "reason", err))
     end
-  end, { silent = true, desc = "Pisar: format " .. kind })
+  end, { silent = true, desc = text(map_desc[kind]) })
 end
 
 -- The user's own file, user.lua, runs last. Pisar never creates, changes or
@@ -1010,7 +1138,7 @@ end
 --     modified, changed, bye) and PisarFormat, rebuilt from scratch: anything a
 --     file added to those two groups is gone, and nothing is doubled;
 --   'eventignore' and 'eventignorewin' (the global value and that of every
---     window): "all" and the events the two groups listen to are taken out, with
+--     window): "all" and the events the two groups listen to are removed, with
 --     a note. The other entries are the user's. An ignored BufWritePost would
 --     leave the saved .docx old after a :w, with no message;
 --   _G.pisar_format, which Go calls;
@@ -1020,7 +1148,7 @@ end
 --     while the preview is off, and a g:pisar_channel that is no channel would
 --     make every notification an error. Go sets g:pisar_channel after it
 --     connects, and g:pisar_preview when the preview is turned on;
---   'spelllang': names without a dictionary are taken out, with a note (a
+--   'spelllang': names without a dictionary are removed, with a note (a
 --     missing one would otherwise ask to download it, see above); when none is
 --     left the languages Pisar chose are used.
 --
@@ -1110,7 +1238,7 @@ local function check_spelllang()
     kept = langs
   end
   vim.cmd("silent! set spelllang=" .. table.concat(kept, ","))
-  return "spelllang: no dictionary for " .. table.concat(dropped, ",")
+  return table.concat(dropped, ",")
 end
 
 -- Whether an item of 'eventignore' names an event that PisarNotify or PisarFormat
@@ -1131,7 +1259,7 @@ end
 -- The value of an event list ('eventignore', 'eventignorewin') without "all" and
 -- without the events Pisar listens to, also in the form "-Event" (:help
 -- 'eventignore': "all,-WinLeave" ignores all but WinLeave). The other items stay
--- as they are. Returns the new value and the items taken out.
+-- as they are. Returns the new value and the items removed.
 local function without_pisar_events(value)
   local kept, removed = {}, {}
   for item in vim.gsplit(value, ",", { plain = true }) do
@@ -1181,11 +1309,14 @@ local function restore_eventignore()
   if #taken == 0 then
     return nil
   end
-  return "eventignore: " .. table.concat(taken, ",") .. " taken out"
+  return table.concat(taken, ",")
 end
 
--- What Go relies on (the list above). Returns a note when the user's file made
--- a change that was undone and that they should hear about.
+-- What Go relies on (the list above). Returns what the user's file made that was
+-- undone and that they should hear about, as data and not as text: a table with
+-- "events" (what was removed from 'eventignore', comma separated) and "spell"
+-- (the 'spelllang' entries without a dictionary), or nil. Go writes the
+-- sentences, in Croatian, once it is connected (internal/nvim, UserConfig).
 local function restore_required()
   vim.o.hidden = true
   vim.opt.shortmess:append("t")
@@ -1195,25 +1326,19 @@ local function restore_required()
   install_events()
   install_format_events()
   _G.pisar_format = pisar_format
+  _G.pisar_msg = msg
   vim.g.pisar_reloading = nil
   vim.g.pisar_preview = nil
   vim.g.pisar_channel = nil
 
   -- After install_events(): the event list is read from what it registered.
-  -- Not ipairs() over a list: it stops at the first nil.
   local notes = {}
-  local ei_note = restore_eventignore()
-  if ei_note then
-    table.insert(notes, ei_note)
-  end
-  local spell_note = check_spelllang()
-  if spell_note then
-    table.insert(notes, spell_note)
-  end
-  if #notes == 0 then
+  notes.events = restore_eventignore()
+  notes.spell = check_spelllang()
+  if next(notes) == nil then
     return nil
   end
-  return table.concat(notes, "; ")
+  return notes
 end
 
 -- 'messagesopt' without "hit-enter" and with "wait:0" (:help 'messagesopt'): a
@@ -1310,7 +1435,7 @@ end
 load_user_file()
 local restore_ok, note = pcall(restore_required)
 if not restore_ok then
-  note = "restore after user.lua: " .. tostring(note)
+  note = { restore = tostring(note) }
 end
 keep_spell_choice()
 if note then

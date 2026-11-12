@@ -207,6 +207,9 @@ func TestQuitSaveFails(t *testing.T) {
 	}{
 		{"unnamed", &apiError{code: codeUnnamedBuffer, cause: fmt.Errorf("%w (1)", nvim.ErrUnnamedBuffer)}, text.ErrorUnnamedBuffer},
 		{"unnamed, bare", nvim.ErrUnnamedBuffer, text.ErrorUnnamedBuffer},
+		// A question Neovim waits for: the Croatian sentence, not the English log text.
+		{"prompt", failEditor("save all", fmt.Errorf("nvim: save all: %w", nvim.ErrPromptOpen)), text.NvimPromptOpen},
+		{"prompt, bare", nvim.ErrPromptOpen, text.NvimPromptOpen},
 		{"plain", errors.New("disk on fire"), "disk on fire"},
 		{"service error", &apiError{code: codeInternal, cause: errors.New("nvim: save all: /p/a.md: E45: 'readonly' option is set")}, "E45: 'readonly' option is set"},
 	} {
@@ -226,6 +229,9 @@ func TestQuitSaveFails(t *testing.T) {
 			}
 			if len(dlg.errors) != 1 || !strings.Contains(dlg.errors[0], c.wantMsg) || !strings.Contains(dlg.errors[0], strings.SplitN(text.QuitSaveFailed, "\n", 2)[0]) {
 				t.Errorf("error messages = %q, want one containing %q", dlg.errors, c.wantMsg)
+			}
+			if strings.HasPrefix(c.name, "prompt") && strings.Contains(dlg.errors[0], "nvim:") {
+				t.Errorf("the dialog shows the English text of the error: %q", dlg.errors[0])
 			}
 			// The next request asks again.
 			if g.request() {

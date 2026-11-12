@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	nvimrpc "github.com/neovim/go-client/nvim"
 )
@@ -28,7 +29,13 @@ type fx struct {
 
 func newFx(t *testing.T) *fx {
 	t.Helper()
-	p, _ := newProc(t, nil)
+	return newFxWith(t, nil)
+}
+
+// newFxWith is newFx with Options changed by mutate.
+func newFxWith(t *testing.T, mutate func(*Options)) *fx {
+	t.Helper()
+	p, _ := newProc(t, mutate)
 	f := &fx{p}
 	// Keys travel through the PTY, asynchronously from the RPC calls. A key that
 	// does nothing but count is sent after them: when the count has moved, all
@@ -907,6 +914,75 @@ func TestFmtEvt(t *testing.T) {
 			}
 			if !f.get(t).Modified {
 				t.Errorf("the buffer is not modified after Format in mode %q", mode)
+			}
+		})
+	}
+}
+
+// TestFmtMsg: a formatting action that fails says so in Croatian on the message
+// line, in one line cut to the width of the screen, never in the middle of a
+// character, and without freezing Neovim. Without the texts (Neovim started with
+// no Text) only the error is shown, with no frame of Pisar's.
+func TestFmtMsg(t *testing.T) {
+	// A multi-byte error: the cut has characters to go through.
+	const fail = `vim.api.nvim_buf_set_text = function() error("šđčćž " .. string.rep("ŽĐČĆŠ", 30)) end`
+	tests := []struct {
+		name   string
+		cols   uint16
+		texts  bool
+		prefix string
+		cut    bool // the line ends in "…"
+	}{
+		{"c80", 80, true, "Oblikovanje nije uspjelo: ", true},
+		{"c40", 40, true, "Oblikovanje nije uspjelo: ", true},
+		{"c20", 20, true, "Oblikov", true},
+		{"raw", 80, false, "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFxWith(t, func(o *Options) {
+				o.Cols = tc.cols
+				if !tc.texts {
+					o.Text = nil
+				}
+			})
+			f.reset(t, []string{"jedna riječ dva"})
+			f.setCursor(t, [2]int{1, 8})
+			f.lua(t, nil, fail)
+			f.press(t, " b")
+
+			if st := f.get(t); st.Mode != "n" || !slices.Equal(st.Lines, []string{"jedna riječ dva"}) {
+				t.Errorf("after the failed action: %+v", st)
+			}
+			var blocked bool
+			f.lua(t, &blocked, `return vim.api.nvim_get_mode().blocking`)
+			if blocked {
+				t.Fatal("Neovim waits for a key: a hit-enter prompt")
+			}
+			lines := strings.Split(strings.TrimSpace(f.messages(t)), "\n")
+			if len(lines) != 1 {
+				t.Fatalf("messages = %q, want one line", lines)
+			}
+			line := lines[0]
+			if !utf8.ValidString(line) {
+				t.Errorf("the line is cut inside a character: %q", line)
+			}
+			// 12 cells stay free of the message line (see init.lua, msg.width); all
+			// the characters here are one cell wide.
+			if w := utf8.RuneCountInString(line); w > int(tc.cols)-12 {
+				t.Errorf("the line is %d cells wide, at most %d fit: %q", w, int(tc.cols)-12, line)
+			}
+			if !strings.HasPrefix(line, tc.prefix) {
+				t.Errorf("line = %q, want it to start with %q", line, tc.prefix)
+			}
+			if tc.cut && !strings.HasSuffix(line, "…") {
+				t.Errorf("line = %q, want it to end in an ellipsis", line)
+			}
+			if !tc.texts && !strings.Contains(line, "šđčćž") {
+				t.Errorf("line = %q, want the error alone", line)
+			}
+			if strings.Contains(line, "Pisar:") {
+				t.Errorf("line = %q holds the old English frame", line)
 			}
 		})
 	}

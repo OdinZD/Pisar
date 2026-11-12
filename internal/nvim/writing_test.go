@@ -34,6 +34,7 @@ type proseOpts struct {
 	words       string // PISAR_SPELLFILE; "" leaves the variable unset
 	colorscheme bool   // install the generator's sample colorscheme
 	user        string // PISAR_USER_LUA; "" leaves the variable unset
+	noTexts     bool   // start with no Text: only the facts, without Pisar's sentences
 }
 
 // envValue returns the value of key in a list of "K=V" entries.
@@ -92,6 +93,9 @@ func newProse(t *testing.T, o proseOpts) (*Process, *output) {
 		}
 		if o.user != "" {
 			opts.Env = append(opts.Env, "PISAR_USER_LUA="+o.user)
+		}
+		if o.noTexts {
+			opts.Text = nil
 		}
 	})
 }

@@ -114,6 +114,9 @@ type editorServiceDeps struct {
 	// real timers of the loop (tests); nil means real ones.
 	Preview      previewRenderer
 	PreviewTimer previewTimerFunc
+
+	// Text is what Neovim shows to the user, by key (see nvimText).
+	Text map[string]string
 }
 
 // EditorService is the Wails service behind the editor: it runs Neovim, moves
@@ -225,6 +228,7 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 			},
 			StartTimeout: d.Limits.NvimStartTimeout,
 			StopTimeout:  d.Limits.NvimStopTimeout,
+			Text:         d.Text,
 		},
 		FlushInterval: d.Limits.TermFlushInterval,
 		MaxChunk:      d.Limits.TermMaxChunk,
@@ -491,8 +495,9 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 		// The user's file is their own code, not a document: its path and the
 		// first line of the error are fine to log, the text of the file is not
 		// read by anyone but Neovim.
-		if u := e.session.UserConfig(); u.Error != "" || u.Note != "" {
-			slog.Warn("editor: user.lua", "file", e.paths.UserLua, "error", u.FirstLine(), "note", u.Note)
+		if u := e.session.UserConfig(); u != (nvim.UserConfig{}) {
+			slog.Warn("editor: user.lua", "file", e.paths.UserLua, "error", u.FirstLine(),
+				"spell", u.Spell, "events", u.Events, "restore", u.Restore)
 		}
 	}
 	if wasRunning {

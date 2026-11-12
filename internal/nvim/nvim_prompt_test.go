@@ -500,13 +500,15 @@ func TestSwap(t *testing.T) {
 				"Modified": func(c context.Context) error { _, err := p.Modified(c); return err },
 				"Save":     p.Save,
 				"SaveAll":  p.SaveAll,
+				"Wipe":     func(c context.Context) error { _, err := p.Wipe(c, modFile); return err },
+				"Reload":   func(c context.Context) error { return p.Reload(c, modFile) },
 			} {
 				cctx, ccancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 				start := time.Now()
 				err := call(cctx)
 				ccancel()
-				if (name == "Save" || name == "SaveAll") && tc.rows >= 60 {
-					if err == nil || !strings.Contains(err.Error(), "waiting for an answer") {
+				if (name == "Save" || name == "SaveAll" || name == "Wipe" || name == "Reload") && tc.rows >= 60 {
+					if !errors.Is(err, ErrPromptOpen) {
 						t.Errorf("%s while asked = %v, want a refusal", name, err)
 					} else {
 						t.Logf("%s while asked: %v", name, err)
@@ -632,8 +634,8 @@ func TestSaveAsk(t *testing.T) {
 	allStart := time.Now()
 	err := p.SaveAll(allCtx)
 	allCancel()
-	if err == nil || !strings.Contains(err.Error(), "waiting for an answer") {
-		t.Errorf("SaveAll while the question stands = %v, want a refusal", err)
+	if !errors.Is(err, ErrPromptOpen) {
+		t.Errorf("SaveAll while the question stands = %v, want ErrPromptOpen", err)
 	}
 	if took := time.Since(allStart); took > time.Second {
 		t.Errorf("SaveAll took %v for a 500 ms context", took)

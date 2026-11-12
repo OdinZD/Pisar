@@ -40,6 +40,22 @@ type uiText struct {
 	QuitUnresponsiveTitle string `json:"quitUnresponsiveTitle"`
 	QuitUnresponsive      string `json:"quitUnresponsive"`
 	QuitAnyway            string `json:"quitAnyway"`
+	NvimPromptOpen        string `json:"nvimPromptOpen"`
+	NvimFormatFailed      string `json:"nvimFormatFailed"`   // placeholder {reason}
+	NvimUserLuaError      string `json:"nvimUserLuaError"`   // placeholder {reason}
+	NvimSpellMissing      string `json:"nvimSpellMissing"`   // placeholder {languages}
+	NvimEventsRestored    string `json:"nvimEventsRestored"` // placeholder {events}
+	NvimRestoreFailed     string `json:"nvimRestoreFailed"`  // placeholder {reason}
+	NvimMapRows           string `json:"nvimMapRows"`
+	NvimMapSpell          string `json:"nvimMapSpell"`
+	NvimMapNumbers        string `json:"nvimMapNumbers"`
+	NvimMapTree           string `json:"nvimMapTree"`
+	NvimMapPreview        string `json:"nvimMapPreview"`
+	NvimMapSearch         string `json:"nvimMapSearch"`
+	NvimMapBold           string `json:"nvimMapBold"`
+	NvimMapItalic         string `json:"nvimMapItalic"`
+	NvimMapHeading        string `json:"nvimMapHeading"`
+	NvimMapList           string `json:"nvimMapList"`
 	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
 	ErrorConflict         string `json:"errorConflict"`
 	ErrorConvertFailed    string `json:"errorConvertFailed"`
@@ -69,6 +85,24 @@ type uiText struct {
 	SaveCopyTitle         string `json:"saveCopyTitle"`
 	SaveCopySuffix        string `json:"saveCopySuffix"`
 	ImportSaveTitle       string `json:"importSaveTitle"`
+}
+
+// nvimText are the texts Neovim shows (internal/nvim, Options.Text): every key
+// that starts with "nvim", under its name in strings.json. The package takes
+// them as data: it must not read the file or import this package. A new nvim*
+// field goes there without a line here. nvimPromptOpen is among them although
+// Neovim never prints it: it is what the quit dialog shows for
+// nvim.ErrPromptOpen, and it costs nothing to carry.
+func nvimText(t uiText) map[string]string {
+	out := map[string]string{}
+	rt, rv := reflect.TypeOf(t), reflect.ValueOf(t)
+	for i := range rt.NumField() {
+		key := rt.Field(i).Tag.Get("json")
+		if strings.HasPrefix(key, "nvim") {
+			out[key] = rv.Field(i).String()
+		}
+	}
+	return out
 }
 
 // parseUIText decodes the texts and reports every key that is missing or empty,

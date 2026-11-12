@@ -148,13 +148,17 @@ func (g *quitGate) unsavedMessage(bufs []nvim.Buffer) string {
 	return fill(g.text.QuitMessage, "names", strings.Join(lines, "\n"))
 }
 
-// saveFailure is the reason shown to the user. A buffer without a name and the
-// failures of saving a Word document get the explanation the rest of the
-// interface uses; anything else shows what Neovim reported (the service error
-// hides it behind a code, so look at its cause).
+// saveFailure is the reason shown to the user. A buffer without a name, a
+// question Neovim is waiting for and the failures of saving a Word document get
+// the explanation the rest of the interface uses; anything else shows what
+// Neovim reported (the service error hides it behind a code, so look at its
+// cause).
 func (g *quitGate) saveFailure(err error) string {
 	if errors.Is(err, nvim.ErrUnnamedBuffer) {
 		return g.text.ErrorUnnamedBuffer
+	}
+	if errors.Is(err, nvim.ErrPromptOpen) {
+		return g.text.NvimPromptOpen
 	}
 	var ae *apiError
 	if !errors.As(err, &ae) {

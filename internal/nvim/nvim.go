@@ -7,6 +7,7 @@ package nvim
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -60,7 +61,15 @@ const (
 	previewMethod  = "pisar_preview"
 	searchMethod   = "pisar_search"
 	previewVar     = "pisar_preview"
-	socketPrefix   = "n" // short on purpose: a socket path may be at most maxSocketPath bytes
+	// textEnv carries the interface texts to init.lua as JSON (Options.Text). The
+	// name is shared with nvim/init.lua.
+	textEnv = "PISAR_TEXT"
+
+	// promptMarker is what the Lua chunks raise for ErrPromptOpen; call turns it
+	// into the error, so that no sentence for the user is spelled out here.
+	promptMarker = "pisar:prompt-open"
+
+	socketPrefix = "n" // short on purpose: a socket path may be at most maxSocketPath bytes
 )
 
 // EventKind identifies the type of an Event.
@@ -96,6 +105,12 @@ var (
 	ErrSocketPathTooLong = errors.New("nvim: socket path too long")
 	// ErrUnnamedBuffer is returned (wrapped) by SaveAll when a modified buffer has no file to write to.
 	ErrUnnamedBuffer = errors.New("nvim: a modified buffer has no file name")
+	// ErrPromptOpen is returned (wrapped) by Save, SaveAll, Wipe and Reload while
+	// Neovim waits for the answer to a question (a prompt, hit-enter, "-- More --"):
+	// the call is refused and changes nothing. The sentence the user
+	// reads is the interface's (the nvimPromptOpen text), chosen by whoever shows
+	// the error; the text of this one is for logs.
+	ErrPromptOpen = errors.New("nvim: refused while a prompt is open")
 	// ErrBufferModified is returned (wrapped) by Wipe for a buffer with unsaved changes.
 	ErrBufferModified = errors.New("nvim: buffer has unsaved changes")
 	// ErrBufferTooLarge is returned (wrapped) by BufferText when the text is over the limit it was given.
@@ -115,6 +130,17 @@ type Options struct {
 	Env          []string      // extra "K=V" entries, applied after os.Environ() and after the package's own
 	StartTimeout time.Duration // max wait until Neovim is up; required (> 0)
 	StopTimeout  time.Duration // max wait per shutdown stage; required (> 0)
+	// Text holds the interface texts this package and init.lua show to the user,
+	// by their keys in frontend/src/strings.json (the keys that start with
+	// "nvim"). Neovim gets them as JSON in the environment variable PISAR_TEXT,
+	// because init.lua needs them while it loads, before Go is connected: they
+	// are the descriptions of the mappings and the sentences of the formatting
+	// message. The sentences about user.lua are put together here. Optional: a
+	// text that is missing leaves a mapping without a description and a message
+	// without its frame (only the facts), which is what a test that is not about
+	// the wording needs. Invalid JSON, which only a hand-made PISAR_TEXT can
+	// give, is the same as none.
+	Text map[string]string
 }
 
 func (o Options) validate() error {
@@ -209,6 +235,7 @@ type Process struct {
 	pumpDone    chan struct{}
 	sock        string
 	stopTimeout time.Duration
+	texts       map[string]string // Options.Text
 
 	done   chan struct{} // closed once the process has been reaped
 	reaped chan struct{} // closed when all RPC resources have been released
@@ -270,6 +297,11 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 	args := []string{"--listen", sock, "-u", opts.InitLua}
 	cmd := exec.Command(bin, args...)
 	env := os.Environ()
+	if len(opts.Text) > 0 {
+		// Marshalling a map of strings cannot fail.
+		text, _ := json.Marshal(opts.Text)
+		env = append(env, textEnv+"="+string(text))
+	}
 	if opts.AppName != "" {
 		env = append(env, "NVIM_APPNAME="+opts.AppName)
 	}
@@ -300,6 +332,7 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 		pumpDone:    make(chan struct{}),
 		sock:        sock,
 		stopTimeout: opts.StopTimeout,
+		texts:       opts.Text,
 		done:        make(chan struct{}),
 		reaped:      make(chan struct{}),
 		events:      make(chan Event, eventBuffer),
@@ -702,7 +735,7 @@ func (p *Process) Wipe(ctx context.Context, path string) (wasCurrent bool, err e
 	err = p.execLua(ctx, "wipe buffer", &res, bufferLua+findLua+`
 		-- While a prompt is up the current buffer may be half loaded (see Save).
 		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
-			error("Neovim is waiting for an answer to a prompt; no buffer was removed", 0)
+			error("`+promptMarker+`", 0)
 		end
 
 		local current = vim.api.nvim_get_current_buf()
@@ -777,7 +810,7 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 	err = p.execLua(ctx, "reload", &found, bufferLua+findLua+`
 		-- While a prompt is up the buffer may be half loaded (see Save).
 		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
-			error("Neovim is waiting for an answer to a prompt; nothing was reloaded", 0)
+			error("`+promptMarker+`", 0)
 		end
 		local hits = buffersOf((...))
 		-- nvim_buf_call makes a background buffer current for a moment; init.lua
@@ -811,80 +844,16 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 	return nil
 }
 
-// messageLua defines fit(msg, max) and show(msg) for the chunks that report
-// errors to the user. It is the only place in this package that puts text on
-// Neovim's message line.
-//
-// Why not just echo the error: a message that does not fit on the message line
-// opens a hit-enter prompt (:help hit-enter), and inside an RPC call that
-// freezes Neovim until a key arrives: it answers no further calls, and the
-// call that caused it never returns. nvim_echo() and emsg() do not shorten
-// anything ('shortmess' T and t only shorten messages Neovim builds itself).
-// Measured with Neovim 0.12: an echo of N cells at 80 columns prompts as soon
-// as N > 68, at 20 columns as soon as N > 8.
-//
-// The usable width follows Neovim's comp_col(): the message line stops before
-// the area reserved for 'showcmd' and, when the last window has no status line,
-// for the 'ruler'. The numbers are the 10 cells of 'showcmd' and the 17 of the
-// ruler (:help 'rulerformat'; "%N(" changes it), plus one separating cell for
-// each, plus one cell that must stay free. They are not documented; they were
-// confirmed by measuring the hit-enter threshold for the combinations of
-// 'showcmd', 'ruler', 'laststatus' and 'showcmdloc' that TestWidth runs. The
-// default (showcmd on, ruler on, laststatus=2) reserves 11 cells + 1: width
-// columns - 12, the "- 15" the first version used was a rounded-up guess.
-// 'cmdheight' > 1 would allow more; we ignore it and stay on one line.
+// messageLua defines msg_width(), fit(text, max) and show(text) for the chunks
+// that report errors to the user. They are the functions of init.lua
+// (_G.pisar_msg), taken by name: a message that does not fit on the message line
+// opens a hit-enter prompt, which inside an RPC call freezes Neovim, so there is
+// one copy of the cutting and its reasons are written down there. Only the
+// screen copy is cut; callers hand the full text to Go. This is the only place
+// in this package that puts text on Neovim's message line, and it holds no
+// sentence of its own: the sentences are Options.Text.
 const messageLua = `
-	local function msg_width()
-		local o = vim.o
-		local wins = 0
-		for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-			if vim.api.nvim_win_get_config(w).relative == "" then wins = wins + 1 end
-		end
-		local status = o.laststatus >= 2 or (o.laststatus == 1 and wins > 1)
-		local reserved = 0
-		if o.ruler and not status then
-			reserved = (tonumber(o.rulerformat:match("^%%%-?(%d+)%(")) or 17) + 1
-		end
-		if o.showcmd and o.showcmdloc == "last" then
-			reserved = reserved + 10 + ((not o.ruler or status) and 1 or 0)
-		end
-		return math.max(o.columns - reserved - 1, 1)
-	end
-
-	-- fit cuts msg to at most max screen cells, ending in "…" when it had to cut.
-	-- Cells, not bytes or characters: č is two bytes, an emoji or CJK character
-	-- is two cells. The cut is a binary search because the width of a prefix
-	-- never shrinks as the prefix grows.
-	local function fit(msg, max)
-		msg = msg:gsub("%s*[\r\n]+%s*", " "):gsub("\t", " ")
-		if vim.fn.strdisplaywidth(msg) <= max then return msg end
-		local ell = "…"
-		local room = max - vim.fn.strdisplaywidth(ell)
-		if room < 0 then ell, room = "", max end
-		local lo, hi = 0, vim.fn.strchars(msg)
-		while lo < hi do
-			local mid = math.ceil((lo + hi) / 2)
-			if vim.fn.strdisplaywidth(vim.fn.strcharpart(msg, 0, mid)) <= room then
-				lo = mid
-			else
-				hi = mid - 1
-			end
-		end
-		return vim.fn.strcharpart(msg, 0, lo) .. ell
-	end
-
-	-- show puts an error on the message line, cut to fit, and redraws. Only the
-	-- screen copy is cut; callers hand the full text to Go. The ErrorMsg echo
-	-- (not err = true) and the redraw also matter in insert and visual mode:
-	-- Neovim otherwise blocks the main loop, ignoring keys, to keep a message
-	-- on screen (1 s for an error, 3 s for the "written" message of a successful
-	-- :write; measured with Neovim 0.12).
-	local function show(msg)
-		-- "Vim(write):" and "Vim:" are how Lua prefixes errors raised by commands.
-		msg = tostring(msg):gsub("^Vim%(?%w*%)?:", "")
-		vim.api.nvim_echo({ { fit(msg, msg_width()), "ErrorMsg" } }, true, {})
-		vim.cmd.redraw()
-	end`
+	local msg_width, fit, show = pisar_msg.width, pisar_msg.fit, pisar_msg.show`
 
 // promptGuardLua defines refuseDuringPrompt(), which Save and SaveAll call
 // before they write anything. While a prompt is up (mode() starts with "r":
@@ -892,7 +861,8 @@ const messageLua = `
 // buffer may be a half-loaded one: with the swap file question open, :write
 // wrote that empty buffer over the real file (measured with Neovim 0.12; the
 // question is asked inside :edit, after the buffer exists but before it has its
-// text). Refusing is the only safe answer, and the text is the same for both.
+// text). Refusing is the only safe answer, and it is the same error
+// (ErrPromptOpen) for Save, SaveAll, Wipe and Reload.
 //
 // Measured for SaveAll too (Neovim 0.12, swap question open, mode "r?"): the
 // half-loaded buffer is not 'modified' (one empty line, modified = false), so
@@ -902,7 +872,7 @@ const messageLua = `
 const promptGuardLua = `
 	local function refuseDuringPrompt()
 		if vim.api.nvim_get_mode().mode:sub(1, 1) == "r" then
-			error("Neovim is waiting for an answer to a prompt; nothing was written", 0)
+			error("` + promptMarker + `", 0)
 		end
 	end`
 
@@ -1070,6 +1040,9 @@ func (p *Process) call(ctx context.Context, op string, fn func(*nvimrpc.Nvim) er
 			errors.Is(err, syscall.EPIPE), errors.Is(err, syscall.ECONNRESET), p.exited():
 			// Connection lost: the server is gone even if the TUI is still exiting.
 			return fmt.Errorf("%s: %w (%w)", op, ErrNotRunning, err)
+		}
+		if strings.Contains(err.Error(), promptMarker) {
+			return fmt.Errorf("nvim: %s: %w", op, ErrPromptOpen)
 		}
 		return fmt.Errorf("nvim: %s: %w", op, err)
 	case <-ctx.Done():

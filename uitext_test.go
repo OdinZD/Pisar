@@ -150,3 +150,27 @@ func TestUITextMenuSearch(t *testing.T) {
 		t.Errorf("menuSearch = %q", text.MenuSearch)
 	}
 }
+
+// The texts Neovim shows: all there, with the placeholders their code replaces,
+// and all of them go to Neovim (nvimText takes every key that starts with "nvim").
+func TestUITextNvim(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := nvimText(text)
+	for key, placeholder := range map[string]string{
+		"nvimPromptOpen": "", "nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}",
+		"nvimSpellMissing": "{languages}", "nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}",
+		"nvimMapRows": "Pisar: ", "nvimMapSpell": "Pisar: ", "nvimMapNumbers": "Pisar: ", "nvimMapTree": "Pisar: ",
+		"nvimMapPreview": "Pisar: ", "nvimMapSearch": "Pisar: ", "nvimMapBold": "Pisar: ", "nvimMapItalic": "Pisar: ",
+		"nvimMapHeading": "Pisar: ", "nvimMapList": "Pisar: ",
+	} {
+		if !strings.Contains(got[key], placeholder) || strings.TrimSpace(got[key]) == "" {
+			t.Errorf("%s = %q, want a text with %q", key, got[key], placeholder)
+		}
+	}
+	if len(got) != 16 {
+		t.Errorf("nvimText has %d texts, want 16: %v", len(got), got)
+	}
+}
