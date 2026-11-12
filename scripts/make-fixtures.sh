@@ -136,7 +136,7 @@ insert_header() {
 }
 
 echo "== generating"
-for name in basic complex-table comments tracked-changes textbox legacy; do
+for name in basic complex-table comments tracked-changes textbox legacy chart formatting; do
   md2docx "$name"
 done
 
@@ -155,7 +155,7 @@ insert_header "$BUILD/header-image-plain.docx" "$BUILD/header-image.docx"
 rm -f "$BUILD/header-image-plain.docx"
 
 mkdir -p "$OUT"
-for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx header-image.docx legacy.doc; do
+for f in basic.docx complex-table.docx comments.docx tracked-changes.docx textbox.docx header-image.docx legacy.doc chart.docx formatting.docx; do
   [[ -s "$BUILD/$f" ]] || {
     echo "no output: $f" >&2
     exit 1
@@ -198,6 +198,11 @@ is_cdf() { file -b "$1" | grep -q 'Composite Document File'; }
 
 nonempty() { [[ -s "$1" ]]; }
 
+# lacks_entry <docx> <prefix>: no archive entry starts with the prefix.
+lacks_entry() {
+  unzip -Z1 "$1" >"$TMP/names.txt" && ! grep -q "^$2" "$TMP/names.txt"
+}
+
 cells_text() {
   # complex-table: one cell with two paragraphs and one with a list.
   local x="$TMP/member.xml"
@@ -206,7 +211,7 @@ cells_text() {
     grep -Fq '<w:numPr>' "$x" && grep -Fq '<w:tbl>' "$x"
 }
 
-for f in basic complex-table comments tracked-changes textbox header-image; do
+for f in basic complex-table comments tracked-changes textbox header-image chart formatting; do
   check "$f.docx is a valid archive with word/document.xml" valid_docx "$OUT/$f.docx"
 done
 
@@ -228,6 +233,35 @@ check "comments.docx: <w:comment  in word/comments.xml" has "$OUT/comments.docx"
 check "tracked-changes.docx: <w:ins  in word/document.xml" has "$OUT/tracked-changes.docx" word/document.xml '<w:ins '
 check "tracked-changes.docx: <w:del  in word/document.xml" has "$OUT/tracked-changes.docx" word/document.xml '<w:del '
 check "textbox.docx: w:txbxContent in word/document.xml" has "$OUT/textbox.docx" word/document.xml 'w:txbxContent'
+
+# chart.docx: only the element matters; its r:id points at nothing on purpose.
+C="$OUT/chart.docx"
+check "chart.docx: c:chart element in word/document.xml" has "$C" word/document.xml '<c:chart '
+check "chart.docx: the chart namespace is declared" has "$C" word/document.xml 'http://schemas.openxmlformats.org/drawingml/2006/chart'
+check "chart.docx: text around the chart" has "$C" word/document.xml 'Graf slijedi:'
+check "chart.docx: no word/charts/ part" lacks_entry "$C" 'word/charts/'
+
+# formatting.docx: one example of every simplification, and what survives.
+F="$OUT/formatting.docx"
+check "formatting.docx: w:jc center" has "$F" word/document.xml '<w:jc w:val="center"/>'
+check "formatting.docx: w:jc right" has "$F" word/document.xml '<w:jc w:val="right"/>'
+check "formatting.docx: w:color FF0000" has "$F" word/document.xml '<w:color w:val="FF0000"/>'
+check "formatting.docx: w:sz" has "$F" word/document.xml '<w:sz w:val="40"/>'
+check "formatting.docx: w:rFonts Courier New" has "$F" word/document.xml 'w:ascii="Courier New"'
+check "formatting.docx: w:spacing in a paragraph" has "$F" word/document.xml '<w:spacing w:line="480"'
+check "formatting.docx: w:ind" has "$F" word/document.xml '<w:ind w:left="1440"/>'
+check "formatting.docx: page break" has "$F" word/document.xml '<w:br w:type="page"/>'
+check "formatting.docx: w:pageBreakBefore" has "$F" word/document.xml '<w:pageBreakBefore/>'
+check "formatting.docx: w:tab in a run" has "$F" word/document.xml '<w:tab/>'
+check "formatting.docx: w:fldChar" has "$F" word/document.xml '<w:fldChar w:fldCharType="begin"/>'
+check "formatting.docx: w:instrText" has "$F" word/document.xml '<w:instrText>PAGE</w:instrText>'
+check "formatting.docx: w:shd in a cell" has "$F" word/document.xml '<w:shd w:val="clear" w:fill="FFFF00"/>'
+check "formatting.docx: w:tblBorders" has "$F" word/document.xml '<w:tblBorders>'
+check "formatting.docx: highlight" has "$F" word/document.xml '<w:highlight w:val="yellow"/>'
+check "formatting.docx: underline" has "$F" word/document.xml '<w:u w:val="single"/>'
+check "formatting.docx: strikethrough" has "$F" word/document.xml '<w:strike/>'
+check "formatting.docx: superscript" has "$F" word/document.xml '<w:vertAlign w:val="superscript"/>'
+check "formatting.docx: small caps" has "$F" word/document.xml '<w:smallCaps/>'
 
 H="$OUT/header-image.docx"
 # The body keeps its own image (pandoc names it rIdN.png); the logo is the other one.

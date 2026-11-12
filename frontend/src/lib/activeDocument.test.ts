@@ -9,6 +9,7 @@ import {
   readOnlyReasonText,
   readOnlyText,
   revealExpansion,
+  simplifiedText,
   selectionForActive,
   toolbarInfo,
   type ConversionState,
@@ -20,7 +21,7 @@ import { strings } from '../strings'
 const file = (name: string, rel = name): TreeNode => ({ name, rel, kind: name.split('.').pop()!.toLowerCase() })
 const dir = (name: string, children: TreeNode[] = [], rel = name): TreeNode => ({ name, rel, kind: 'dir', children })
 
-const noDocFlags = { readOnly: [], imported: false, unexported: false }
+const noDocFlags = { readOnly: [], imported: false, unexported: false, simplified: [] }
 
 const p1: ProjectRef = { id: 'p1', name: 'Roman', missing: false }
 const p2: ProjectRef = { id: 'p2', name: 'Blog', missing: false }
@@ -33,6 +34,7 @@ const active = (projectId: string, rel: string, path = `/home/${projectId}/${rel
   readOnly: [],
   imported: false,
   unexported: false,
+  simplified: [],
 })
 
 describe('isOpenableKind and activateAction', () => {
@@ -228,6 +230,7 @@ describe('read-only reasons', () => {
     ['comments', strings.readOnlyComments],
     ['tracked-changes', strings.readOnlyTrackedChanges],
     ['text-boxes', strings.readOnlyTextBoxes],
+    ['embedded-objects', strings.readOnlyEmbeddedObjects],
     ['tables', strings.readOnlyTables],
     ['hard-links', strings.readOnlyHardLinks],
     ['no-permission', strings.readOnlyNoPermission],
@@ -386,6 +389,91 @@ describe('documentStatus', () => {
 
     it('is not there for a document that was not imported', () => {
       expect(documentStatus(docx(), false, conv())?.note).toBeNull()
+    })
+  })
+
+  describe('the note about formatting that saving simplifies', () => {
+    const simplified = (...codes: string[]) => docx({ simplified: codes })
+    const allCodes = [
+      'alignment',
+      'text-color',
+      'font',
+      'spacing',
+      'indentation',
+      'page-breaks',
+      'tabs',
+      'fields',
+      'table-formatting',
+    ]
+    const names = [
+      'poravnanje',
+      'boja teksta',
+      'font i veličina',
+      'prored i razmaci',
+      'uvlake',
+      'prijelomi stranice',
+      'tabulatori',
+      'polja (broj stranice, sadržaj)',
+      'oblikovanje tablica',
+    ]
+
+    it.each(allCodes.map((code, i) => [code, names[i]]))('%s is told as "%s"', (code, name) => {
+      expect(documentStatus(simplified(code), false, conv())?.note).toBe(`Spremanje pojednostavljuje oblikovanje: ${name}`)
+    })
+
+    it('joins several with a comma, in the order they came', () => {
+      expect(documentStatus(simplified('fields', 'alignment', 'tabs'), false, conv())?.note).toBe(
+        'Spremanje pojednostavljuje oblikovanje: polja (broj stranice, sadržaj), poravnanje, tabulatori',
+      )
+      expect(simplifiedText(allCodes)).toBe(`${strings.documentSimplified}: ${names.join(', ')}`)
+    })
+
+    it('leaves out a code it does not know, and says nothing if none is known', () => {
+      expect(documentStatus(simplified('future-code', 'tabs', '', 'constructor'), false, conv())?.note).toBe(
+        'Spremanje pojednostavljuje oblikovanje: tabulatori',
+      )
+      expect(documentStatus(simplified('future-code', '__proto__'), false, conv())?.note).toBeNull()
+    })
+
+    it('says nothing when there is nothing to simplify', () => {
+      expect(documentStatus(simplified(), false, conv())?.note).toBeNull()
+    })
+
+    it.each([
+      ['converting', simplified('tabs'), false, conv({ opening: true })],
+      ['modified', simplified('tabs'), true, conv()],
+      ['unexported', docx({ simplified: ['tabs'], unexported: true }), false, conv()],
+      ['saved', simplified('tabs'), false, conv()],
+    ])('comes with the state %s', (_name, doc, modified, c) => {
+      expect(documentStatus(doc, modified, c)?.note).toBe('Spremanje pojednostavljuje oblikovanje: tabulatori')
+    })
+
+    it('comes with an export that was canceled', () => {
+      const c = conv({ exports: exportsOf(['/x/a.docx', 'canceled']) })
+      expect(documentStatus(simplified('tabs'), false, c)).toMatchObject({ kind: 'unexported', note: 'Spremanje pojednostavljuje oblikovanje: tabulatori' })
+    })
+
+    it('is not shown for a read-only document', () => {
+      const doc = docx({ simplified: ['tabs'], readOnly: ['comments'] })
+      expect(documentStatus(doc, false, conv())).toMatchObject({ kind: 'read-only', note: null })
+      // Not even while it converts: a document that cannot be saved has nothing to warn about.
+      expect(documentStatus(doc, false, conv({ opening: true }))?.note).toBeNull()
+    })
+
+    it('is not shown next to an export error', () => {
+      const failed = conv({ exports: exportsOf(['/x/a.docx', 'failed', 'conflict']) })
+      expect(documentStatus(simplified('tabs'), false, failed)).toMatchObject({ kind: 'failed', note: null })
+      expect(documentStatus(simplified('tabs'), false, conv({ copyError: 'conflict' }))).toMatchObject({ kind: 'failed', note: null })
+    })
+
+    it('gives way to the note about an import from .doc', () => {
+      const doc = docx({ imported: true, simplified: ['tabs', 'font'] })
+      expect(documentStatus(doc, false, conv())?.note).toBe(strings.documentImported)
+      expect(documentStatus(doc, true, conv())?.note).toBe(strings.documentImported)
+    })
+
+    it('is not there without an active document', () => {
+      expect(documentStatus(null, false, conv({ opening: true }))?.note).toBeNull()
     })
   })
 

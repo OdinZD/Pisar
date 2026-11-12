@@ -23,6 +23,11 @@ const (
 	LossTrackedChanges Loss = "tracked-changes"
 	LossTextBoxes      Loss = "text-boxes"
 
+	// LossObjects: a chart, a SmartArt diagram or an embedded (OLE) object.
+	// pandoc drops the object itself and keeps only the text around it (an
+	// embedded object that has a preview picture comes back as that picture).
+	LossObjects Loss = "embedded-objects"
+
 	// LossTables: a table pandoc cannot write in Markdown at all, so it comes
 	// out as raw HTML, which is lost when the Markdown is written back to .docx.
 	// Only DocxToMarkdown reports it (it takes the pandoc output to know);
@@ -51,6 +56,15 @@ const (
 	nsStrict       = "http://purl.oclc.org/ooxml/wordprocessingml/main"
 )
 
+// DrawingML namespaces of the objects that live in a w:drawing: transitional
+// and strict (ISO 29500) spelling of the chart and the diagram (SmartArt) ones.
+const (
+	nsChart         = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+	nsChartStrict   = "http://purl.oclc.org/ooxml/drawingml/chart"
+	nsDiagram       = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+	nsDiagramStrict = "http://purl.oclc.org/ooxml/drawingml/diagram"
+)
+
 // maxXMLDepth bounds element nesting. encoding/xml keeps a stack entry per open
 // element, so without it a few hundred MiB of "<a>" would cost gigabytes of
 // memory before MaxPartBytes is reached. Real documents nest a few dozen
@@ -65,8 +79,9 @@ const (
 	hasComments lossSet = 1 << iota
 	hasTrackedChanges
 	hasTextBoxes
+	hasObjects
 
-	hasAll = hasComments | hasTrackedChanges | hasTextBoxes
+	hasAll = hasComments | hasTrackedChanges | hasTextBoxes | hasObjects
 )
 
 // reportOrder is the fixed order of the result.
@@ -77,6 +92,7 @@ var reportOrder = [...]struct {
 	{hasComments, LossComments},
 	{hasTrackedChanges, LossTrackedChanges},
 	{hasTextBoxes, LossTextBoxes},
+	{hasObjects, LossObjects},
 }
 
 // classify maps the local name of a WordprocessingML element to the loss it
@@ -91,38 +107,78 @@ func classify(local string) lossSet {
 		return hasTrackedChanges
 	case "txbxContent":
 		return hasTextBoxes
+	case "object":
+		return hasObjects
 	}
 	return 0
 }
 
+// classifyDrawing is classify for the elements of the DrawingML namespaces: the
+// reference to a chart is c:chart, the one to a SmartArt diagram is dgm:relIds.
+func classifyDrawing(space, local string) lossSet {
+	switch {
+	case local == "chart" && (space == nsChart || space == nsChartStrict),
+		local == "relIds" && (space == nsDiagram || space == nsDiagramStrict):
+		return hasObjects
+	}
+	return 0
+}
+
+// Report is what Examine found in a document.
+type Report struct {
+	// Losses is what the conversion would lose; the document is opened read-only
+	// because of them. In the fixed order comments, tracked-changes, text-boxes,
+	// embedded-objects, without duplicates; nil when there is nothing.
+	Losses []Loss
+	// Simplified is the direct formatting the conversion would flatten. It does
+	// not block anything: it is the warning that saving simplifies the document.
+	// In the order of the Simplification constants, without duplicates; nil when
+	// there is nothing.
+	Simplified []Simplification
+}
+
 // Inspect reports what the document contains that the conversion would lose.
-// The result is in the fixed order comments, tracked-changes, text-boxes, without
-// duplicates; it is nil when there is nothing.
+// The result is in the fixed order comments, tracked-changes, text-boxes,
+// embedded-objects, without duplicates; it is nil when there is nothing. It
+// stops reading as soon as everything is found; Examine is for the caller that
+// also wants the formatting that would be simplified.
 //
 // The archive is only read, never extracted, and nothing in it is trusted:
 // sizes come from the bytes actually read, and entry names are only compared.
 func Inspect(ctx context.Context, path string, lim InspectLimits) ([]Loss, error) {
+	r, err := examine(ctx, path, lim, false)
+	return r.Losses, err
+}
+
+// Examine is Inspect plus the formatting that saving would simplify, in one
+// pass over the archive. The formatting is read from word/document.xml only:
+// what headers and styles carry survives through the reference document.
+func Examine(ctx context.Context, path string, lim InspectLimits) (Report, error) {
+	return examine(ctx, path, lim, true)
+}
+
+func examine(ctx context.Context, path string, lim InspectLimits, wantSimplified bool) (Report, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("convert: inspect: %w", err)
+		return Report{}, fmt.Errorf("convert: inspect: %w", err)
 	}
 
 	// Stat first: opening a FIFO would block until somebody writes to it.
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("convert: inspect: %w", err)
+		return Report{}, fmt.Errorf("convert: inspect: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: not a regular file", ErrNotDocx)
+		return Report{}, fmt.Errorf("%w: not a regular file", ErrNotDocx)
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("convert: inspect: %w", err)
+		return Report{}, fmt.Errorf("convert: inspect: %w", err)
 	}
 	defer func() { _ = f.Close() }() // read-only handle: a failed Close loses nothing
 
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("convert: inspect: %w", err)
+		return Report{}, fmt.Errorf("convert: inspect: %w", err)
 	}
 	zr, err := zip.NewReader(sanePositions{f}, fi.Size())
 	// ErrInsecurePath comes with a usable reader; names are never used as paths here.
@@ -130,58 +186,84 @@ func Inspect(ctx context.Context, path string, lim InspectLimits) ([]Loss, error
 		err = nil
 	}
 	if err != nil {
-		return nil, wrapRead("open archive", err)
+		return Report{}, wrapRead("open archive", err)
 	}
 	if len(zr.File) > lim.MaxEntries {
-		return nil, fmt.Errorf("%w: %d archive entries, limit %d", ErrTooLarge, len(zr.File), lim.MaxEntries)
+		return Report{}, fmt.Errorf("%w: %d archive entries, limit %d", ErrTooLarge, len(zr.File), lim.MaxEntries)
 	}
 
 	var parts []*zip.File
-	hasDocument := false
+	var document *zip.File
 	for _, e := range zr.File {
 		name := strings.ToLower(e.Name) // part names are case-insensitive in OPC
 		rest, ok := strings.CutPrefix(name, "word/")
 		if !ok || rest == "" || strings.Contains(rest, "/") || !strings.HasSuffix(rest, ".xml") {
 			continue
 		}
-		if rest == "document.xml" {
-			hasDocument = true
+		if rest == "document.xml" && document == nil {
+			document = e
+			continue
 		}
 		parts = append(parts, e)
 	}
-	if !hasDocument {
-		return nil, fmt.Errorf("%w: no word/document.xml", ErrNotDocx)
+	if document == nil {
+		return Report{}, fmt.Errorf("%w: no word/document.xml", ErrNotDocx)
 	}
+	// The document goes first: it is the only part the formatting is read from,
+	// so reading it first is what lets the others be skipped once all losses are found.
+	parts = append([]*zip.File{document}, parts...)
 
-	var found lossSet
+	st := scanState{wantSimplified: wantSimplified}
 	for _, p := range parts {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("convert: inspect: %w", err)
+			return Report{}, fmt.Errorf("convert: inspect: %w", err)
 		}
-		if err := scanPart(ctx, p, lim.MaxPartBytes, &found); err != nil {
-			return nil, err
+		if err := st.scanPart(ctx, p, lim.MaxPartBytes, p == document); err != nil {
+			return Report{}, err
 		}
-		if found == hasAll {
-			break
+		if st.losses == hasAll {
+			break // the document was read first, so nothing is left to look for
 		}
 	}
 
-	var out []Loss
+	var rep Report
 	for _, r := range reportOrder {
-		if found&r.bit != 0 {
-			out = append(out, r.loss)
+		if st.losses&r.bit != 0 {
+			rep.Losses = append(rep.Losses, r.loss)
 		}
 	}
-	return out, nil
+	if st.doc != nil {
+		rep.Simplified = st.doc.result()
+	}
+	return rep, nil
 }
 
-// scanPart reads one XML part as a token stream and records the losses in found.
-func scanPart(ctx context.Context, zf *zip.File, maxBytes int64, found *lossSet) error {
+// scanState is what one pass over the archive has found so far.
+type scanState struct {
+	wantSimplified bool
+	losses         lossSet
+	doc            *docScanner // nil unless the formatting is wanted; filled while word/document.xml is read
+}
+
+// scanPart reads one XML part as a token stream and records what it finds. It
+// returns early only when there is nothing more to find in this part.
+func (st *scanState) scanPart(ctx context.Context, zf *zip.File, maxBytes int64, isDocument bool) error {
 	rc, err := zf.Open()
 	if err != nil {
 		return wrapRead(zf.Name, err)
 	}
 	defer func() { _ = rc.Close() }() // read-only; nothing to lose on a failed Close
+
+	var ds *docScanner
+	if isDocument && st.wantSimplified {
+		ds = newDocScanner()
+		st.doc = ds
+	}
+	// complete: nothing in this part can change the result any more.
+	complete := func() bool { return st.losses == hasAll && (ds == nil || ds.complete()) }
+	if complete() {
+		return nil
+	}
 
 	pr := newPartReader(ctx, rc, maxBytes)
 	dec := xml.NewDecoder(pr)
@@ -223,13 +305,27 @@ func scanPart(ctx context.Context, zf *zip.File, maxBytes int64, found *lossSet)
 				return fmt.Errorf("%w: %s nests deeper than %d elements", ErrTooLarge, zf.Name, maxXMLDepth)
 			}
 			sawRoot = true
-			if t.Name.Space == nsTransitional || t.Name.Space == nsStrict {
-				if *found |= classify(t.Name.Local); *found == hasAll {
-					return nil
-				}
+			switch t.Name.Space {
+			case nsTransitional, nsStrict:
+				st.losses |= classify(t.Name.Local)
+			default:
+				st.losses |= classifyDrawing(t.Name.Space, t.Name.Local)
+			}
+			if ds != nil {
+				ds.start(t)
+			}
+			if complete() {
+				return nil
+			}
+		case xml.CharData:
+			if ds != nil {
+				ds.text(t)
 			}
 		case xml.EndElement:
 			depth--
+			if ds != nil {
+				ds.end()
+			}
 		}
 	}
 }

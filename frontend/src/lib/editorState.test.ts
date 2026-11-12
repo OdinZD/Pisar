@@ -21,8 +21,8 @@ import {
 } from './editorState'
 
 const req = (id: number, rel = `d${id}.md`): OpenRequest => ({ id, projectId: 'p', rel })
-const doc = (rel: string): ActiveDocument => ({ projectId: 'p', rel, path: `/x/${rel}`, name: rel, readOnly: [], imported: false, unexported: false })
-const empty: ActiveDocument = { projectId: '', rel: '', path: '', name: '', readOnly: [], imported: false, unexported: false }
+const doc = (rel: string): ActiveDocument => ({ projectId: 'p', rel, path: `/x/${rel}`, name: rel, readOnly: [], imported: false, unexported: false, simplified: [] })
+const empty: ActiveDocument = { projectId: '', rel: '', path: '', name: '', readOnly: [], imported: false, unexported: false, simplified: [] }
 
 const inPhase = (phase: Phase): EditorState => ({
   ...initialState,
@@ -161,7 +161,7 @@ describe('active document', () => {
   })
 
   it('a document outside the projects is still active', () => {
-    const outside: ActiveDocument = { projectId: '', rel: '', path: '/tmp/x.md', name: 'x.md', readOnly: [], imported: false, unexported: false }
+    const outside: ActiveDocument = { projectId: '', rel: '', path: '/tmp/x.md', name: 'x.md', readOnly: [], imported: false, unexported: false, simplified: [] }
     expect(documentActive(initialState, outside).active).toEqual(outside)
   })
 
@@ -183,7 +183,20 @@ describe('active document', () => {
 describe('document:active details', () => {
   it('reads readOnly null as an empty list and missing flags as false', () => {
     const s = documentActive(initialState, { projectId: 'p', rel: 'a.docx', path: '/x/a.docx', name: 'a.docx', readOnly: null })
-    expect(s.active).toMatchObject({ readOnly: [], imported: false, unexported: false })
+    expect(s.active).toMatchObject({ readOnly: [], imported: false, unexported: false, simplified: [] })
+  })
+
+  it('reads simplified null or missing as an empty list', () => {
+    const base = { projectId: 'p', rel: 'a.docx', path: '/x/a.docx', name: 'a.docx' }
+    expect(documentActive(initialState, { ...base, simplified: null }).active?.simplified).toEqual([])
+    expect(documentActive(initialState, base).active?.simplified).toEqual([])
+  })
+
+  it('keeps the codes of the simplified formatting, and copies the list', () => {
+    const codes = ['alignment', 'tabs']
+    const s = documentActive(initialState, { ...doc('a.docx'), simplified: codes })
+    expect(s.active?.simplified).toEqual(['alignment', 'tabs'])
+    expect(s.active?.simplified).not.toBe(codes)
   })
 
   it('keeps reasons and flags, and copies the list', () => {
@@ -251,6 +264,16 @@ describe('document:export', () => {
     expect(documentExport(s, ev('/x/a.docx', 'saved')).active?.unexported).toBe(false)
     expect(documentExport(s, ev('/x/other.docx', 'saved')).active?.unexported).toBe(true)
     expect(documentExport(s, ev('/x/a.docx', 'failed', 'conflict')).active?.unexported).toBe(true)
+  })
+
+  it('saved empties simplified of the active document with that path only', () => {
+    const s = documentActive(initialState, { ...doc('a.docx'), simplified: ['alignment', 'tabs'] })
+    expect(documentExport(s, ev('/x/a.docx', 'saved')).active?.simplified).toEqual([])
+    expect(documentExport(s, ev('/x/other.docx', 'saved')).active?.simplified).toEqual(['alignment', 'tabs'])
+    // A failed or canceled export saved nothing: the warning stays.
+    expect(documentExport(s, ev('/x/a.docx', 'failed', 'conflict')).active?.simplified).toEqual(['alignment', 'tabs'])
+    expect(documentExport(s, ev('/x/a.docx', 'canceled')).active?.simplified).toEqual(['alignment', 'tabs'])
+    expect(documentExport(s, ev('/x/a.docx', 'reloaded')).active?.simplified).toEqual(['alignment', 'tabs'])
   })
 
   it('an event for another document leaves the active one alone and waits for its document', () => {

@@ -342,6 +342,9 @@ func (e *EditorService) describeWord(d *wordDoc) DocumentActive {
 		a.ReadOnly = []string{} // an empty array in JSON, never null
 	}
 	a.Imported = v.Imported
+	if v.Simplified != nil {
+		a.Simplified = v.Simplified // else the empty array describePath made: never null in JSON
+	}
 	// Not busy: an announcement made by the export itself would always see its
 	// own task. What the export leaves behind is in Dirty.
 	a.Unexported = d.view().Dirty || e.queue.waiting(d)

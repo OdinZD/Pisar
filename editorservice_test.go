@@ -560,7 +560,7 @@ func TestEdSwitch(t *testing.T) {
 	}
 	d = e.rec.waitActive(t, from, "empty", func(d DocumentActive) bool { return d.Path == "" })
 	// DocumentActive holds a slice now, so it is no longer comparable with !=.
-	if !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}}) {
+	if !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}, Simplified: []string{}}) {
 		t.Errorf("a buffer without a file: got %+v", d)
 	}
 }
@@ -652,7 +652,7 @@ func TestEdLocate(t *testing.T) {
 	if d := e.svc.describe(rp(filepath.Join(outerDir, "a.md"))); d.ProjectID != "" || d.Rel != "" {
 		t.Errorf("after removing the outer project: %+v", d)
 	}
-	if d := e.svc.describe(""); !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}}) {
+	if d := e.svc.describe(""); !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}, Simplified: []string{}}) {
 		t.Errorf("describe(\"\") = %+v", d)
 	}
 }
@@ -1386,10 +1386,10 @@ func TestEdEventJSON(t *testing.T) {
 		}
 		return out.Data
 	}
-	got := keys(DocumentActive{ProjectID: "p", Rel: "a/b.md", Path: "/x/a/b.md", Name: "b.md", ReadOnly: []string{}})
+	got := keys(DocumentActive{ProjectID: "p", Rel: "a/b.md", Path: "/x/a/b.md", Name: "b.md", ReadOnly: []string{}, Simplified: []string{}})
 	want := map[string]any{
 		"projectId": "p", "rel": "a/b.md", "path": "/x/a/b.md", "name": "b.md",
-		"readOnly": []any{}, "imported": false, "unexported": false,
+		"readOnly": []any{}, "imported": false, "unexported": false, "simplified": []any{},
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("DocumentActive JSON = %v, want %v", got, want)
@@ -1549,7 +1549,7 @@ func TestEdRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := e.rec.waitActive(t, from, "empty", func(d DocumentActive) bool { return d.Path == "" })
-	if !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}}) {
+	if !reflect.DeepEqual(d, DocumentActive{ReadOnly: []string{}, Simplified: []string{}}) {
 		t.Fatalf("active = %+v, want empty fields", d)
 	}
 	cur, err := e.svc.session.Current(ctx)

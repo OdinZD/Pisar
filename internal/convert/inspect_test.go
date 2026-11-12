@@ -71,6 +71,8 @@ func writeFile(t *testing.T, data []byte) string {
 func TestInspect(t *testing.T) {
 	deep := docWith(strings.Repeat("<w:a>", maxXMLDepth+1) + strings.Repeat("</w:a>", maxXMLDepth+1))
 	all := docWith(`<w:p><w:r><w:txbxContent/></w:r><w:del/><w:ins/><w:comment/><w:txbxContent/><w:ins/><w:comment/></w:p>`)
+	// allFour has the fourth loss as well, which is what "everything is found" means.
+	allFour := docWith(`<w:p><w:r><w:txbxContent/></w:r><w:del/><w:ins/><w:comment/><w:object/></w:p>`)
 
 	tests := []struct {
 		name    string
@@ -123,12 +125,14 @@ func TestInspect(t *testing.T) {
 			{"other/word/header.xml", part("hdr", `<w:ins/>`)},
 			{"word/data.bin", "<w:ins/>"},
 			{"customXml/item1.xml", part("x", `<w:ins/>`)}}},
-		{name: "reading stops once all three are found", entries: []entry{all,
+		{name: "reading stops once all four are found", entries: []entry{allFour,
 			{"word/header1.xml", "this is not XML"}},
-			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes}},
+			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes, LossObjects}},
+		{name: "three found are not all: the next part is read", entries: []entry{all,
+			{"word/header1.xml", "this is not XML"}}, wantErr: ErrNotDocx},
 		{name: "reading stops inside the part", entries: []entry{{"word/document.xml",
-			xmlDecl + `<w:document xmlns:w="` + nsTransitional + `"><w:comment/><w:ins/><w:txbxContent/><w:oops></w:document>`}},
-			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes}},
+			xmlDecl + `<w:document xmlns:w="` + nsTransitional + `"><w:comment/><w:ins/><w:txbxContent/><w:object/><w:oops></w:document>`}},
+			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes, LossObjects}},
 
 		{name: "no word/document.xml", entries: []entry{{"word/comments.xml", part("comments", `<w:comment/>`)}}, wantErr: ErrNotDocx},
 		{name: "document.xml only below word/", entries: []entry{{"word/sub/document.xml", part("document", "")}}, wantErr: ErrNotDocx},
@@ -152,9 +156,9 @@ func TestInspect(t *testing.T) {
 		{name: "part too large", entries: []entry{docWith(strings.Repeat("<w:p/>", 100))},
 			lim: InspectLimits{MaxEntries: 10, MaxPartBytes: 100}, wantErr: ErrTooLarge},
 		{name: "part too large, found before the limit", entries: []entry{
-			docWith(`<w:comment/><w:ins/><w:txbxContent/>` + strings.Repeat("<w:p/>", 100))},
+			docWith(`<w:comment/><w:ins/><w:txbxContent/><w:object/>` + strings.Repeat("<w:p/>", 100))},
 			lim:  InspectLimits{MaxEntries: 10, MaxPartBytes: 1 << 20},
-			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes}},
+			want: []Loss{LossComments, LossTrackedChanges, LossTextBoxes, LossObjects}},
 		{name: "part too large, in a later part", entries: []entry{plainDoc(),
 			{"word/header1.xml", part("hdr", strings.Repeat("<w:p/>", 100))}},
 			lim: InspectLimits{MaxEntries: 10, MaxPartBytes: 200}, wantErr: ErrTooLarge},
@@ -219,6 +223,8 @@ func TestInspectFixtures(t *testing.T) {
 		{file: "comments.docx", want: []Loss{LossComments}},
 		{file: "tracked-changes.docx", want: []Loss{LossTrackedChanges}},
 		{file: "textbox.docx", want: []Loss{LossTextBoxes}},
+		{file: "chart.docx", want: []Loss{LossObjects}},
+		{file: "formatting.docx"}, // formatting is not a loss: Inspect does not report it
 		{file: "legacy.doc", wantErr: ErrNotDocx},
 	}
 	for _, tc := range tests {
@@ -416,11 +422,11 @@ func FuzzInspect(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add([]byte("PK\x03\x04"))
 	f.Add(mustZip(f, []entry{plainDoc()}))
-	f.Add(mustZip(f, []entry{docWith(`<w:comment/><w:ins/><w:txbxContent/>`)}))
+	f.Add(mustZip(f, []entry{docWith(`<w:comment/><w:ins/><w:txbxContent/><w:object/>`)}))
 	f.Add(mustZip(f, []entry{plainDoc(), {"word/header1.xml", part("hdr", `<w:rPrChange/>`)},
 		{"word/comments.xml", ""}}))
 	f.Add(mustZip(f, []entry{docWith(`<w:t><![CDATA[<w:ins/>]]>&nbsp;</w:t>`)}))
-	for _, name := range []string{"basic.docx", "comments.docx", "textbox.docx", "legacy.doc"} {
+	for _, name := range []string{"basic.docx", "comments.docx", "textbox.docx", "chart.docx", "formatting.docx", "legacy.doc"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "docx", name))
 		if err != nil {
 			f.Fatal(err)
@@ -444,7 +450,7 @@ func FuzzInspect(f *testing.F) {
 			t.Fatalf("result %v alongside an error", got)
 		}
 		// Fixed order, no duplicates.
-		rank := map[Loss]int{LossComments: 0, LossTrackedChanges: 1, LossTextBoxes: 2}
+		rank := map[Loss]int{LossComments: 0, LossTrackedChanges: 1, LossTextBoxes: 2, LossObjects: 3}
 		last := -1
 		for _, l := range got {
 			r, ok := rank[l]

@@ -30,8 +30,8 @@ var (
 	realLimits = InspectLimits{MaxEntries: 10000, MaxPartBytes: 256 << 20}
 )
 
-// fixtureNames are the seven sample documents; legacy is a .doc.
-var fixtureNames = []string{"basic", "complex-table", "comments", "tracked-changes", "textbox", "header-image", "legacy"}
+// fixtureNames are the nine sample documents; legacy is a .doc.
+var fixtureNames = []string{"basic", "complex-table", "comments", "tracked-changes", "textbox", "header-image", "chart", "formatting", "legacy"}
 
 func fixturePath(name string) string {
 	if name == "legacy" {
@@ -311,7 +311,7 @@ func fixedDate(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	for _, name := range []string{"basic", "complex-table", "header-image"} {
+	for _, name := range []string{"basic", "complex-table", "header-image", "formatting"} {
 		t.Run(name, func(t *testing.T) {
 			fixedDate(t)
 			c, rec, _ := realConverter(t, false)
@@ -341,8 +341,8 @@ func TestRoundTrip(t *testing.T) {
 			// The pictures of the body: as many, and the same bytes.
 			wantImages, gotImages := bodyImages(t, src), bodyImages(t, out1)
 			wantCount := 1
-			if name == "complex-table" {
-				wantCount = 0 // no picture in that document
+			if name == "complex-table" || name == "formatting" {
+				wantCount = 0 // no picture in those documents
 			}
 			if len(wantImages) != wantCount || len(gotImages) != len(wantImages) {
 				t.Errorf("images in the body: %d before, %d after", len(wantImages), len(gotImages))
@@ -420,6 +420,120 @@ func TestRoundTrip(t *testing.T) {
 				t.Errorf("pandoc read documents %d times, want %d", got, 4*wantReads)
 			}
 		})
+	}
+}
+
+// roundTripDocx converts src to Markdown and back with the reference document
+// made from src, as a save does, and returns the document.xml of the result.
+func roundTripDocx(t *testing.T, c *Converter, src string) (out, document string) {
+	t.Helper()
+	fixedDate(t)
+	work := t.TempDir()
+	docxToMarkdown(t, c, src, work)
+	ref := filepath.Join(work, "reference.docx")
+	if err := c.MakeReference(t.Context(), src, ref); err != nil {
+		t.Fatal(err)
+	}
+	out = filepath.Join(t.TempDir(), "out.docx")
+	if err := c.MarkdownToDocx(t.Context(), work, ref, out); err != nil {
+		t.Fatal(err)
+	}
+	// pandoc writes "<w:u w:val=\"single\" />", the sources are written without
+	// the space; without this a "lost" line could pass because of the spelling alone.
+	return out, strings.ReplaceAll(string(zipContents(t, out)["word/document.xml"]), " />", "/>")
+}
+
+// The proof for docs/known-losses.md: what Examine says a save simplifies is
+// really gone from the saved document, and what it does not mention is still
+// there. If pandoc changes and a line here fails, the documentation of the
+// losses is out of date.
+func TestFormattingIsLostInSave(t *testing.T) {
+	c, _, _ := realConverter(t, false)
+	src := fixturePath("formatting")
+	// Before: everything is in the source, or the test proves nothing.
+	before := string(zipContents(t, src)["word/document.xml"])
+	out, after := roundTripDocx(t, c, src)
+
+	gone := []struct{ name, needle string }{
+		{"alignment (w:jc center)", `<w:jc w:val="center"/>`},
+		{"alignment (w:jc right)", `<w:jc w:val="right"/>`},
+		{"text colour", `<w:color w:val="FF0000"/>`},
+		{"font size", `<w:sz w:val="40"/>`},
+		{"font name", `Courier New`},
+		{"line spacing", `<w:spacing w:line="480"`},
+		{"indentation", `<w:ind w:left="1440"/>`},
+		{"page break", `<w:br w:type="page"/>`},
+		{"page break before", `<w:pageBreakBefore`},
+		{"tab", `<w:tab/>`},
+		{"field character", `<w:fldChar`},
+		{"field instruction", `<w:instrText`},
+		{"cell shading", `<w:shd `},
+		{"table borders", `<w:tblBorders>`},
+	}
+	for _, g := range gone {
+		t.Run("lost: "+g.name, func(t *testing.T) {
+			if !strings.Contains(before, g.needle) {
+				t.Fatalf("%s is not in the source document", g.needle)
+			}
+			if strings.Contains(after, g.needle) {
+				t.Errorf("%s survived the save", g.needle)
+			}
+		})
+	}
+
+	kept := []struct{ name, needle string }{
+		{"highlight", `<w:highlight w:val="yellow"/>`},
+		{"underline", `<w:u w:val="single"/>`},
+		{"strikethrough", `<w:strike/>`},
+		{"superscript", `<w:vertAlign w:val="superscript"/>`},
+		{"small caps", `<w:smallCaps/>`},
+	}
+	for _, k := range kept {
+		t.Run("kept: "+k.name, func(t *testing.T) {
+			if !strings.Contains(before, k.needle) {
+				t.Fatalf("%s is not in the source document", k.needle)
+			}
+			if !strings.Contains(after, k.needle) {
+				t.Errorf("%s did not survive the save", k.needle)
+			}
+		})
+	}
+
+	// And what is left has nothing to warn about: the warning is gone after a save.
+	rep, err := Examine(t.Context(), out, realLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Losses != nil || rep.Simplified != nil {
+		t.Errorf("the saved document is reported as %+v", rep)
+	}
+}
+
+// A chart is not carried through the Markdown: the reference to it is gone
+// from the saved document, and so is the loss. The reference document is made
+// from a document whose chart relationship points at nothing; that must work.
+func TestChartIsLostInSave(t *testing.T) {
+	c, _, _ := realConverter(t, false)
+	src := fixturePath("chart")
+	before := string(zipContents(t, src)["word/document.xml"])
+	if !strings.Contains(before, "<c:chart ") {
+		t.Fatal("no chart in the source document")
+	}
+	out, after := roundTripDocx(t, c, src)
+	for _, needle := range []string{"<c:chart", "drawingml/2006/chart", "<w:drawing"} {
+		if strings.Contains(after, needle) {
+			t.Errorf("%s survived the save", needle)
+		}
+	}
+	if !strings.Contains(after, "Graf slijedi:") || !strings.Contains(after, "tekst iza njega") {
+		t.Error("the text around the chart is gone")
+	}
+	rep, err := Examine(t.Context(), out, realLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Losses != nil || rep.Simplified != nil {
+		t.Errorf("the saved document is reported as %+v", rep)
 	}
 }
 

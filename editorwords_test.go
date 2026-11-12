@@ -84,8 +84,8 @@ func (p *wdParts) apply(t *testing.T) func(*editorServiceDeps) {
 		}
 		p.words, err = newWordDocs(wordDocsDeps{
 			Convert: conv,
-			Inspect: func(ctx context.Context, path string) ([]convert.Loss, error) {
-				return convert.Inspect(ctx, path, wordLimits())
+			Examine: func(ctx context.Context, path string) (convert.Report, error) {
+				return convert.Examine(ctx, path, wordLimits())
 			},
 			Files: p.ops, Dialogs: p.dlg, Text: uiTextFor(t), ExportAttempts: l.ExportAttempts,
 		})
@@ -263,6 +263,53 @@ func TestWdOpen(t *testing.T) {
 	}
 	// The user's file is not touched by opening.
 	sameBytes(t, w.path("basic.docx"), readFile(t, filepath.Join("testdata", "docx", "basic.docx")))
+}
+
+// The formatting a save would simplify travels in document:active as an array of
+// codes, empty (never null) when there is none, and is empty again once the
+// document has been saved.
+func TestWdSimplified(t *testing.T) {
+	w := startWd(t)
+
+	a := w.open("basic.docx")
+	if a.Simplified == nil || len(a.Simplified) != 0 {
+		t.Errorf("basic.docx: simplified = %#v, want an empty array", a.Simplified)
+	}
+	if b, err := json.Marshal(a); err != nil || !bytes.Contains(b, []byte(`"simplified":[]`)) {
+		t.Errorf("basic.docx: JSON = %s, %v", b, err)
+	}
+
+	a = w.open("chart.docx")
+	if !slices.Equal(a.ReadOnly, []string{"embedded-objects"}) || a.Simplified == nil || len(a.Simplified) != 0 {
+		t.Errorf("chart.docx: readOnly = %v, simplified = %#v", a.ReadOnly, a.Simplified)
+	}
+
+	a = w.open("formatting.docx")
+	if len(a.ReadOnly) != 0 || !slices.Equal(a.Simplified, allSimplified) {
+		t.Fatalf("formatting.docx: readOnly = %v, simplified = %v", a.ReadOnly, a.Simplified)
+	}
+	want := `"simplified":["alignment","text-color","font","spacing","indentation","page-breaks","tabs","fields","table-formatting"]`
+	if b, err := json.Marshal(a); err != nil || !bytes.Contains(b, []byte(want)) {
+		t.Errorf("formatting.docx: JSON = %s, %v", b, err)
+	}
+
+	path := w.path("formatting.docx")
+	d, ok := w.svc.words.byPath(path)
+	if !ok {
+		t.Fatal("formatting.docx is not open")
+	}
+	w.typeText("formatting.docx", newText)
+	// The edit alone changes nothing: the file still has the formatting.
+	if got := w.svc.describe(d.markdownPath()).Simplified; !slices.Equal(got, allSimplified) {
+		t.Errorf("simplified = %v after an edit that was not saved", got)
+	}
+	from := w.rec.mark()
+	w.save()
+	w.rec.waitExport(t, from, phaseSaved)
+	got := w.svc.describe(d.markdownPath()).Simplified
+	if got == nil || len(got) != 0 {
+		t.Errorf("simplified = %#v after the save, want an empty array", got)
+	}
 }
 
 // A write of doc.md is followed by an export: converting, then saved, and the

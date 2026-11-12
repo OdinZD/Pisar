@@ -79,7 +79,9 @@ type wordFiles interface {
 
 type wordDocsDeps struct {
 	Convert wordConverter
-	Inspect func(ctx context.Context, path string) ([]convert.Loss, error)
+	// Examine reports what the document would lose (it opens read-only) and what
+	// saving would simplify (it only warns), in one pass over the archive.
+	Examine func(ctx context.Context, path string) (convert.Report, error)
 	Files   wordFiles
 	Dialogs wordDialogs
 	Text    uiText
@@ -96,6 +98,14 @@ type wordView struct {
 	ReadOnly []string // reason codes, empty when the document may be saved
 	Imported bool     // came from a .doc
 	Dirty    bool     // the Markdown holds text that is not in the user's file
+	// Simplified lists the codes of the direct formatting that the first save
+	// would flatten (convert.Simplification). It is filled when the document is
+	// opened or reloaded, also for a read-only one (the caller decides what to
+	// show), and emptied by a successful export: from then on the file holds
+	// what the conversion makes of it and there is nothing left to warn about.
+	// It is not kept in meta.json, so a recovered working copy has none; that
+	// is a known limit, the warning is lost only for the session that follows a crash.
+	Simplified []string
 }
 
 type exportOutcome int
@@ -120,11 +130,12 @@ type wordDoc struct {
 	// opMu serializes the operations on this document (open, export, saveCopy,
 	// markSaved, ...). It is held across conversions and dialogs.
 	opMu sync.Mutex
-	// mu guards meta and readOnly. It is held only for a copy, never over I/O or
-	// a dialog, so view stays answerable while an export waits for the user.
-	mu       sync.Mutex
-	meta     docsafe.WorkMeta
-	readOnly []string
+	// mu guards meta, readOnly and simplified. It is held only for a copy, never
+	// over I/O or a dialog, so view stays answerable while an export waits for the user.
+	mu         sync.Mutex
+	meta       docsafe.WorkMeta
+	readOnly   []string
+	simplified []string
 }
 
 func (d *wordDoc) metaCopy() docsafe.WorkMeta {
@@ -145,6 +156,21 @@ func (d *wordDoc) set(meta docsafe.WorkMeta, readOnly []string) {
 	d.meta, d.readOnly = meta, readOnly
 }
 
+// setSaved records a successful export: the new state of the file, and no
+// formatting left to warn about.
+func (d *wordDoc) setSaved(meta docsafe.WorkMeta) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.meta, d.simplified = meta, nil
+}
+
+// reset replaces everything that is known about the document, as a reload does.
+func (d *wordDoc) reset(meta docsafe.WorkMeta, readOnly, simplified []string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.meta, d.readOnly, d.simplified = meta, readOnly, simplified
+}
+
 func (d *wordDoc) workCopy() docsafe.WorkCopy {
 	return docsafe.WorkCopy{Dir: d.dir, Meta: d.metaCopy()}
 }
@@ -160,11 +186,12 @@ func (d *wordDoc) view() wordView {
 		path = d.meta.Origin
 	}
 	return wordView{
-		Path:     path,
-		Markdown: d.markdownPath(),
-		ReadOnly: slices.Clone(d.readOnly),
-		Imported: isDocPath(d.meta.Origin),
-		Dirty:    d.meta.Dirty,
+		Path:       path,
+		Markdown:   d.markdownPath(),
+		ReadOnly:   slices.Clone(d.readOnly),
+		Imported:   isDocPath(d.meta.Origin),
+		Dirty:      d.meta.Dirty,
+		Simplified: slices.Clone(d.simplified),
 	}
 }
 
@@ -189,7 +216,7 @@ type openCall struct {
 // several goroutines.
 type wordDocs struct {
 	conv    wordConverter
-	inspect func(ctx context.Context, path string) ([]convert.Loss, error)
+	examine func(ctx context.Context, path string) (convert.Report, error)
 	files   wordFiles
 	dialogs wordDialogs
 	text    uiText
@@ -205,8 +232,8 @@ func newWordDocs(d wordDocsDeps) (*wordDocs, error) {
 	switch {
 	case d.Convert == nil:
 		return nil, errors.New("word documents: a converter is required")
-	case d.Inspect == nil:
-		return nil, errors.New("word documents: Inspect is required")
+	case d.Examine == nil:
+		return nil, errors.New("word documents: Examine is required")
 	case d.Files == nil:
 		return nil, errors.New("word documents: the file operations are required")
 	case d.Dialogs == nil:
@@ -215,7 +242,7 @@ func newWordDocs(d wordDocsDeps) (*wordDocs, error) {
 		return nil, fmt.Errorf("word documents: ExportAttempts must be positive, got %d", d.ExportAttempts)
 	}
 	return &wordDocs{
-		conv: d.Convert, inspect: d.Inspect, files: d.Files, dialogs: d.Dialogs, text: d.Text,
+		conv: d.Convert, examine: d.Examine, files: d.Files, dialogs: d.Dialogs, text: d.Text,
 		attempts: d.ExportAttempts,
 		opening:  make(map[string]*openCall),
 	}, nil
@@ -414,7 +441,7 @@ func (w *wordDocs) prepare(ctx context.Context, path string) (*wordDoc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %q: %w", path, err)
 	}
-	reasons, err := w.fill(ctx, wc, path)
+	reasons, simplified, err := w.fill(ctx, wc, path)
 	if err != nil {
 		// The folder is brand new: nothing of the user's text is in it. The
 		// context may be the reason for the failure, and DiscardWork refuses a
@@ -424,52 +451,55 @@ func (w *wordDocs) prepare(ctx context.Context, path string) (*wordDoc, error) {
 		}
 		return nil, fmt.Errorf("open %q: %w", path, err)
 	}
-	return &wordDoc{dir: wc.Dir, meta: wc.Meta, readOnly: reasons}, nil
+	return &wordDoc{dir: wc.Dir, meta: wc.Meta, readOnly: reasons, simplified: simplified}, nil
 }
 
 // fill puts the converted document into a new working folder and returns the
-// reasons for which it must stay read-only.
-func (w *wordDocs) fill(ctx context.Context, wc docsafe.WorkCopy, path string) ([]string, error) {
+// reasons for which it must stay read-only and the formatting a save would simplify.
+func (w *wordDocs) fill(ctx context.Context, wc docsafe.WorkCopy, path string) (reasons, simplified []string, err error) {
 	src := path
 	if isDocPath(path) {
 		src = filepath.Join(wc.Dir, wordImportedName)
 		if err := w.conv.DocToDocx(ctx, path, src); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	reasons, err := w.convertDocx(ctx, wc.Dir, src)
+	reasons, simplified, err = w.convertDocx(ctx, wc.Dir, src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if wc.Meta.Target != "" {
 		more, err := writableReasons(wc.Meta.Target)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		reasons = append(reasons, more...)
 	}
-	return reasons, nil
+	return reasons, simplified, nil
 }
 
 // convertDocx checks src, writes the reference document and the Markdown into
-// dir, and returns the losses as reason codes.
-func (w *wordDocs) convertDocx(ctx context.Context, dir, src string) ([]string, error) {
-	losses, err := w.inspect(ctx, src)
+// dir, and returns the losses as reason codes and the formatting that saving
+// would simplify as codes.
+func (w *wordDocs) convertDocx(ctx context.Context, dir, src string) (reasons, simplified []string, err error) {
+	rep, err := w.examine(ctx, src)
 	if err != nil {
-		return nil, fmt.Errorf("inspect: %w", err)
+		return nil, nil, fmt.Errorf("inspect: %w", err)
 	}
 	if err := w.conv.MakeReference(ctx, src, filepath.Join(dir, wordReferenceName)); err != nil {
-		return nil, fmt.Errorf("reference document: %w", err)
+		return nil, nil, fmt.Errorf("reference document: %w", err)
 	}
 	more, err := w.conv.DocxToMarkdown(ctx, src, dir)
 	if err != nil {
-		return nil, fmt.Errorf("convert to Markdown: %w", err)
+		return nil, nil, fmt.Errorf("convert to Markdown: %w", err)
 	}
-	var reasons []string
-	for _, l := range append(losses, more...) {
+	for _, l := range slices.Concat(rep.Losses, more) {
 		reasons = append(reasons, string(l))
 	}
-	return reasons, nil
+	for _, s := range rep.Simplified {
+		simplified = append(simplified, string(s))
+	}
+	return reasons, simplified, nil
 }
 
 // markSaved records that the editor wrote doc.md.
@@ -616,7 +646,7 @@ func (w *wordDocs) finishReplace(ctx context.Context, d *wordDoc, meta docsafe.W
 	if serr := w.saveMeta(done, d, meta); serr != nil {
 		warning = errors.Join(warning, fmt.Errorf("export %q: save the working copy state: %w", name, serr))
 	}
-	d.set(meta, d.reasons())
+	d.setSaved(meta)
 	return exportResult{Outcome: exportSaved, View: d.view(), Backup: res.Backup, Warning: warning}, nil
 }
 
@@ -656,7 +686,7 @@ func (w *wordDocs) exportFirst(ctx context.Context, d *wordDoc, out string) (exp
 	if serr := w.saveMeta(done, d, meta); serr != nil {
 		warning = errors.Join(warning, fmt.Errorf("export %q: save the working copy state: %w", filepath.Base(nd.path), serr))
 	}
-	d.set(meta, d.reasons())
+	d.setSaved(meta)
 	return exportResult{Outcome: exportSaved, View: d.view(), Warning: warning}, nil
 }
 
@@ -793,7 +823,7 @@ func (w *wordDocs) reload(ctx context.Context, d *wordDoc) (exportResult, error)
 	if err != nil {
 		return fail(err)
 	}
-	reasons, err := w.convertDocx(ctx, d.dir, meta.Target)
+	reasons, simplified, err := w.convertDocx(ctx, d.dir, meta.Target)
 	if err != nil {
 		return fail(err)
 	}
@@ -807,7 +837,7 @@ func (w *wordDocs) reload(ctx context.Context, d *wordDoc) (exportResult, error)
 	if err := w.saveMeta(ctx, d, meta); err != nil {
 		return fail(fmt.Errorf("save the working copy state: %w", err))
 	}
-	d.set(meta, reasons)
+	d.reset(meta, reasons, simplified)
 	// The old pictures and reference are not the user's text; doc.prev.md stays.
 	for _, a := range asides[1:] {
 		if err := os.RemoveAll(filepath.Join(d.dir, a.prev)); err != nil {

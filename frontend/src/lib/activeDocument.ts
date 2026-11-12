@@ -118,6 +118,7 @@ const readOnlyReasons: Record<string, string> = {
   comments: strings.readOnlyComments,
   'tracked-changes': strings.readOnlyTrackedChanges,
   'text-boxes': strings.readOnlyTextBoxes,
+  'embedded-objects': strings.readOnlyEmbeddedObjects,
   tables: strings.readOnlyTables,
   'hard-links': strings.readOnlyHardLinks,
   'no-permission': strings.readOnlyNoPermission,
@@ -134,6 +135,36 @@ export function readOnlyReasonText(code: string): string {
 export function readOnlyText(codes: readonly string[]): string {
   const reasons = [...new Set(codes.map(readOnlyReasonText))]
   return `${strings.documentReadOnly}: ${reasons.join(', ')}`
+}
+
+/** Codes of the formatting a save simplifies that have a name; a code this version does not know is left out. */
+const simplifiedNames: Record<string, string> = {
+  alignment: strings.simplifiedAlignment,
+  'text-color': strings.simplifiedTextColor,
+  font: strings.simplifiedFont,
+  spacing: strings.simplifiedSpacing,
+  indentation: strings.simplifiedIndentation,
+  'page-breaks': strings.simplifiedPageBreaks,
+  tabs: strings.simplifiedTabs,
+  fields: strings.simplifiedFields,
+  'table-formatting': strings.simplifiedTableFormatting,
+}
+
+/** "Spremanje pojednostavljuje oblikovanje: poravnanje, boja teksta"; null when no code is known. */
+export function simplifiedText(codes: readonly string[]): string | null {
+  const names = codes.filter((c) => Object.hasOwn(simplifiedNames, c)).map((c) => simplifiedNames[c])
+  return names.length === 0 ? null : `${strings.documentSimplified}: ${names.join(', ')}`
+}
+
+/**
+ * The second line next to the state. The notice about an import from .doc comes first: it also
+ * says that the first save makes a new file. The formatting warning is for a document that can be
+ * saved at all.
+ */
+function noteFor(active: ActiveDocument | null): string | null {
+  if (active === null) return null
+  if (active.imported) return strings.documentImported
+  return active.readOnly.length === 0 ? simplifiedText(active.simplified) : null
 }
 
 export type StatusKind = 'converting' | 'modified' | 'failed' | 'unexported' | 'read-only' | 'saved'
@@ -172,7 +203,7 @@ export function documentStatus(active: ActiveDocument | null, modified: boolean,
     kind,
     text,
     tone: tones[kind],
-    note: noteAllowed && active?.imported ? strings.documentImported : null,
+    note: noteAllowed ? noteFor(active) : null,
     saveCopy: kind === 'read-only',
   })
 

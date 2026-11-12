@@ -103,8 +103,8 @@ func run() error {
 	dlg := &wailsDialogs{text: text}
 	words, err := newWordDocs(wordDocsDeps{
 		Convert: converter,
-		Inspect: func(ctx context.Context, path string) ([]convert.Loss, error) {
-			return convert.Inspect(ctx, path, docxLimits)
+		Examine: func(ctx context.Context, path string) (convert.Report, error) {
+			return convert.Examine(ctx, path, docxLimits)
 		},
 		Files: docs, Dialogs: dlg, Text: text, ExportAttempts: limits.ExportAttempts,
 	})

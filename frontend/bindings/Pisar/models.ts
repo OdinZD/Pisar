@@ -43,6 +43,13 @@ export interface DocumentActive {
      * (it was written but not exported, or the export is on its way).
      */
     "unexported": boolean;
+
+    /**
+     * Simplified lists the kinds of direct formatting (codes such as "alignment")
+     * that saving would flatten; an empty array, never null, when there is none or
+     * the document has been saved since. The application only warns about them.
+     */
+    "simplified": string[] | null;
 }
 
 /**

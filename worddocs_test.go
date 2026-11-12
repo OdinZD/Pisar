@@ -208,8 +208,8 @@ func (e *wordEnv) manager(conv wordConverter, wrapFiles func(wordFiles) wordFile
 	}
 	m, err := newWordDocs(wordDocsDeps{
 		Convert: conv,
-		Inspect: func(ctx context.Context, p string) ([]convert.Loss, error) {
-			return convert.Inspect(ctx, p, wordLimits())
+		Examine: func(ctx context.Context, p string) (convert.Report, error) {
+			return convert.Examine(ctx, p, wordLimits())
 		},
 		Files: files, Dialogs: e.dlg, Text: e.text, ExportAttempts: config.DefaultExportAttempts,
 	})
@@ -483,6 +483,7 @@ func TestWordDocsOpenReadOnlyReasons(t *testing.T) {
 		{name: "comments", fixture: "comments.docx", want: []string{"comments"}},
 		{name: "tracked changes", fixture: "tracked-changes.docx", want: []string{"tracked-changes"}},
 		{name: "text box", fixture: "textbox.docx", want: []string{"text-boxes"}},
+		{name: "chart", fixture: "chart.docx", want: []string{"embedded-objects"}},
 		{name: "not writable", fixture: "basic.docx", want: []string{"no-permission"},
 			prepare: func(t *testing.T, p string) {
 				if err := os.Chmod(p, 0o444); err != nil {
@@ -530,6 +531,106 @@ func TestWordDocsOpenLegacyDoc(t *testing.T) {
 	}
 	mustExist(t, v.Markdown)
 	sameBytes(t, p, orig)
+}
+
+// allSimplified is what formatting.docx has: one of everything, in the order of
+// the list in internal/convert.
+var allSimplified = []string{
+	"alignment", "text-color", "font", "spacing", "indentation",
+	"page-breaks", "tabs", "fields", "table-formatting",
+}
+
+// The formatting a save would simplify is known from the opening, does not make
+// the document read-only, and is gone once the document has been saved.
+func TestWordDocsSimplified(t *testing.T) {
+	t.Run("a document with direct formatting", func(t *testing.T) {
+		e := newWordEnv(t)
+		p := fixture(t, "formatting.docx", e.user)
+		orig := readFile(t, p)
+		d := mustOpen(t, e.docs, p)
+		v := d.view()
+		if !slices.Equal(v.Simplified, allSimplified) || len(v.ReadOnly) != 0 {
+			t.Fatalf("view = %+v, want every simplification and a writable document", v)
+		}
+		sameBytes(t, p, orig)
+
+		edit(t, e.docs, d, newText)
+		if got := d.view().Simplified; !slices.Equal(got, allSimplified) {
+			t.Errorf("Simplified = %v after an edit that was not exported", got)
+		}
+		res := exportSavedOK(t, e.docs, d)
+		if len(res.View.Simplified) != 0 || len(d.view().Simplified) != 0 {
+			t.Errorf("Simplified = %v / %v after the export, want none", res.View.Simplified, d.view().Simplified)
+		}
+	})
+	t.Run("a document pandoc wrote itself has none", func(t *testing.T) {
+		e := newWordEnv(t)
+		d := mustOpen(t, e.docs, fixture(t, "basic.docx", e.user))
+		if got := d.view().Simplified; len(got) != 0 {
+			t.Errorf("Simplified = %v", got)
+		}
+	})
+	t.Run("a chart opens the document read-only", func(t *testing.T) {
+		e := newWordEnv(t)
+		d := mustOpen(t, e.docs, fixture(t, "chart.docx", e.user))
+		if got := d.view().ReadOnly; !slices.Equal(got, []string{"embedded-objects"}) {
+			t.Errorf("ReadOnly = %v", got)
+		}
+	})
+	t.Run("a read-only document still has its list", func(t *testing.T) {
+		e := newWordEnv(t)
+		p := fixture(t, "formatting.docx", e.user)
+		if err := os.Chmod(p, 0o444); err != nil {
+			t.Fatal(err)
+		}
+		d := mustOpen(t, e.docs, p)
+		v := d.view()
+		if !slices.Equal(v.ReadOnly, []string{"no-permission"}) || !slices.Equal(v.Simplified, allSimplified) {
+			t.Errorf("view = %+v", v)
+		}
+	})
+	t.Run("a reload fills it from the new version", func(t *testing.T) {
+		e := newWordEnv(t)
+		p := fixture(t, "basic.docx", e.user)
+		d := mustOpen(t, e.docs, p)
+		edit(t, e.docs, d, newText)
+		replaceWith(t, p, "formatting.docx")
+		e.dlg.conflicts = []conflictChoice{conflictReload}
+		res, err := e.docs.export(t.Context(), d)
+		if err != nil || res.Outcome != exportReloaded {
+			t.Fatalf("res = %+v, err = %v", res, err)
+		}
+		if !slices.Equal(res.View.Simplified, allSimplified) || !slices.Equal(d.view().Simplified, allSimplified) {
+			t.Errorf("Simplified = %v / %v after the reload", res.View.Simplified, d.view().Simplified)
+		}
+	})
+	t.Run("a reload to a version without formatting empties it", func(t *testing.T) {
+		e := newWordEnv(t)
+		p := fixture(t, "formatting.docx", e.user)
+		d := mustOpen(t, e.docs, p)
+		edit(t, e.docs, d, newText)
+		replaceWith(t, p, "basic.docx")
+		e.dlg.conflicts = []conflictChoice{conflictReload}
+		if res, err := e.docs.export(t.Context(), d); err != nil || res.Outcome != exportReloaded {
+			t.Fatalf("res = %+v, err = %v", res, err)
+		}
+		if got := d.view().Simplified; len(got) != 0 {
+			t.Errorf("Simplified = %v after the reload", got)
+		}
+	})
+	t.Run("the first save of an imported .doc empties it", func(t *testing.T) {
+		e := newWordEnv(t)
+		e.needTextutil()
+		d := mustOpen(t, e.docs, fixture(t, "legacy.doc", e.user))
+		// What textutil's output has depends on the macOS version, so the list
+		// is put there by hand: the point is what the export does to it.
+		d.reset(d.metaCopy(), nil, []string{"font"})
+		edit(t, e.docs, d, newText)
+		res := exportSavedOK(t, e.docs, d)
+		if len(res.View.Simplified) != 0 || len(d.view().Simplified) != 0 {
+			t.Errorf("Simplified = %v / %v after the first save", res.View.Simplified, d.view().Simplified)
+		}
+	})
 }
 
 func TestWordDocsOpenFailures(t *testing.T) {
@@ -1409,7 +1510,7 @@ func TestNewWordDocsNeedsDeps(t *testing.T) {
 func TestNewWordDocsNeedsAttempts(t *testing.T) {
 	e := newWordEnv(t)
 	_, err := newWordDocs(wordDocsDeps{
-		Convert: e.conv, Inspect: func(context.Context, string) ([]convert.Loss, error) { return nil, nil },
+		Convert: e.conv, Examine: func(context.Context, string) (convert.Report, error) { return convert.Report{}, nil },
 		Files: e.ops, Dialogs: e.dlg, Text: e.text,
 	})
 	if err == nil || !strings.Contains(err.Error(), "ExportAttempts") {

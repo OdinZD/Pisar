@@ -53,6 +53,10 @@ type DocumentActive struct {
 	// Unexported: the working copy has text that is not in the user's file yet
 	// (it was written but not exported, or the export is on its way).
 	Unexported bool `json:"unexported"`
+	// Simplified lists the kinds of direct formatting (codes such as "alignment")
+	// that saving would flatten; an empty array, never null, when there is none or
+	// the document has been saved since. The application only warns about them.
+	Simplified []string `json:"simplified"`
 }
 
 // DocumentState is a change of the "modified" flag of a buffer. Path is the
@@ -782,9 +786,9 @@ func (e *EditorService) describe(file string) DocumentActive {
 // describePath is describe for a file as it is.
 func (e *EditorService) describePath(file string) DocumentActive {
 	if file == "" {
-		return DocumentActive{ReadOnly: []string{}}
+		return DocumentActive{ReadOnly: []string{}, Simplified: []string{}}
 	}
-	d := DocumentActive{Path: file, Name: filepath.Base(file), ReadOnly: []string{}}
+	d := DocumentActive{Path: file, Name: filepath.Base(file), ReadOnly: []string{}, Simplified: []string{}}
 	if id, rel, ok := e.locate(file); ok {
 		d.ProjectID, d.Rel = id, rel
 	}

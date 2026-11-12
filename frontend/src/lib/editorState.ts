@@ -25,11 +25,13 @@ export interface ActiveDocument {
   imported: boolean
   /** the working copy has text that is not in the user's file yet */
   unexported: boolean
+  /** codes of the direct formatting that saving would flatten; empty when there is none or after a save */
+  simplified: string[]
 }
 
 /**
  * The payload of the document:active event. All fields empty means a buffer without a file. The
- * generated type allows `readOnly: null`; it means the same as an empty list.
+ * generated type allows `readOnly: null` and `simplified: null`; each means the same as an empty list.
  */
 export interface DocumentActiveEvent {
   projectId: string
@@ -39,6 +41,7 @@ export interface DocumentActiveEvent {
   readOnly?: string[] | null
   imported?: boolean
   unexported?: boolean
+  simplified?: string[] | null
 }
 
 /** The payload of the document:export event. */
@@ -183,6 +186,7 @@ export function documentActive(state: EditorState, doc: DocumentActiveEvent): Ed
         readOnly: [...(doc.readOnly ?? [])],
         imported: doc.imported ?? false,
         unexported: doc.unexported ?? false,
+        simplified: [...(doc.simplified ?? [])],
       }
   return { ...state, active, modified: false, copyError: null }
 }
@@ -216,9 +220,11 @@ export function documentExport(state: EditorState, ev: DocumentExportEvent): Edi
   if (ev.phase === 'failed') next.set(ev.path, { phase: 'failed', code: ev.code })
   else if (ev.phase === 'canceled') next.set(ev.path, { phase: 'canceled', code: '' })
   else next.delete(ev.path)
-  // What was saved is in the user's file now; document:active does not come again after a plain save.
-  const saved = ev.phase === 'saved' && state.active !== null && state.active.path === ev.path && state.active.unexported
-  return { ...state, exports: next, active: saved && state.active ? { ...state.active, unexported: false } : state.active }
+  // What was saved is in the user's file now, and the formatting that the save simplifies is
+  // simplified; document:active does not come again after a plain save.
+  const saved =
+    ev.phase === 'saved' && state.active !== null && state.active.path === ev.path && (state.active.unexported || state.active.simplified.length > 0)
+  return { ...state, exports: next, active: saved && state.active ? { ...state.active, unexported: false, simplified: [] } : state.active }
 }
 
 /** Word documents are the ones whose opening runs a conversion. */
