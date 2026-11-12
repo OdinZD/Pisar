@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–6 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–7 gotovi, pregled plana u tijeku). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 7 (dimna provjera)
+- Sljedeći korak: faza 4, korak 8 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 6)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 7 i dokazi)
 
 ## Priprema (2026-11-11)
 
@@ -1302,8 +1302,91 @@ event "menu:search" ""         // ⌘P
         mijenja), pa su rezervirana dva retka (`tokens.search.reservedRows`).
       - Nije provjereno okom: poravnanje s statusnom trakom, pomicanje popisa, `⌘P` dok je fokus u
         ploči, `⌃P` u polju, zatvaranje klikom.
-- [ ] 7. Dimna provjera (`scripts/smoke.sh`)
+- [x] 7. Dimna provjera (`scripts/smoke.sh`): novi odjeljak „preview and search” (30 provjera; ukupno 91, oko
+      16 s). `.md` s retkom `<script>` i slikom na `http://127.0.0.1:9` zadan na naredbenom retku;
+      tipke `␣p` i `␣f` idu Neovimu kroz socket. Dokazano na sagrađenoj aplikaciji: frontend pri
+      pokretanju javlja `SetPreview enabled=false`; nakon `␣p` redom `ui:toggle-preview` →
+      `SetPreview enabled=true` (frontend je reagirao) → `preview:content state=html html_bytes>0`;
+      izmjena buffera daje novi `preview:content`; nakon drugog `␣p` izmjena ne daje ništa (Neovim
+      je ni ne javlja); `.txt` daje `state=unsupported`; `␣f` daje `ui:open-search`; tipke ne pišu u
+      buffer; tekst dokumenta nije u logu; nakon gašenja nema procesa (ni pandoca), a u `preview/` je
+      samo filter.
+      - Da bi skripta imala što čekati, glavna sesija je dodala redak dijagnostike za događaj
+        `preview:content` (ime datoteke, stanje, kod, veličina HTML-a; nikad sadržaj) — 5 redaka u
+        `editorservice.go`, commit `8ec9832`. `coder` je prije toga ispravno stao i prijavio da
+        aplikacija taj događaj ne bilježi.
+      - Skripta ne može vidjeti webview: dokazuje da je Go poslao stranicu, ne da je nacrtana.
 - [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
+
+### Dokazi po kriterijima (2026-11-12)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
+
+- `go test -count=1 -race ./...` → svih 8 paketa `ok`; `task test` → exit 0 (vitest `Test Files 27
+  passed`, `Tests 794 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
+  `task build` → exit 0; `bash scripts/smoke.sh` → `smoke: all checks passed` (91 provjera, dvaput
+  zaredom); `bash scripts/shutdown.sh` → `shutdown: all checks passed`.
+- Go testovi (`go test -list`): `Pisar` 166, `config` 30, `convert` 55, `docsafe` 92, `nvim` 68,
+  `preview` 23, `project` 44, `term` 35. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
+  83,9 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,0 %, `preview` 92,2 %,
+  `project` 96,0 %, `term` 93,9 % (`nvim` se mijenja između pokretanja).
+
+1. Pregled se pali i gasi (`␣p`, gumb), osvježava se nakon debouncea: `TestPvCoalesce` (više izmjena
+   unutar debouncea → jedna pretvorba sa zadnjim tekstom), `TestPvOff` (isključen → nijedna),
+   `TestPvEnableRepeats`, `TestPvSupersede` (nova izmjena otkazuje pretvorbu u tijeku, rezultat
+   otkazane se ne šalje), `TestPvSameTextOnce`, `TestPvToggleSearch` i `TestPrevKeys` (`␣p` → događaj,
+   pravi Neovim), `TestChanged`, `TestChangedIns`; vitest `previewState.test.ts` (prekidač, gašenje
+   ispod 1100 px, bez samopaljenja); `smoke.sh` (cijeli lanac kroz pravi frontend).
+2. Pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava: `TestRenderSafety` i `FuzzRender`
+   (za svaki neprijateljski ulaz izlaz nema oznake skripte, obrađivača događaja, `href`-a ni adrese),
+   `TestRenderDoesNotFetch` (lokalni poslužitelj broji 0 zahtjeva), `TestRenderAttributes`,
+   `TestRenderImages` (bijeg iz foldera, neprijateljski SVG), `TestPvPandoc` (pravi Neovim i pandoc:
+   `.md` sa `<script>` daje stranicu bez oznake skripte); vitest `previewFrame.test.ts` (`sandbox` je
+   točno `allow-same-origin`; CSP `default-src 'none'`, `form-action 'none'`, `base-uri 'none'`),
+   `previewGuard.test.ts` (nigdje `{@html}`, `innerHTML` samo u `previewWrite.ts`, nijedna druga
+   dozvola okvira).
+3. Tražilica: `TestSearchFolding`, `TestSearchWords`, `TestSearchRanking`, `TestSearchMatches`
+   (`internal/project`); `TestSearchDocuments` (dva projekta, sužavanje na jedan), `TestSearchCache`,
+   `TestSearchThroughService`, `TestSearchConcurrent` (usluga); `TestPvToggleSearch` (`␣f` → događaj),
+   `TestMenuSearch` (`⌘P` → `menu:search`); vitest `searchKeys.test.ts` (`↑` `↓` `↵` `Esc` `⌃P`),
+   `searchState.test.ts` (opseg, otvaranje, zatvaranje i fokus, samo najnoviji odgovor),
+   `searchHighlight.test.ts`; `smoke.sh` (`␣f` → `ui:open-search`).
+
+### Ručna provjera [R] — za vlasnika (agent ovo ne može provjeriti)
+
+1. Otvori `.md` i pritisni `␣p` (ili gumb „Pregled”): desno se pojavi stranica (bijela, na sivoj
+   podlozi, blaga sjena); gumb je ispunjen akcentom; terminal se suzi i ostaje poravnat.
+2. Font stranice je Source Serif 4 (ne sistemski serif); naslovi, tablica, citat, kod, fusnota i
+   slika iz foldera dokumenta izgledaju kako `DESIGN.md` traži.
+3. Tipkaj u dugom dokumentu s pregledom pomaknutim dolje: nakon stanke se sadržaj osvježi, a pregled
+   NE skače na vrh i ne treperi.
+4. U dokument upiši `<script>alert(1)</script>` i `![x](https://example.com/x.png)`: ništa se ne
+   izvrši, skripta se ne vidi, umjesto slike stoji njezin opis; poveznica izgleda kao poveznica, a
+   klik ne vodi nikamo.
+5. Klik u pregled, pa tipkaj: tipke idu u Neovim. Klik na gumb „Pregled”: isto.
+6. Suzi prozor ispod 1100 px: pregled se ugasi, gumb je onemogućen s objašnjenjem; nakon proširenja
+   se ne pali sam.
+7. `.txt` dokument s uključenim pregledom: ploča kaže da je pregled za Markdown i Wordove dokumente.
+8. Wordov dokument (`.docx`): pregled radi, slike iz dokumenta se vide.
+9. `␣f` i `⌘P` otvaraju tražilicu na dnu stupca editora; donji rub ploče je točno iznad Neovimove
+   statusne trake; ne prekriva stablo ni pregled.
+10. Upiši dio imena bez dijakritika (npr. „cesalj” za „Češalj”): podudaranje je istaknuto (akcent,
+    podebljano), projekt je desno; `↑` `↓` biraju (popis se pomiče iza osmog reda); `↵` otvara i
+    vraća fokus u Neovim; `Esc` zatvara i vraća fokus.
+11. `⌃P` u ploči mijenja opseg (svi projekti ↔ projekt aktivnog dokumenta) i ne miče kursor u polju;
+    `⌘P` dok je ploča otvorena samo vraća fokus u polje.
+12. `Esc` u normal modu Neovima (ploča zatvorena) ne zatvara ništa.
+
+### Otvoreno nakon faze 4
+
+- Nije provjereno okom ništa od izgleda i fokusa (popis gore); posebno učitava li okvir font uz CSP
+  `font-src` u Wails prozoru.
+- `⌘C` iz pregleda ne radi (označavanje mišem radi); kopiranje iz pregleda nije bilo u planu.
+- Simbolička veza u folderu dokumenta koja pokazuje izvan njega ugrađuje se u pregled; folder s `:` u
+  imenu dobiva pregled bez slika.
+- Tražilica ne vidi izmjenu napravljenu izvana dok je promatrač ne javi; `dj` ne nalazi `đ`.
+- Položaj ploče tražilice pretpostavlja Neovimove zadane `laststatus=2` i `cmdheight=1`.
+- Prevelik `.txt` buffer u pregledu daje grešku „prevelik”, a ne poruku „nije podržano”.
 
 ### Izvan opsega
 
@@ -1313,9 +1396,10 @@ postavke za prozu i pravopis, pakiranje, tamna tema.
 
 ### Kriteriji prihvaćanja
 
-- [ ] pregled se pali i gasi (`␣p`, gumb), osvježava se nakon debouncea
-- [ ] pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava (test)
-- [ ] tražilica: `␣f` i `⌘P`, pretraga kroz sve projekte, `⌃p` sužava, `↵` otvara, `Esc` vraća fokus
+- [x] pregled se pali i gasi (`␣p`, gumb), osvježava se nakon debouncea — dokaz 1
+- [x] pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava (test) — dokaz 2
+- [x] tražilica: `␣f` i `⌘P`, pretraga kroz sve projekte, `⌃p` sužava, `↵` otvara, `Esc` vraća fokus — dokaz 3
+      (tipke u prozoru i fokus su u ručnoj provjeri)
 - [ ] **[R]** izgled odgovara `docs/design/DESIGN.md`
 
 ## Faza 5 — Udobnost pisanja
