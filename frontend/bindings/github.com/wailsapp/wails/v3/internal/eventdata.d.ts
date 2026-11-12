@@ -17,11 +17,15 @@ declare module "@wailsio/runtime" {
             "document:state": main$0.DocumentState;
             "menu:copy": string;
             "menu:new-document": string;
+            "menu:search": string;
             "nvim:exit": string;
+            "preview:content": main$0.PreviewContent;
             "project:changed": string;
             "projects:changed": string;
             "pty:data": string;
             "ui:focus-tree": string;
+            "ui:open-search": string;
+            "ui:toggle-preview": string;
         }
     }
 }

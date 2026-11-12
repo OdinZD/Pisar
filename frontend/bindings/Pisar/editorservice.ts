@@ -69,6 +69,19 @@ export function SaveCopy(): $CancellablePromise<void> {
 }
 
 /**
+ * SetPreview tells the editor whether the preview pane is open. While it is,
+ * the editor sends preview:content after the first change and after every
+ * pause in typing; the call itself gives one refresh. It may be repeated (a
+ * page that was loaded again asks again), and every call with true gives a
+ * refresh. When Neovim is not running the state is only remembered: Start
+ * applies it, so the preview stays on across a restart of Neovim. Without a
+ * preview in the application it does nothing.
+ */
+export function SetPreview(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4144601820, enabled);
+}
+
+/**
  * Start launches Neovim at the given size with the colorscheme the frontend
  * generated, or, when Neovim already runs (the page was reloaded), only resizes
  * it and repaints; the colorscheme is then left as it is.

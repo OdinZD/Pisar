@@ -98,6 +98,13 @@ type editorServiceDeps struct {
 	// Words opens .docx and .doc documents. Without it they are refused as
 	// unsupported, which is how the service behaved before they were supported.
 	Words *wordDocs
+
+	// Preview turns the text of the current buffer into the HTML of the preview
+	// pane. Without it the service behaves as if there were no preview:
+	// SetPreview succeeds and nothing is ever sent. PreviewTimer replaces the
+	// real timers of the loop (tests); nil means real ones.
+	Preview      previewRenderer
+	PreviewTimer previewTimerFunc
 }
 
 // EditorService is the Wails service behind the editor: it runs Neovim, moves
@@ -119,6 +126,13 @@ type EditorService struct {
 	words *wordDocs
 	queue *workQueue
 	marks exportMarks
+
+	// preview is the loop that renders the preview, nil without a Preview.
+	// previewMu serialises SetPreview and Start's use of previewWanted, the
+	// last state the frontend asked for; it outlives a Neovim process.
+	preview       *previewLoop
+	previewMu     sync.Mutex
+	previewWanted bool
 
 	// startMu serialises Start: it writes the configuration and may open the
 	// initial document, which must happen once.
@@ -215,6 +229,19 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 		cancel()
 		e.queue = newWorkQueue(e.runTask)
 	}
+	if d.Preview != nil {
+		// Last: nothing after this can fail, so the goroutine is never left behind.
+		e.preview = newPreviewLoop(previewLoopDeps{
+			Source:      e.session,
+			Renderer:    d.Preview,
+			Emit:        func(c PreviewContent) { e.notify(eventPreviewContent, c) },
+			Target:      e.previewTargetOf,
+			Debounce:    d.Limits.PreviewDebounce,
+			ReadTimeout: d.Limits.CommandTimeout,
+			MaxSource:   d.Limits.MaxPreviewSource,
+			NewTimer:    d.PreviewTimer,
+		})
+	}
 	return e, nil
 }
 
@@ -302,6 +329,10 @@ func (e *EditorService) shutdown() {
 		e.closed = true
 		e.closeMu.Unlock()
 
+		if e.preview != nil {
+			// Cancels a conversion in progress and waits for the goroutine.
+			e.preview.stop()
+		}
 		if e.words != nil {
 			e.stopWords()
 		}
@@ -413,6 +444,10 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 	}
 	if err := e.session.Start(ctx, cols, rows); err != nil {
 		return failEditor("start", err)
+	}
+	if !wasRunning {
+		// A new Neovim does not know that the preview is on.
+		e.applyPreview(ctx)
 	}
 	if wasRunning {
 		// A reloaded page has lost what it knew: tell it again which document
@@ -837,22 +872,29 @@ func (v editorEvents) FocusTree() {
 	v.e.notify(eventFocusTree, "")
 }
 
-// The three methods below are only logged for now: the service starts using
-// them when the preview and the search are wired in.
+// Changed only tells the preview loop; the loop does the work on its own goroutine.
 func (v editorEvents) Changed() {
 	slog.Debug("editor event", "event", "changed")
+	if v.e.preview != nil {
+		v.e.preview.changed()
+	}
 }
 
 func (v editorEvents) TogglePreview() {
-	slog.Debug("editor event", "event", "toggle-preview")
+	slog.Debug("editor event", "event", eventTogglePreview)
+	v.e.notify(eventTogglePreview, "")
 }
 
 func (v editorEvents) OpenSearch() {
-	slog.Debug("editor event", "event", "open-search")
+	slog.Debug("editor event", "event", eventOpenSearch)
+	v.e.notify(eventOpenSearch, "")
 }
 
 func (v editorEvents) Exited() {
 	slog.Debug("editor event", "event", eventNvimExit)
+	if v.e.preview != nil {
+		v.e.preview.reset()
+	}
 	v.e.notify(eventNvimExit, "")
 	// Behind the exports that the writes before the quit queued.
 	v.e.closeWords()

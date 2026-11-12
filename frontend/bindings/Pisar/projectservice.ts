@@ -60,6 +60,16 @@ export function RenameDocument(id: string, rel: string, newName: string): $Cance
 }
 
 /**
+ * SearchDocuments finds documents by name in all projects, or in one when
+ * projectID is not empty. A blank query gives no hits. The result is never
+ * null: JSON [] when there is nothing. A project whose folder is missing or
+ * whose tree is too large to scan is left out, and the others are searched.
+ */
+export function SearchDocuments(query: string, projectID: string): $CancellablePromise<project$0.Hit[] | null> {
+    return $Call.ByID(4283429394, query, projectID);
+}
+
+/**
  * TrashDocument moves a document to the Trash after the user confirms.
  * Declining is not an error.
  */

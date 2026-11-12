@@ -16,6 +16,7 @@ import (
 	"Pisar/internal/config"
 	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
+	"Pisar/internal/preview"
 	"Pisar/internal/project"
 )
 
@@ -40,6 +41,12 @@ func init() {
 	application.RegisterEvent[DocumentState](eventDocumentState)
 	application.RegisterEvent[DocumentExport](eventDocumentExport)
 	application.RegisterEvent[string](eventFocusTree)
+
+	// The preview and the search: one structure, the rest are cues without a payload.
+	application.RegisterEvent[PreviewContent](eventPreviewContent)
+	application.RegisterEvent[string](eventTogglePreview)
+	application.RegisterEvent[string](eventOpenSearch)
+	application.RegisterEvent[string](eventMenuSearch)
 }
 
 // initialFile is the document named on the command line, "" if none. An
@@ -95,6 +102,14 @@ func run() error {
 		return err
 	}
 
+	renderer, err := preview.New(preview.Options{
+		PandocBin: store.PandocBin(), Dir: store.PreviewDir(), Timeout: limits.PreviewTimeout,
+		MaxSource: limits.MaxPreviewSource, MaxHTML: limits.MaxPreviewHTML,
+	})
+	if err != nil {
+		return err
+	}
+
 	// The emitters, the clipboard and the dialogs need the application, the application needs
 	// the service: they read app after it has been created, and nothing emits
 	// or asks before Run.
@@ -122,6 +137,7 @@ func run() error {
 		Limits:      limits,
 		InitialFile: initialFile(os.Args),
 		Words:       words,
+		Preview:     renderer,
 	})
 	if err != nil {
 		return err

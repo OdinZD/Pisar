@@ -12,5 +12,6 @@ export type {
     DocumentActive,
     DocumentExport,
     DocumentState,
+    PreviewContent,
     ProjectInfo
 } from "./models.js";

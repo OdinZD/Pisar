@@ -4,15 +4,15 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–3 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–4 gotovi). Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 4 (usluge: petlja pregleda, `SearchDocuments`, meni)
+- Sljedeći korak: faza 4, korak 5 (frontend — pregled)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, korak 3)
+- Zadnja izmjena: 2026-11-12 (faza 4, korak 4)
 
 ## Priprema (2026-11-11)
 
@@ -1229,7 +1229,33 @@ event "menu:search" ""         // ⌘P
         `:edit!` ne uspije. Četiri nova testa (`reload_test.go`); mutacije ih ruše.
       - Događaji iz Neovima idu kroz kanal od 256 mjesta s odbacivanjem najstarijih (postojeće
         ponašanje); petlja pregleda zato mora stalno čitati i sama tražiti tekst.
-- [ ] 4. Usluge: petlja pregleda u `EditorService`, `SearchDocuments`, meni `⌘P`, `main.go`
+- [x] 4. Usluge. `editorpreview.go`: `EditorService.SetPreview`, događaji `preview:content` (`PreviewContent{Path,
+      State, HTML, Code}`), `ui:toggle-preview`, `ui:open-search`; petlja pregleda je jedna goroutina
+      (pokrenuta s uslugom, zaustavljena u `shutdown`): čeka `PreviewDebounce` tišine, uzima tekst
+      buffera, odlučuje po bufferu (`.md` → folder datoteke; `doc.md` Wordovog dokumenta → radna mapa,
+      `Path` je korisnikova datoteka; `.txt`, buffer bez datoteke i ostalo → `unsupported`), pretvara i
+      šalje. Nova izmjena otkazuje pretvorbu u tijeku, a njezin rezultat se ne šalje. Isti sadržaj se
+      ne šalje dvaput, osim nakon `SetPreview(true)`. `ProjectService.SearchDocuments(query,
+      projectID)` s predmemorijom stabala; stavka menija „Traži dokument…” (`⌘P` → `menu:search`);
+      novi kod `preview-too-large`. Vitest 540.
+      - Vrijeme u testovima petlje je ubrizgani tajmer (bez `time.Sleep`); testovi s pravim Neovimom
+        koriste debounce od 20 ms i provjeravaju konačno stanje. Novi testovi prolaze 10 puta zaredom
+        s `-race` (i kod glavne sesije).
+      - Predmemorija stabla vrijedi samo dok je projekt promatran i briše se na svaku obavijest o
+        promjeni projekta, na dodavanje i uklanjanje projekta te pri svakoj promjeni promatranja;
+        skeniranje istog projekta ne teče dvaput istodobno. Slijepa točka: izmjena izvana se ne vidi
+        dok je promatrač ne javi (FSEvents + `WatchDebounce`).
+      - Pregled preživljava gašenje i ponovno pokretanje Neovima (`Start` primjenjuje zapamćeno stanje).
+        Usluga bez `Preview` u ovisnostima ponaša se kao da pregleda nema.
+      - Prevelik `.txt` buffer daje `error` + `preview-too-large` s praznom putanjom (putanja se ne zna
+        kad Neovim odbije tekst), a ne `unsupported`.
+      - Izmijenjeni postojeći testovi: `TestEdCodes` i `TestCodeOf` dobili su retke za nove kodove;
+        lažni izvor promjena `fakeSource` u `projectservice_test.go` je interno prepisan (zatvaranje
+        kanalom, novi `die()` i `startErr`), ponašanje za stare testove isto.
+      - Za frontend: `SetPreview(true)` uvijek daje jedan `preview:content`; nakon `SetPreview(false)`
+        može stići jedan zakašnjeli događaj (ignorirati kad je ploča zatvorena); nakon ponovnog
+        učitavanja stranice treba pozvati `SetPreview` s trenutačnim stanjem; na `nvim:exit` prikaz
+        briše frontend.
 - [ ] 5. Frontend — pregled: font, tokeni, `Preview.svelte`, gumb „Pregled”, raspored
 - [ ] 6. Frontend — tražilica: `SearchPanel.svelte`, tipke, fokus, opseg
 - [ ] 7. Dimna provjera (`scripts/smoke.sh`)

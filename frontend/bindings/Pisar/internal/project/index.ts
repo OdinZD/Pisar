@@ -6,5 +6,6 @@ export {
 } from "./models.js";
 
 export type {
+    Hit,
     Node
 } from "./models.js";

@@ -84,6 +84,34 @@ export interface DocumentState {
 }
 
 /**
+ * PreviewContent is what the preview pane shows (see eventPreviewContent). It
+ * reaches JavaScript as a typed event payload, like DocumentActive.
+ */
+export interface PreviewContent {
+    /**
+     * Path is the user's file: for a Word document the .docx or .doc, never the
+     * Markdown working copy. "" for a buffer without a file, and when the buffer
+     * was too large to even be asked which file it holds.
+     */
+    "path": string;
+
+    /**
+     * previewStateHTML, previewStateUnsupported or previewStateError
+     */
+    "state": string;
+
+    /**
+     * the page body when State is "html", otherwise ""
+     */
+    "html": string;
+
+    /**
+     * the error code when State is "error", otherwise ""
+     */
+    "code": string;
+}
+
+/**
  * ProjectInfo is one row of the project list.
  */
 export interface ProjectInfo {

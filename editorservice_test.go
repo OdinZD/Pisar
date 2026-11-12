@@ -22,6 +22,7 @@ import (
 	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
+	"Pisar/internal/preview"
 	"Pisar/internal/project"
 	"Pisar/internal/term"
 )
@@ -1340,6 +1341,10 @@ func TestEdCodes(t *testing.T) {
 		{"conflict", docsafe.ErrConflict, codeConflict},
 		{"damaged work", docsafe.ErrDamagedWork, codeDamagedWork},
 		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
+		{"preview too large", preview.ErrTooLarge, codePreviewTooLarge},
+		{"preview source too large", nvim.ErrBufferTooLarge, codePreviewTooLarge},
+		{"preview without pandoc", fmt.Errorf("%w: %w", preview.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
+		{"preview tool failed", &preview.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
 		{"already coded", &apiError{code: codeNotRunning}, codeNotRunning},
 		{"specific beats canceled", errors.Join(nvim.ErrNotRunning, context.Canceled), codeNotRunning},
 		{"unknown", errors.New("whatever"), codeInternal},

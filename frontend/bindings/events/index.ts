@@ -34,9 +34,19 @@ export const MenuCopy = "menu:copy";
 export const MenuNewDocument = "menu:new-document";
 
 /**
+ * Name of the custom event "menu:search".
+ */
+export const MenuSearch = "menu:search";
+
+/**
  * Name of the custom event "nvim:exit".
  */
 export const NvimExit = "nvim:exit";
+
+/**
+ * Name of the custom event "preview:content".
+ */
+export const PreviewContent = "preview:content";
 
 /**
  * Name of the custom event "project:changed".
@@ -57,4 +67,14 @@ export const PtyData = "pty:data";
  * Name of the custom event "ui:focus-tree".
  */
 export const UiFocusTree = "ui:focus-tree";
+
+/**
+ * Name of the custom event "ui:open-search".
+ */
+export const UiOpenSearch = "ui:open-search";
+
+/**
+ * Name of the custom event "ui:toggle-preview".
+ */
+export const UiTogglePreview = "ui:toggle-preview";
 

@@ -12,6 +12,9 @@ import (
 // focus is (terminal or an input field). Payload "".
 const eventMenuCopy = "menu:copy"
 
+// eventMenuSearch asks the frontend to open the document search (⌘P). Payload "".
+const eventMenuSearch = "menu:search"
+
 // menuEditor is what the menu items need from the editor.
 type menuEditor interface {
 	running() bool
@@ -45,6 +48,12 @@ func (a *menuActions) copy() {
 	a.emit(eventMenuCopy, "")
 }
 
+// search hands the decision to the frontend (see eventMenuSearch): the search
+// panel and the focus are its business.
+func (a *menuActions) search() {
+	a.emit(eventMenuSearch, "")
+}
+
 // newMenu builds the application menu. Own items only start something and run
 // in their own goroutine, so that a blocked Neovim call (up to CommandTimeout)
 // never holds up the UI. Wails v3.1.0 already calls a click handler from a
@@ -69,6 +78,9 @@ func newMenu(app *application.App, text uiText, a *menuActions, newDocument, add
 	})
 	file.Add(text.MenuSave).SetAccelerator("CmdOrCtrl+s").OnClick(func(*application.Context) {
 		go a.save()
+	})
+	file.Add(text.MenuSearch).SetAccelerator("CmdOrCtrl+p").OnClick(func(*application.Context) {
+		go a.search()
 	})
 
 	edit := menu.AddSubmenu(text.MenuEdit)

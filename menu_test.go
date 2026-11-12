@@ -70,3 +70,17 @@ func TestMenuCopy(t *testing.T) {
 		t.Errorf("menuEmit %v", out)
 	}
 }
+
+func TestMenuSearch(t *testing.T) {
+	var out []menuEmit
+	ed := &fakeMenuEditor{}
+	a := newActions(ed, &out)
+	a.search()
+	if len(out) != 1 || out[0] != (menuEmit{"menu:search", ""}) {
+		t.Errorf("menuEmit %v", out)
+	}
+	// The search does not need Neovim: it is the frontend's panel.
+	if ed.saves != 0 {
+		t.Errorf("Save called %d times", ed.saves)
+	}
+}

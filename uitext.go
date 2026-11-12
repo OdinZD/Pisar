@@ -25,6 +25,7 @@ type uiText struct {
 	MenuSave              string `json:"menuSave"`
 	MenuCopy              string `json:"menuCopy"`
 	MenuPaste             string `json:"menuPaste"`
+	MenuSearch            string `json:"menuSearch"`
 	QuitTitle             string `json:"quitTitle"`
 	QuitMessage           string `json:"quitMessage"` // placeholder {names}
 	QuitMore              string `json:"quitMore"`    // placeholder {count}

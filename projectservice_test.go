@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
+	"Pisar/internal/preview"
 	"Pisar/internal/project"
 )
 
@@ -93,27 +96,63 @@ func (f *fakeOpen) set(fn func(*fakeOpen)) {
 // fakeSource is a project.Source driven by the test.
 type fakeSource struct {
 	mu     sync.Mutex
-	chans  map[string]chan []project.Change
-	closed map[string]bool
+	chans  map[string]chan []project.Change // the stream started last for a root
+	closed map[chan []project.Change]bool
+	ends   map[chan []project.Change]*sync.Once
+	// startErr, when set, makes Start fail: a project that cannot be watched.
+	startErr error
 }
 
 func (f *fakeSource) Start(ctx context.Context, root string) (<-chan []project.Change, error) {
-	ch := make(chan []project.Change, 16)
 	f.mu.Lock()
+	if f.startErr != nil {
+		err := f.startErr
+		f.mu.Unlock()
+		return nil, err
+	}
+	ch := make(chan []project.Change, 16)
+	once := new(sync.Once)
 	if f.chans == nil {
 		f.chans = map[string]chan []project.Change{}
-		f.closed = map[string]bool{}
+		f.closed = map[chan []project.Change]bool{}
+		f.ends = map[chan []project.Change]*sync.Once{}
 	}
 	f.chans[root] = ch
+	f.ends[ch] = once
 	f.mu.Unlock()
 	go func() {
 		<-ctx.Done()
-		f.mu.Lock()
-		f.closed[root] = true
-		close(ch)
-		f.mu.Unlock()
+		f.end(ch, once)
 	}()
 	return ch, nil
+}
+
+// end closes a stream once, whether the watcher stopped it or the test killed it.
+func (f *fakeSource) end(ch chan []project.Change, once *sync.Once) {
+	once.Do(func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.closed[ch] = true
+		close(ch)
+	})
+}
+
+// die ends the stream of root on its own, as FSEvents does when it loses track:
+// the watcher sees the channel close without having asked for it.
+func (f *fakeSource) die(t *testing.T, root string) {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	ch := f.chans[real]
+	once := f.ends[ch]
+	f.mu.Unlock()
+	if ch == nil {
+		t.Fatalf("no stream for %s", real)
+	}
+	f.end(ch, once)
 }
 
 // touch reports a change of a document file under root (a real path, as Start received it).
@@ -129,7 +168,7 @@ func (f *fakeSource) touch(t *testing.T, root string) {
 	if ch == nil {
 		t.Fatalf("no stream for %s", real)
 	}
-	if f.closed[real] {
+	if f.closed[ch] {
 		return // a stopped stream delivers nothing
 	}
 	ch <- []project.Change{{Path: filepath.Join(real, "x.md")}}
@@ -876,6 +915,10 @@ func TestCodeOf(t *testing.T) {
 		{"conflict", docsafe.ErrConflict, codeConflict},
 		{"damaged work", docsafe.ErrDamagedWork, codeDamagedWork},
 		{"buffer modified", nvim.ErrBufferModified, codeUnsavedChanges},
+		{"preview too large", preview.ErrTooLarge, codePreviewTooLarge},
+		{"preview source too large", nvim.ErrBufferTooLarge, codePreviewTooLarge},
+		{"preview without pandoc", fmt.Errorf("%w: %w", preview.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
+		{"preview tool failed", &preview.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
 		{"deadline", context.DeadlineExceeded, codeCanceled},
 		{"canceled", context.Canceled, codeCanceled},
 		{"unknown", errors.New("whatever"), codeInternal},
@@ -911,4 +954,414 @@ func TestMarshalError(t *testing.T) {
 	if got := marshalError(errors.New("plain")); got != nil {
 		t.Errorf("plain error must fall back to the default, got %s", got)
 	}
+}
+
+// scanSpy counts the scans of the project service and how many run at once per
+// folder. gate, when set before the first search, holds every scan until it is
+// closed.
+type scanSpy struct {
+	mu      sync.Mutex
+	scans   map[string]int
+	live    map[string]int
+	maxLive map[string]int
+	gate    chan struct{}
+}
+
+func (e *env) spyScans() *scanSpy {
+	sp := &scanSpy{scans: map[string]int{}, live: map[string]int{}, maxLive: map[string]int{}}
+	orig := e.svc.scan
+	e.svc.scan = func(ctx context.Context, root string, maxNodes int) (project.Tree, error) {
+		sp.mu.Lock()
+		sp.scans[root]++
+		sp.live[root]++
+		sp.maxLive[root] = max(sp.maxLive[root], sp.live[root])
+		gate := sp.gate
+		sp.mu.Unlock()
+		defer func() {
+			sp.mu.Lock()
+			sp.live[root]--
+			sp.mu.Unlock()
+		}()
+		if gate != nil {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return project.Tree{}, ctx.Err()
+			}
+		}
+		return orig(ctx, root, maxNodes)
+	}
+	return sp
+}
+
+func (sp *scanSpy) count(root string) int {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	return sp.scans[root]
+}
+
+func (e *env) search(query, projectID string) []project.Hit {
+	e.t.Helper()
+	hits, err := e.svc.SearchDocuments(context.Background(), query, projectID)
+	if err != nil {
+		e.t.Fatalf("SearchDocuments(%q, %q): %v", query, projectID, err)
+	}
+	if hits == nil {
+		e.t.Fatalf("SearchDocuments(%q, %q) returned nil, want an empty slice", query, projectID)
+	}
+	return hits
+}
+
+func hitRels(hits []project.Hit) []string {
+	var out []string
+	for _, h := range hits {
+		out = append(out, h.ProjectID+":"+h.Rel)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func TestSearchDocuments(t *testing.T) {
+	e := newEnv(t)
+	a, rootA := e.addProject()
+	b, rootB := e.addProject()
+	write(t, filepath.Join(rootA, "Plan puta.md"), "")
+	write(t, filepath.Join(rootA, "sub", "Plan rada.docx"), "")
+	write(t, filepath.Join(rootA, "bilješke.txt"), "")
+	write(t, filepath.Join(rootB, "plan B.txt"), "")
+	write(t, filepath.Join(rootB, "Izvještaj.md"), "")
+	write(t, filepath.Join(rootB, "slika.png"), "")
+
+	all := e.search("plan", "")
+	want := []string{a.ID + ":Plan puta.md", a.ID + ":sub/Plan rada.docx", b.ID + ":plan B.txt"}
+	slices.Sort(want)
+	if got := hitRels(all); !slices.Equal(got, want) {
+		t.Errorf("hits = %v, want %v", got, want)
+	}
+	for _, h := range all {
+		if h.ProjectName == "" || h.Name == "" || len(h.Matches) == 0 {
+			t.Errorf("incomplete hit %+v", h)
+		}
+	}
+	// Both projects answered.
+	if got := hitRels(e.search("plan", a.ID)); len(got) != 2 || !strings.HasPrefix(got[0], a.ID) || !strings.HasPrefix(got[1], a.ID) {
+		t.Errorf("narrowed to %s: %v", a.ID, got)
+	}
+	if got := hitRels(e.search("plan", b.ID)); !slices.Equal(got, []string{b.ID + ":plan B.txt"}) {
+		t.Errorf("narrowed to %s: %v", b.ID, got)
+	}
+	// Without diacritics, and only documents.
+	if got := hitRels(e.search("izvjestaj", "")); !slices.Equal(got, []string{b.ID + ":Izvještaj.md"}) {
+		t.Errorf("izvjestaj: %v", got)
+	}
+	if got := e.search("slika", ""); len(got) != 0 {
+		t.Errorf("a picture was found: %+v", got)
+	}
+
+	_, err := e.svc.SearchDocuments(context.Background(), "plan", "nepoznat")
+	wantCode(t, err, codeNotFound)
+}
+
+// Nothing to search for is an empty array, never null, which the frontend
+// would have to special-case.
+func TestSearchEmpty(t *testing.T) {
+	e := newEnv(t)
+	_, root := e.addProject()
+	write(t, filepath.Join(root, "a.md"), "")
+	for _, q := range []string{"", "   ", "\t\n", "nema ga"} {
+		hits := e.search(q, "")
+		if b, err := json.Marshal(hits); err != nil || string(b) != "[]" {
+			t.Errorf("query %q: JSON %s, %v", q, b, err)
+		}
+	}
+	// A blank query is answered before the project is looked up.
+	if hits, err := e.svc.SearchDocuments(context.Background(), " ", "nepoznat"); err != nil || len(hits) != 0 {
+		t.Errorf("blank query for an unknown project: %v, %v", hits, err)
+	}
+	// No projects at all.
+	e2 := newEnv(t)
+	if b, _ := json.Marshal(e2.search("a", "")); string(b) != "[]" {
+		t.Errorf("no projects: %s", b)
+	}
+}
+
+func TestSearchMissingFolder(t *testing.T) {
+	e := newEnv(t)
+	a, rootA := e.addProject()
+	b, rootB := e.addProject()
+	write(t, filepath.Join(rootA, "plan a.md"), "")
+	write(t, filepath.Join(rootB, "plan b.md"), "")
+	if got := e.search("plan", ""); len(got) != 2 {
+		t.Fatalf("hits = %v", hitRels(got))
+	}
+	if err := os.RemoveAll(rootB); err != nil {
+		t.Fatal(err)
+	}
+	if got := hitRels(e.search("plan", "")); !slices.Equal(got, []string{a.ID + ":plan a.md"}) {
+		t.Errorf("with a missing folder: %v", got)
+	}
+	if got := e.search("plan", b.ID); len(got) != 0 {
+		t.Errorf("the missing project itself: %+v", got)
+	}
+	// The folder comes back with other content.
+	write(t, filepath.Join(rootB, "plan novi.md"), "")
+	if got := hitRels(e.search("plan", b.ID)); !slices.Equal(got, []string{b.ID + ":plan novi.md"}) {
+		t.Errorf("after the folder came back: %v", got)
+	}
+}
+
+func TestSearchLimit(t *testing.T) {
+	e := newEnv(t, func(l *config.Limits) { l.MaxSearchResults = 3 })
+	_, root := e.addProject()
+	for i := range 10 {
+		write(t, filepath.Join(root, fmt.Sprintf("dok %d.md", i)), "")
+	}
+	if got := e.search("dok", ""); len(got) != 3 {
+		t.Errorf("%d hits, want the limit 3", len(got))
+	}
+}
+
+// A project with too large a tree is left out and the others are searched.
+func TestSearchTooLarge(t *testing.T) {
+	e := newEnv(t, func(l *config.Limits) { l.MaxTreeNodes = 5 })
+	_, big := e.addProject()
+	small, rootSmall := e.addProject()
+	for i := range 10 {
+		write(t, filepath.Join(big, fmt.Sprintf("plan %d.md", i)), "")
+	}
+	write(t, filepath.Join(rootSmall, "plan.md"), "")
+	if got := hitRels(e.search("plan", "")); !slices.Equal(got, []string{small.ID + ":plan.md"}) {
+		t.Errorf("hits = %v", got)
+	}
+}
+
+func TestSearchCanceled(t *testing.T) {
+	e := newEnv(t)
+	_, root := e.addProject()
+	write(t, filepath.Join(root, "a.md"), "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := e.svc.SearchDocuments(ctx, "a", "")
+	wantCode(t, err, codeCanceled)
+}
+
+// The tree is scanned once and used until something says it changed.
+func TestSearchCache(t *testing.T) {
+	e := newEnv(t)
+	sp := e.spyScans()
+	p, root := e.addProject()
+	write(t, filepath.Join(root, "alfa.md"), "")
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		e.search("alfa", "")
+		e.search("a", p.ID)
+	}
+	if n := sp.count(root); n != 1 {
+		t.Fatalf("%d scans for 6 searches, want 1 (%v)", n, sp.scans)
+	}
+
+	// A change on disk, reported by the watcher: the next search sees it.
+	write(t, filepath.Join(root, "beta.md"), "")
+	e.src.touch(t, real)
+	waitFor(t, "the watcher's report", func() bool { return e.count(eventProjectChanged, p.ID) >= 1 })
+	if got := hitRels(e.search("beta", "")); !slices.Equal(got, []string{p.ID + ":beta.md"}) {
+		t.Errorf("after a change: %v", got)
+	}
+	if n := sp.count(root); n != 2 {
+		t.Errorf("%d scans, want 2", n)
+	}
+	e.search("beta", "")
+	if n := sp.count(root); n != 2 {
+		t.Errorf("%d scans after a search with no change, want 2", n)
+	}
+
+	if err := os.Remove(filepath.Join(root, "beta.md")); err != nil {
+		t.Fatal(err)
+	}
+	e.src.touch(t, real)
+	waitFor(t, "a search that no longer finds it", func() bool { return len(e.search("beta", "")) == 0 })
+}
+
+// Created, renamed and trashed through the service: the result is fresh at
+// once, without waiting for the file watcher.
+func TestSearchThroughService(t *testing.T) {
+	e := newEnv(t)
+	sp := e.spyScans()
+	p, root := e.addProject()
+	write(t, filepath.Join(root, "stari.md"), "")
+	ctx := context.Background()
+	if got := e.search("novi", ""); len(got) != 0 {
+		t.Fatalf("hits = %+v", got)
+	}
+
+	if _, err := e.svc.CreateDocument(ctx, p.ID, "", "novi dokument.md"); err != nil {
+		t.Fatal(err)
+	}
+	if got := hitRels(e.search("novi", "")); !slices.Equal(got, []string{p.ID + ":novi dokument.md"}) {
+		t.Errorf("after create: %v", got)
+	}
+	if _, err := e.svc.RenameDocument(ctx, p.ID, "novi dokument.md", "drugi dokument.md"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.search("novi", ""); len(got) != 0 {
+		t.Errorf("after rename, the old name: %v", hitRels(got))
+	}
+	if got := hitRels(e.search("drugi", "")); !slices.Equal(got, []string{p.ID + ":drugi dokument.md"}) {
+		t.Errorf("after rename: %v", got)
+	}
+	e.dlg.set(func(d *fakeDialogs) { d.confirm = true })
+	if err := e.svc.TrashDocument(ctx, p.ID, "drugi dokument.md"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.search("drugi", ""); len(got) != 0 {
+		t.Errorf("after trash: %v", hitRels(got))
+	}
+	if n := sp.count(root); n < 4 {
+		t.Errorf("%d scans, want a new one after each of the 3 changes", n)
+	}
+}
+
+// Many searches at once scan a project once, and never two scans of it at the
+// same time. Run with -race.
+func TestSearchConcurrent(t *testing.T) {
+	e := newEnv(t)
+	sp := e.spyScans()
+	sp.gate = make(chan struct{})
+	a, rootA := e.addProject()
+	b, rootB := e.addProject()
+	write(t, filepath.Join(rootA, "plan a.md"), "")
+	write(t, filepath.Join(rootB, "plan b.md"), "")
+
+	const n = 8
+	var ready, done sync.WaitGroup
+	results := make(chan []string, n)
+	errs := make(chan error, n)
+	for i := range n {
+		ready.Add(1)
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			ready.Done()
+			id := ""
+			if i%4 == 1 {
+				id = a.ID // some narrow to one project
+			}
+			hits, err := e.svc.SearchDocuments(context.Background(), "plan", id)
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- hitRels(hits)
+		}()
+	}
+	ready.Wait()
+	waitFor(t, "a scan to start", func() bool { return sp.count(rootA)+sp.count(rootB) >= 1 })
+	close(sp.gate)
+	done.Wait()
+	close(results)
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	for r := range results {
+		if len(r) != 1 && len(r) != 2 {
+			t.Errorf("hits = %v", r)
+		}
+	}
+	for _, root := range []string{rootA, rootB} {
+		if sp.count(root) != 1 {
+			t.Errorf("%d scans of %s, want 1", sp.count(root), root)
+		}
+		if sp.maxLive[root] > 1 {
+			t.Errorf("%d scans of %s at the same time", sp.maxLive[root], root)
+		}
+	}
+	_ = b
+}
+
+// A tree is not served from the cache when nothing watches the project: the
+// stream died, and whatever changed meanwhile would never be reported.
+func TestSearchNotWatched(t *testing.T) {
+	e := newEnv(t)
+	sp := e.spyScans()
+	p, root := e.addProject()
+	write(t, filepath.Join(root, "alfa.md"), "")
+	e.search("alfa", "")
+	e.search("alfa", "")
+	if n := sp.count(root); n != 1 {
+		t.Fatalf("%d scans, want 1", n)
+	}
+
+	// The stream dies and cannot be started again.
+	e.src.mu.Lock()
+	e.src.startErr = errors.New("cannot watch")
+	e.src.mu.Unlock()
+	e.src.die(t, root)
+	waitFor(t, "the watcher to notice", func() bool { return !e.svc.watcher.Watching(p.ID) })
+	write(t, filepath.Join(root, "svjez.md"), "")
+	for i := range 2 {
+		if got := hitRels(e.search("svjez", "")); !slices.Equal(got, []string{p.ID + ":svjez.md"}) {
+			t.Fatalf("search %d without a watcher: %v", i, got)
+		}
+	}
+	if n := sp.count(root); n != 3 {
+		t.Errorf("%d scans, want one per search while nothing watches (3)", n)
+	}
+
+	// Watched again: scanned once more, then served from the cache.
+	e.src.mu.Lock()
+	e.src.startErr = nil
+	e.src.mu.Unlock()
+	e.search("svjez", "")
+	e.search("svjez", "")
+	if n := sp.count(root); n != 4 {
+		t.Errorf("%d scans, want 4", n)
+	}
+	if !e.svc.watcher.Watching(p.ID) {
+		t.Error("the project is not watched again")
+	}
+}
+
+// A folder that went away and came back must not show what was in it before,
+// even if no change was ever reported.
+func TestSearchFolderReplaced(t *testing.T) {
+	e := newEnv(t)
+	p, root := e.addProject()
+	write(t, filepath.Join(root, "stari.md"), "")
+	if got := e.search("stari", ""); len(got) != 1 {
+		t.Fatalf("hits = %v", hitRels(got))
+	}
+	away := root + ".away"
+	if err := os.Rename(root, away); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(away) })
+	if got := e.search("stari", ""); len(got) != 0 {
+		t.Errorf("a folder that is gone is searched: %v", hitRels(got))
+	}
+	write(t, filepath.Join(root, "novi.md"), "")
+	if got := e.search("stari", ""); len(got) != 0 {
+		t.Errorf("the old tree is served: %v", hitRels(got))
+	}
+	if got := hitRels(e.search("novi", "")); !slices.Equal(got, []string{p.ID + ":novi.md"}) {
+		t.Errorf("the new folder: %v", got)
+	}
+}
+
+func TestSearchRemovedProject(t *testing.T) {
+	e := newEnv(t)
+	p, root := e.addProject()
+	write(t, filepath.Join(root, "alfa.md"), "")
+	e.search("alfa", "")
+	if err := e.svc.RemoveProject(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.search("alfa", ""); len(got) != 0 {
+		t.Errorf("a removed project is searched: %+v", got)
+	}
+	_, err := e.svc.SearchDocuments(context.Background(), "alfa", p.ID)
+	wantCode(t, err, codeNotFound)
 }

@@ -9,12 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 	"sync"
 
 	"Pisar/internal/config"
 	"Pisar/internal/convert"
 	"Pisar/internal/docsafe"
 	"Pisar/internal/nvim"
+	"Pisar/internal/preview"
 	"Pisar/internal/project"
 	"Pisar/internal/term"
 )
@@ -79,6 +81,11 @@ type ProjectService struct {
 	limits  config.Limits
 	watcher *project.Watcher
 
+	// scan reads a project tree; project.Scan, and a counting fake in tests.
+	scan func(ctx context.Context, root string, maxNodes int) (project.Tree, error)
+	// trees keeps the trees the search has scanned (see treeCache).
+	trees treeCache
+
 	// watchMu serialises changes to the set of watched projects, so two
 	// concurrent calls do not both try to Add the same project.
 	watchMu sync.Mutex
@@ -97,6 +104,7 @@ func newProjectService(d projectServiceDeps) (*ProjectService, error) {
 		editor:  d.Editor,
 		emit:    d.Emit,
 		limits:  d.Limits,
+		scan:    project.Scan,
 	}
 	if s.editor == nil {
 		s.editor = noEditor{}
@@ -115,8 +123,13 @@ func newProjectService(d projectServiceDeps) (*ProjectService, error) {
 	return s, nil
 }
 
-// notify emits unless the service has been shut down.
+// notify emits unless the service has been shut down. A change of a project's
+// tree also drops the tree the search has cached for it, whoever reports the
+// change (the file watcher, or a method of this service that does not wait for it).
 func (s *ProjectService) notify(name, data string) {
+	if name == eventProjectChanged {
+		s.trees.invalidate(data)
+	}
 	s.closeMu.RLock()
 	defer s.closeMu.RUnlock()
 	if s.closed {
@@ -161,10 +174,13 @@ func (s *ProjectService) syncWatchers() []ProjectInfo {
 		switch {
 		case missing && watching:
 			s.watcher.Remove(p.ID)
+			s.trees.invalidate(p.ID)
 		case !missing && !watching:
 			if err := s.watcher.Add(p.ID, p.Path); err != nil {
 				slog.Warn("cannot watch project", "project", p.ID, "err", err)
 			}
+			// Whatever was scanned before the watcher ran may be out of date.
+			s.trees.invalidate(p.ID)
 		}
 		out = append(out, ProjectInfo{ID: p.ID, Name: p.Name, Path: p.Path, Missing: missing})
 	}
@@ -203,6 +219,7 @@ func (s *ProjectService) AddProject(ctx context.Context) (ProjectInfo, error) {
 		}
 	}
 	s.watchMu.Unlock()
+	s.trees.invalidate(p.ID)
 	s.notify(eventProjectsChanged, "")
 	return ProjectInfo{ID: p.ID, Name: p.Name, Path: p.Path, Missing: !isDir(p.Path)}, nil
 }
@@ -212,6 +229,7 @@ func (s *ProjectService) RemoveProject(id string) error {
 	s.watchMu.Lock()
 	s.watcher.Remove(id)
 	s.watchMu.Unlock()
+	s.trees.forget(id)
 	if err := s.store.RemoveProject(id); err != nil {
 		return s.fail("remove project", err)
 	}
@@ -242,7 +260,7 @@ func (s *ProjectService) Tree(ctx context.Context, id string) ([]project.Node, e
 	}
 	ctx, cancel := s.bounded(ctx)
 	defer cancel()
-	tree, err := project.Scan(ctx, root, s.limits.MaxTreeNodes)
+	tree, err := s.scan(ctx, root, s.limits.MaxTreeNodes)
 	if err != nil {
 		return nil, s.fail("tree", err)
 	}
@@ -255,6 +273,160 @@ func (s *ProjectService) Tree(ctx context.Context, id string) ([]project.Node, e
 		return []project.Node{}, nil // JSON [] rather than null
 	}
 	return tree.Nodes, nil
+}
+
+// treeCache keeps the last tree scanned for each project, so a search while
+// the user types does not walk the folders again for every keystroke.
+//
+// A cached tree is trusted only while something would have said it went stale:
+// the file watcher of that project is running. So it is used only when the
+// project is watched now, and it is stored only when the project was watched
+// before the scan began and has not been invalidated since (the generation).
+// Whatever stops the watching (a folder that went away, a stream that died)
+// reports through invalidate, and a project that is not watched is scanned
+// again on every search, never served from an old tree.
+type treeCache struct {
+	mu      sync.Mutex
+	entries map[string]*cachedTree
+}
+
+type cachedTree struct {
+	// slot has room for one: the call that scans a project holds it, so one
+	// project is never scanned twice at the same time, and callers that come
+	// meanwhile wait for the result instead of repeating the work.
+	slot chan struct{}
+
+	// The rest is guarded by treeCache.mu.
+	gen   uint64 // bumped by every invalidation
+	valid bool
+	nodes []project.Node
+}
+
+// entry returns the cache entry of a project, made on first use.
+func (c *treeCache) entry(id string) *cachedTree {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]*cachedTree)
+	}
+	e, ok := c.entries[id]
+	if !ok {
+		e = &cachedTree{slot: make(chan struct{}, 1)}
+		c.entries[id] = e
+	}
+	return e
+}
+
+// invalidate drops the tree of a project and makes a scan that is running
+// unable to store its result.
+func (c *treeCache) invalidate(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[id]; ok {
+		e.gen++
+		e.valid, e.nodes = false, nil
+	}
+}
+
+// forget is invalidate for a project that is gone.
+func (c *treeCache) forget(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[id]; ok {
+		e.gen++
+		e.valid, e.nodes = false, nil
+		delete(c.entries, id)
+	}
+}
+
+// cachedNodes returns the tree of a project for the search: the cached one when
+// it can be trusted, otherwise a fresh scan.
+func (s *ProjectService) cachedNodes(ctx context.Context, p ProjectInfo) ([]project.Node, error) {
+	e := s.trees.entry(p.ID)
+	select {
+	case e.slot <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	defer func() { <-e.slot }()
+
+	// Asked outside treeCache.mu: the watcher has a lock of its own.
+	if s.watcher.Watching(p.ID) {
+		s.trees.mu.Lock()
+		nodes, ok := e.nodes, e.valid
+		s.trees.mu.Unlock()
+		if ok {
+			return nodes, nil
+		}
+	}
+
+	// The generation before the watcher is asked: a watcher that starts in
+	// between has invalidated by the time it is seen, so the result is not stored.
+	s.trees.mu.Lock()
+	gen := e.gen
+	s.trees.mu.Unlock()
+	watchedBefore := s.watcher.Watching(p.ID)
+
+	tree, err := s.scan(ctx, p.Path, s.limits.MaxTreeNodes)
+	if err != nil {
+		return nil, err
+	}
+	if len(tree.Skipped) > 0 {
+		slog.Warn("unreadable folders skipped", "project", p.ID, "count", len(tree.Skipped), "folders", tree.Skipped)
+	}
+	if watchedBefore && s.watcher.Watching(p.ID) {
+		s.trees.mu.Lock()
+		if e.gen == gen {
+			e.nodes, e.valid = tree.Nodes, true
+		}
+		s.trees.mu.Unlock()
+	}
+	return tree.Nodes, nil
+}
+
+// SearchDocuments finds documents by name in all projects, or in one when
+// projectID is not empty. A blank query gives no hits. The result is never
+// null: JSON [] when there is nothing. A project whose folder is missing or
+// whose tree is too large to scan is left out, and the others are searched.
+func (s *ProjectService) SearchDocuments(ctx context.Context, query, projectID string) ([]project.Hit, error) {
+	slog.Debug("service call", "method", "SearchDocuments", "query_len", len(query), "project", projectID)
+	if strings.TrimSpace(query) == "" {
+		return []project.Hit{}, nil
+	}
+	ctx, cancel := s.bounded(ctx)
+	defer cancel()
+
+	var sources []project.SearchSource
+	known := projectID == ""
+	for _, p := range s.syncWatchers() {
+		if projectID != "" && p.ID != projectID {
+			continue
+		}
+		known = true
+		if p.Missing {
+			s.trees.invalidate(p.ID)
+			continue
+		}
+		nodes, err := s.cachedNodes(ctx, p)
+		switch {
+		case err == nil:
+		case ctx.Err() != nil:
+			return nil, s.fail("search", err)
+		default:
+			// Not the search's failure: the others are still searched.
+			slog.Warn("search: project skipped", "project", p.ID, "tooLarge", errors.Is(err, project.ErrTooLarge), "err", err)
+			continue
+		}
+		sources = append(sources, project.SearchSource{ProjectID: p.ID, ProjectName: p.Name, Nodes: nodes})
+	}
+	if !known {
+		return nil, s.fail("search", config.ErrNotFound)
+	}
+	hits := project.Search(sources, query, s.limits.MaxSearchResults)
+	if hits == nil {
+		return []project.Hit{}, nil // JSON [] rather than null
+	}
+	return hits, nil
 }
 
 // requireFolder checks that dirRel names an existing folder. A missing folder
@@ -463,6 +635,7 @@ const (
 	codeReadOnly         = "read-only"
 	codeConflict         = "conflict"
 	codeDamagedWork      = "damaged-work"
+	codePreviewTooLarge  = "preview-too-large"
 	codeInternal         = "internal"
 )
 
@@ -472,6 +645,7 @@ const (
 func codeOf(err error) string {
 	var ae *apiError
 	var te *convert.ToolError
+	var pe *preview.ToolError
 	switch {
 	case errors.As(err, &ae):
 		return ae.code
@@ -495,14 +669,16 @@ func codeOf(err error) string {
 		return codeNotADirectory
 	// A missing pandoc wraps exec.ErrNotFound, so it must come before the
 	// nvim-missing case below.
-	case errors.Is(err, convert.ErrToolMissing):
+	case errors.Is(err, convert.ErrToolMissing), errors.Is(err, preview.ErrToolMissing):
 		return codePandocMissing
-	case errors.As(err, &te):
+	case errors.As(err, &te), errors.As(err, &pe):
 		return codeConvertFailed
 	case errors.Is(err, convert.ErrNotDocx):
 		return codeNotWord
 	case errors.Is(err, convert.ErrTooLarge):
 		return codeDocumentTooLarge
+	case errors.Is(err, preview.ErrTooLarge), errors.Is(err, nvim.ErrBufferTooLarge):
+		return codePreviewTooLarge
 	case errors.Is(err, docsafe.ErrReadOnly):
 		return codeReadOnly
 	case errors.Is(err, docsafe.ErrConflict):
@@ -550,6 +726,7 @@ var codeText = map[string]string{
 	codeReadOnly:         "the document is open read-only",
 	codeConflict:         "the file changed outside Pisar",
 	codeDamagedWork:      "the working copy is damaged",
+	codePreviewTooLarge:  "the document is too large for the preview",
 	codeInternal:         "unexpected error",
 }
 

@@ -124,3 +124,13 @@ func TestUITextSaveFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestUITextMenuSearch(t *testing.T) {
+	text, err := loadUIText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.MenuSearch != "Traži dokument…" {
+		t.Errorf("menuSearch = %q", text.MenuSearch)
+	}
+}

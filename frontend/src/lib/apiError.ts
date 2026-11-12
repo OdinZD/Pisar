@@ -27,6 +27,7 @@ export const errorCodes = [
   'read-only',
   'conflict',
   'damaged-work',
+  'preview-too-large',
   'internal',
 ] as const;
 

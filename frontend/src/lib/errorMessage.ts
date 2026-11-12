@@ -24,6 +24,7 @@ const byCode: Record<ErrorCode, string> = {
   'read-only': strings.errorReadOnly,
   conflict: strings.errorConflict,
   'damaged-work': strings.errorDamagedWork,
+  'preview-too-large': strings.errorPreviewTooLarge,
   internal: strings.errorGeneric,
 }
 
