@@ -2122,8 +2122,21 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
         `bg.cursorline` i `bg.selected` koriste službenu nijansu na drugom mjestu od službenog.
       - Novi eksplicitni par u `contrast.test.ts`: `text.muted` na `bg.cursorline` (prolazi u sve tri teme).
       - Go validator nove snimke još ne prihvaća (korak 4).
-- [ ] 4. Validator colorschemea prihvaća `dark` (`colorscheme.go`)
-- [ ] 5. Ponovno učitavanje colorschemea u pokrenutom Neovimu (`internal/nvim`, `internal/term`)
+- [x] 4. Validator colorschemea prihvaća `dark`: jedan novi fiksni redak u `headerLines`; `TestEdSampleAccepted`
+      ide kroz sve `testdata/colorscheme/*.lua` (najmanje 3), `TestEdBadScheme` ima 5 novih odbijenih
+      oblika retka `background`.
+      - Zapažanje (postojeće stanje, nije mijenjano): validator ne broji ni ne redâ retke zaglavlja, pa bi
+        datoteka s oba retka (`light` i `dark`) prošla. Oba su retka fiksna i bezopasna.
+- [x] 5. `nvim.Process.Colorscheme(ctx)` (novi `internal/nvim/colorscheme.go`) i `term.Session.Colorscheme(ctx)`:
+      `vim.cmd.colorscheme(<ime kao argument>)` pa `:mode` kao `Redraw`. Testovi s pravim Neovimom:
+      `TestColorschemeSwap` (pisar → dracula → pisar → mocha), `TestColorschemePrompt`, `TestColorschemeNone`,
+      `TestColorschemeEnd`; u `internal/term` `TestScheme` i `TestNoProc`.
+      - Izmjereno (Neovim 0.12.6): `:colorscheme pisar` ponovno učitava datoteku i kad je `g:colors_name`
+        već `pisar`. U hit-enter promptu poziv se vraća s `context.DeadlineExceeded`, ostaje u redu u
+        Neovimu i primijeni se kad se prompt zatvori. E185 za datoteku koje nema; Neovim radi dalje.
+      - Nuspojava: `:mode` briše tekst u retku za poruke (kao i `Redraw`).
+      - Nije provjereno: prompt „-- More --” (dugi izlaz); njega `Enter` ne zatvara, treba `q` ili `Esc`.
+      - `internal/nvim` sada uvozi `internal/config` (zbog `NvimColorscheme`).
 - [ ] 6. `EditorService.SetColorscheme`
 - [ ] 7. `SettingsService`, meni „Prikaz → Tema”, boja prozora, događaj `theme:changed`
 - [ ] 8. Promjena uživo u frontendu (`themeController`, terminal, pregled)
