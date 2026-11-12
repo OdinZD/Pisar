@@ -1086,7 +1086,7 @@ end })
 // TestULimit documents the limit of the protection: it covers the loading of
 // user.lua and the end of Neovim's start, not later work. An autocmd of the
 // user's that ignores an event on a later event still silences Pisar's. That is
-// the user's own code and the limit is accepted (init.lua says so next to the
+// the user's own code and the limit is known (init.lua says so next to the
 // list of what comes back); this test states today's behaviour so that a change
 // of it is a decision.
 func TestULimit(t *testing.T) {
@@ -1104,7 +1104,7 @@ vim.api.nvim_create_autocmd("BufWinEnter", { callback = function() vim.o.eventig
 		t.Fatalf("eventignore = %q, want the user's later setting to stand", ei)
 	}
 	if n := len(only(evs, EventSaved)); n != 0 {
-		t.Errorf("%d saved events: the accepted limit no longer holds, update the comment in init.lua", n)
+		t.Errorf("%d saved events: the known limit no longer holds, update the comment in init.lua", n)
 	}
 }
 

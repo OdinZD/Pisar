@@ -1157,7 +1157,7 @@ end
 -- start; it does not cover later work: an autocmd of the user's that changes one
 -- of these on a later event (BufWinEnter, say), vim.defer_fn() with a delay, or
 -- a replaced function (vim.rpcnotify = ...) can still silence what Go listens
--- to. That is the user's code, and the limit is accepted.
+-- to. That is the user's code; the limit is known and not closed here.
 --
 -- THE USER MAY CHANGE everything else, among it all the <leader> mappings above
 -- (<leader>e, <leader>p, <leader>f too: the application's actions stay available
