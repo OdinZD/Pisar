@@ -2112,7 +2112,16 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Izvan popisa datoteka iz plana dirnut je `theme/usedVariables.test.ts` (samo argument palete u
         pozivu `cssVariables`; greška u briefu glavne sesije).
       - Komponente (`Terminal`, `Preview`) i `main.ts` provjereni su samo tipovima; aplikacija nije pokretana.
-- [ ] 3. Palete Catppuccin Mocha i Dracula, tablice u `DESIGN.md`, snimke colorschemea
+- [x] 3. Palete Catppuccin Mocha i Dracula u `tokens.ts` (`themeIds` ima tri ID-a), `DESIGN.md` ima po jednu
+      tablicu od 17 redaka za svaku temu (`### Tema: … (`id`, …)`), `tokens.test.ts` ih čita po temi; nove
+      snimke `testdata/colorscheme/catppuccin-mocha.lua` i `dracula.lua` (razlikuju se od `pisar.lua` samo
+      bojama i retkom `background`); vitest 1257. Nijedan postojeći test kontrasta nije pao ni mijenjan.
+      - Službene vrijednosti provjerene 2026-11-12 (catppuccin/palette `palette.json`, draculatheme.com/spec).
+        Kod Dracule su `#21222C`, `#191A21` i `#343746` službene nijanse sučelja (Background Dark / Darker /
+        Light); izvan specifikacije su samo `text.muted` i `text.linenr` (posvijetljeni Comment), a
+        `bg.cursorline` i `bg.selected` koriste službenu nijansu na drugom mjestu od službenog.
+      - Novi eksplicitni par u `contrast.test.ts`: `text.muted` na `bg.cursorline` (prolazi u sve tri teme).
+      - Go validator nove snimke još ne prihvaća (korak 4).
 - [ ] 4. Validator colorschemea prihvaća `dark` (`colorscheme.go`)
 - [ ] 5. Ponovno učitavanje colorschemea u pokrenutom Neovimu (`internal/nvim`, `internal/term`)
 - [ ] 6. `EditorService.SetColorscheme`
