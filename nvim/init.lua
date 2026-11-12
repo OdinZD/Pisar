@@ -48,8 +48,11 @@ local function text(key)
   return type(value) == "string" and value or nil
 end
 
--- The application is light. Set it explicitly instead of relying on Neovim's
--- background detection, which asks the terminal and can guess wrong.
+-- The default before the colorscheme loads: light, set explicitly instead of
+-- relying on Neovim's background detection, which asks the terminal and can
+-- guess wrong. The real value (light or dark) is set by colors/pisar.lua, which
+-- the application generates from the chosen theme; light stays the safe
+-- fallback when there is no colorscheme.
 vim.o.background = "light"
 
 -- A modified buffer must not block opening another file: it stays loaded in

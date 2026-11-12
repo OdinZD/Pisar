@@ -9,7 +9,9 @@
 # <Space>p (preview) and <Space>f (search) up to the page that comes back. A
 # further three runs prove writing comfort on the built application: prose
 # options, Croatian spelling, the formatting keys and the user's own words
-# without a user.lua, then with a valid one and with one that fails.
+# without a user.lua, then with a valid one and with one that fails. One more
+# run, with a remembered dark theme (dracula) in a version 2 config.json, proves
+# that the choice travels from the file to the colours Neovim shows.
 #   bash scripts/smoke.sh
 #
 # No keys or clicks are sent: Neovim is driven through its socket. Everything temporary lives in one mktemp
@@ -236,6 +238,10 @@ else
   echo "     neovim says: '$got'"
   check "Neovim has the size the frontend sent, the document, and the colorscheme pisar" \
     test "$got" = "$COLS $ROWS poglavlje.md pisar"
+
+  # The version 1 config.json has no theme, so the default (light) one applies.
+  check "the default theme is light: &background is light" \
+    test "$(remote "$SOCK" --remote-expr '&background' || true)" = light
 
   # The colours of Normal must be the tokens text and bg.editor; read them from
   # the token file instead of repeating them here.
@@ -555,6 +561,59 @@ else
     word_stop "$L"
   fi
 fi
+
+# ---- a remembered dark theme ---------------------------------------------------
+#
+# The same application, started once more with a version 2 config.json that holds
+# "theme": "dracula". The chain proved here: config.json -> Go (URL ?theme=) ->
+# the frontend asks SettingsService.Theme() -> Start with that colourscheme ->
+# Neovim loads the generated colors/pisar.lua with &background dark. Choosing a
+# theme from the menu at run time cannot be proved here: it needs a click, and
+# this script never sends clicks or keys to the application's window.
+
+# theme_token <palette> <token>: the colour (RRGGBB) of a token in one palette of
+# tokens.ts; only the lines of the block "const <palette>... {" up to its "}" count.
+theme_token() {
+  sed -n "/^const $1[ :=]/,/^}/p" "$ROOT/frontend/src/theme/tokens.ts" |
+    sed -nE "s/^ *'?$2'?: '#([0-9A-Fa-f]{6})',.*/\1/p" | head -n 1 | tr 'a-f' 'A-F'
+}
+
+L="dark theme"
+WBASE="$TMP/theme-dark"
+WHOME="$WBASE/home"
+WUSER="$WBASE/user"
+WLOG="$WBASE/app.log"
+mkdir -p "$WHOME" "$WUSER"
+printf '{\n  "version": 2,\n  "theme": "dracula",\n  "projects": []\n}\n' >"$WHOME/config.json"
+cp "$WHOME/config.json" "$WBASE/config.before"
+printf '# Tamna tema\n' >"$WUSER/dark.md"
+
+echo "--- dark theme"
+WANT_BUF=dark.md
+if word_open "$L" dark.md; then
+  theme_asked() { wlogged 'method=Theme theme=dracula'; }
+  check "$L: the frontend asked the service for the theme and got dracula" wait_for 20 theme_asked
+  dark_pisar() { [[ "$(nv '&background . " " . get(g:, "colors_name", "")' 2>/dev/null)" == "dark pisar" ]]; }
+  check "$L: &background is dark and the colorscheme is pisar" wait_for 10 dark_pisar
+
+  dracula_text=$(theme_token dracula text)
+  dracula_bg=$(theme_token dracula 'bg\.editor')
+  want="$dracula_text $dracula_bg"
+  normal_is_dracula() {
+    [[ "$(nv 'printf("%06X %06X", nvim_get_hl(0, {"name": "Normal"}).fg, nvim_get_hl(0, {"name": "Normal"}).bg)' 2>/dev/null)" == "$want" ]]
+  }
+  check "$L: the dracula tokens text and bg.editor were read from tokens.ts ($want)" test -n "$dracula_text" -a -n "$dracula_bg"
+  check "$L: Normal in Neovim has exactly those colours" wait_for 10 normal_is_dracula
+  # A wrong block would read the light palette: the two must differ.
+  check "$L: bg.editor of dracula differs from that of pisar (the palette was read from the right block)" \
+    test -n "$dracula_bg" -a "$dracula_bg" != "$(theme_token pisar 'bg\.editor')"
+
+  word_stop "$L"
+  check "$L: config.json is byte for byte what it was (the application does not rewrite it)" \
+    cmp -s "$WHOME/config.json" "$WBASE/config.before"
+  check "$L: no process of this run is left" test -z "$(pgrep -f -- "$WHOME" || true)"
+fi
+WANT_BUF=""
 
 # ---- preview and document search ----------------------------------------------
 #
