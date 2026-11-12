@@ -160,7 +160,7 @@ func TestUITextNvim(t *testing.T) {
 	}
 	got := nvimText(text)
 	for key, placeholder := range map[string]string{
-		"nvimPromptOpen": "", "nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}",
+		"nvimPromptOpen": "", "nvimNoFileName": "{buffer}", "nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}",
 		"nvimSpellMissing": "{languages}", "nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}",
 		"nvimMapRows": "Pisar: ", "nvimMapSpell": "Pisar: ", "nvimMapNumbers": "Pisar: ", "nvimMapTree": "Pisar: ",
 		"nvimMapPreview": "Pisar: ", "nvimMapSearch": "Pisar: ", "nvimMapBold": "Pisar: ", "nvimMapItalic": "Pisar: ",
@@ -170,7 +170,7 @@ func TestUITextNvim(t *testing.T) {
 			t.Errorf("%s = %q, want a text with %q", key, got[key], placeholder)
 		}
 	}
-	if len(got) != 16 {
-		t.Errorf("nvimText has %d texts, want 16: %v", len(got), got)
+	if len(got) != 17 {
+		t.Errorf("nvimText has %d texts, want 17: %v", len(got), got)
 	}
 }

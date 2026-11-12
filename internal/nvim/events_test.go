@@ -316,6 +316,15 @@ func TestSaveAllUnnamed(t *testing.T) {
 	if err != nil || !slices.Equal(mod, []Buffer{{Modified: true}}) {
 		t.Errorf("Modified = %+v, %v; want only the unnamed buffer", mod, err)
 	}
+	// The message on the screen is Pisar's own, in Croatian, not Neovim's E141.
+	var msgs string
+	if err := p.execLua(ctx, "messages", &msgs, `
+		return vim.api.nvim_exec2("messages", { output = true }).output`); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(msgs, "Dokument bez naziva") || !strings.Contains(msgs, "nije spremljen") || strings.Contains(msgs, "E141") {
+		t.Errorf("messages = %q, want the Croatian text about a buffer without a file name", msgs)
+	}
 }
 
 func TestSaveAllRO(t *testing.T) {

@@ -74,25 +74,38 @@ func (p *Process) UserConfig() UserConfig {
 	return p.user
 }
 
-// readUserConfig reads the variables init.lua leaves, remembers them and, when
-// there is something to tell, puts it on the message line, cut to fit like every
-// other message of this package (see messageLua): the full text stays in the
-// variable. A hit-enter prompt at this point would freeze the start.
+// readUserConfig registers the RPC channel in g:pisar_channel and reads what
+// init.lua leaves about user.lua, in one call: init.lua runs its last restoring
+// pass (pisar_restore) in it, so what the user's file put off until the end of
+// Neovim's start is dealt with and in the notes, and a pass that comes later
+// sees the channel and tells the user itself instead of leaving it to us. It
+// remembers what it read and, when there is something to tell, puts it on the
+// message line, cut to fit like every other message of this package (see
+// messageLua): the full text stays in the variable. A hit-enter prompt at this
+// point would freeze the start.
 func (p *Process) readUserConfig(ctx context.Context) error {
 	// Only text counts. The file runs before Go is connected and can put anything
 	// into any variable; a table or a number there is not a report of init.lua,
 	// and decoding it into a string would end the whole start. The note is a
-	// table of init.lua's making, with text in it.
+	// table of init.lua's making, with text in it. pisar_restore is checked: the
+	// file can have replaced it.
 	var vars []string
-	err := p.execLua(ctx, "user.lua result", &vars, `
-		local function text(v)
-			return type(v) == "string" and v or ""
-		end
-		local note = vim.g.`+userNoteVar+`
-		if type(note) ~= "table" then
-			note = {}
-		end
-		return { text(vim.g.`+userErrorVar+`), text(note.spell), text(note.events), text(note.restore) }`)
+	err := p.call(ctx, "user.lua result", func(nv *nvimrpc.Nvim) error {
+		return nv.ExecLua(`
+			vim.g.`+channelVar+` = (...)
+			if type(pisar_restore) == "function" then
+				pcall(pisar_restore)
+			end
+			local function text(v)
+				return type(v) == "string" and v or ""
+			end
+			local note = vim.g.`+userNoteVar+`
+			if type(note) ~= "table" then
+				note = {}
+			end
+			return { text(vim.g.`+userErrorVar+`), text(note.spell), text(note.events), text(note.restore) }`,
+			&vars, nv.ChannelID())
+	})
 	if err != nil {
 		return err
 	}

@@ -468,21 +468,20 @@ function msg.show(text)
   vim.cmd.redraw()
 end
 
--- The template with "{name}" replaced by value, in one pass: a value that
--- contains "{name}" itself is left as it is. Without a template (Go has not set
--- the texts) it is the value alone.
+-- The template with every "{name}" replaced by value, in one pass: a value that
+-- contains "{name}" itself is left as it is (the same rule as frame() in
+-- internal/nvim). Without a template (Go has not given the texts) it is the
+-- value alone.
 function msg.framed(template, name, value)
   value = plain(value)
   if type(template) ~= "string" or template == "" then
     return value
   end
-  local from, to = template:find("{" .. name .. "}", 1, true)
-  if not from then
-    return template
-  end
-  return template:sub(1, from - 1) .. value .. template:sub(to + 1)
+  -- A function as the replacement: its result is taken literally, "%" and all.
+  return (template:gsub("{" .. name .. "}", function()
+    return value
+  end))
 end
-
 _G.pisar_msg = msg
 
 -- Markdown formatting: bold, italic, heading, list.
@@ -1152,6 +1151,14 @@ end
 --     missing one would otherwise ask to download it, see above); when none is
 --     left the languages Pisar chose are used.
 --
+-- It is done at the end of this file, again after the user's own VimEnter
+-- autocmds and the calls it scheduled, and once more when Go has connected
+-- (restore_again). That covers the loading of the file and the end of Neovim's
+-- start; it does not cover later work: an autocmd of the user's that changes one
+-- of these on a later event (BufWinEnter, say), vim.defer_fn() with a delay, or
+-- a replaced function (vim.rpcnotify = ...) can still silence what Go listens
+-- to. That is the user's code, and the limit is accepted.
+--
 -- THE USER MAY CHANGE everything else, among it all the <leader> mappings above
 -- (<leader>e, <leader>p, <leader>f too: the application's actions stay available
 -- from its buttons, the menu and the keyboard shortcuts of the window), options,
@@ -1317,7 +1324,8 @@ end
 -- "events" (what was removed from 'eventignore', comma separated) and "spell"
 -- (the 'spelllang' entries without a dictionary), or nil. Go writes the
 -- sentences, in Croatian, once it is connected (internal/nvim, UserConfig).
-local function restore_required()
+local restore_again
+local function restore_required(late)
   vim.o.hidden = true
   vim.opt.shortmess:append("t")
   vim.opt.shortmess:append("T")
@@ -1327,9 +1335,16 @@ local function restore_required()
   install_format_events()
   _G.pisar_format = pisar_format
   _G.pisar_msg = msg
+  _G.pisar_restore = function()
+    restore_again(false)
+  end
   vim.g.pisar_reloading = nil
-  vim.g.pisar_preview = nil
-  vim.g.pisar_channel = nil
+  -- Go sets these two once it is connected, which can be before a later pass
+  -- (restore_again): that one must leave them as they are.
+  if not late then
+    vim.g.pisar_preview = nil
+    vim.g.pisar_channel = nil
+  end
 
   -- After install_events(): the event list is read from what it registered.
   local notes = {}
@@ -1339,6 +1354,70 @@ local function restore_required()
     return nil
   end
   return notes
+end
+
+-- The same restoring once more, for what the user's file put off until later in
+-- the start: a VimEnter autocmd of its own, vim.schedule(), vim.defer_fn(). The
+-- first pass runs at the end of this file, before any of that. These run in
+-- order behind the user's: PisarStartup is registered after user.lua, so its
+-- VimEnter autocmd comes after the user's, and what it schedules is queued
+-- behind what the user's file and VimEnter autocmds scheduled (measured: the
+-- user's VimEnter autocmd, then PisarStartup's; then the file's scheduled calls
+-- and its timers of 0 and 20 ms; then what the user's VimEnter autocmd
+-- scheduled, then PisarStartup's scheduled pass; calls scheduled from inside
+-- those come after it, and Go connects after them all). Go asks for one more
+-- pass, in the same call in which it sets g:pisar_channel and reads the notes, so
+-- the state at the end of Neovim's start is checked (pisar_restore).
+--
+-- What is found is added to g:pisar_user_note, which Go reads when it connects.
+-- A pass that comes after Go has read it (g:pisar_channel is set) says so itself,
+-- from the texts it has: nothing else would tell the user. announce is that.
+function restore_again(announce)
+  local ok, notes = pcall(restore_required, true)
+  if not ok then
+    notes = { restore = tostring(notes) }
+  end
+  if not notes then
+    return
+  end
+  local all = vim.g.pisar_user_note
+  if type(all) ~= "table" then
+    all = {}
+  end
+  for _, key in ipairs({ "events", "spell" }) do
+    if notes[key] then
+      -- A list of names: only what is not in it yet.
+      local have, merged = {}, {}
+      for name in vim.gsplit(all[key] or "", ",", { plain = true }) do
+        if name ~= "" then
+          have[name] = true
+          table.insert(merged, name)
+        end
+      end
+      for name in vim.gsplit(notes[key], ",", { plain = true }) do
+        if not have[name] then
+          table.insert(merged, name)
+        end
+      end
+      all[key] = table.concat(merged, ",")
+    end
+  end
+  if notes.restore then
+    all.restore = all.restore and (all.restore .. "; " .. notes.restore) or notes.restore
+  end
+  vim.g.pisar_user_note = all
+
+  if announce and vim.g.pisar_channel then
+    for _, item in ipairs({
+      { "spell", "nvimSpellMissing", "languages" },
+      { "events", "nvimEventsRestored", "events" },
+      { "restore", "nvimRestoreFailed", "reason" },
+    }) do
+      if notes[item[1]] then
+        msg.show(msg.framed(text(item[2]), item[3], notes[item[1]]))
+      end
+    end
+  end
 end
 
 -- 'messagesopt' without "hit-enter" and with "wait:0" (:help 'messagesopt'): a
@@ -1403,10 +1482,13 @@ local function load_user_file()
     group = vim.api.nvim_create_augroup("PisarStartup", { clear = true }),
     once = true,
     callback = function()
+      -- After the VimEnter autocmds of the file (this one is registered later).
+      restore_again(true)
       -- Callbacks of the file queued with vim.schedule run after VimEnter
       -- (measured), and this one is queued behind them.
       vim.schedule(function()
         vim.o.messagesopt = wanted
+        restore_again(true)
       end)
     end,
   })

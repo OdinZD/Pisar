@@ -285,7 +285,7 @@ func TestUErr(t *testing.T) {
 				t.Errorf("first command ran = %v, want %v", got, tc.ran)
 			}
 			u := p.UserConfig()
-			const frame = "user.lua: greška ("
+			const frame = "user.lua: greška (cijela: :echo g:pisar_user_error): "
 			if n := u.notices(p.texts); len(n) != 1 || !strings.HasPrefix(n[0], frame+tc.first) {
 				t.Errorf("notices = %q, want one that starts with %q", n, frame+tc.first)
 			}
@@ -808,8 +808,8 @@ error("šđčćž " .. string.rep("ŽĐČĆŠ", 30))
 		texts bool
 		want  []string // what the three lines start with
 	}{
-		{"c80", 80, true, []string{"Nema rječnika za: de.", "user.lua je isključio događaje koje", "user.lua: greška (user.lua:4: šđčćž"}},
-		{"c40", 40, true, []string{"Nema rječnika za: de. Pravo…", "user.lua je isključio događ…", "user.lua: greška (user.lua:…"}},
+		{"c80", 80, true, []string{"Nema rječnika za: de.", "user.lua je isključio događaje koje", "user.lua: greška (cijela: :echo g:pisar_user_error): user.lua:4: "}},
+		{"c40", 40, true, []string{"Nema rječnika za: de. Pravo…", "user.lua je isključio događ…", "user.lua: greška (cijela: :…"}},
 		{"c20", 20, true, []string{"Nema rj…", "user.lu…", "user.lu…"}},
 		// No texts: the facts alone, without Pisar's sentences.
 		{"raw", 80, false, []string{"de", "all", "user.lua:4: šđčćž"}},
@@ -832,6 +832,11 @@ error("šđčćž " .. string.rep("ŽĐČĆŠ", 30))
 				if !strings.HasPrefix(line, tc.want[i]) {
 					t.Errorf("line %d = %q, want it to start with %q", i, line, tc.want[i])
 				}
+			}
+			// At 80 columns the hint to the full text is whole and it is the reason
+			// that is cut: the hint comes first.
+			if tc.name == "c80" && !strings.HasSuffix(lines[2], "…") {
+				t.Errorf("line 2 = %q, want the reason cut with an ellipsis", lines[2])
 			}
 			// The full texts are not lost by the cut.
 			if u := p.UserConfig(); u.Spell != "de" || u.Events != "all" || !strings.Contains(u.Error, "ŽĐČĆŠŽĐČĆŠ") {
@@ -872,7 +877,7 @@ func TestUFail(t *testing.T) {
 func TestUNoEn(t *testing.T) {
 	old := []string{
 		"Neovim is waiting", "waiting for an answer", "no dictionary for", "taken out",
-		"restore after", "nothing was written", "nothing was reloaded", "no buffer was removed",
+		"restore after", "No file name for buffer", "E141", "nothing was written", "nothing was reloaded", "no buffer was removed",
 		`"Pisar: " ..`, "Formatting failed", "format failed",
 		// The descriptions of the mappings.
 		"move by display rows", "toggle spell", "toggle line numbers", "focus the project tree",
@@ -895,7 +900,7 @@ func TestUNoEn(t *testing.T) {
 	texts := testTexts(t)
 	for key, placeholder := range map[string]string{
 		"nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}", "nvimSpellMissing": "{languages}",
-		"nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}", "nvimPromptOpen": "",
+		"nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}", "nvimPromptOpen": "", "nvimNoFileName": "{buffer}",
 	} {
 		if texts[key] == "" || !strings.Contains(texts[key], placeholder) {
 			t.Errorf("%s = %q, want a text with %q", key, texts[key], placeholder)
@@ -977,6 +982,157 @@ func TestUMap(t *testing.T) {
 				l := p.lines(t)
 				return len(l) == 1 && l[0] == "**riječ**"
 			})
+		})
+	}
+}
+
+// TestULate: what user.lua puts off until the end of Neovim's start is restored
+// too: a scheduled call, a timer, a VimEnter autocmd of its own, a call that
+// that autocmd schedules. The order is measured (see restore_again in
+// init.lua): the file's VimEnter autocmds, then Pisar's pass, then the file's
+// scheduled calls and its timers of 0 and 20 ms, then what its VimEnter autocmd
+// scheduled, then Pisar's scheduled pass, and Go connects after all of them.
+func TestULate(t *testing.T) {
+	tests := []struct {
+		name   string
+		src    string
+		events string // what is reported as taken out of 'eventignore'
+	}{
+		{"sched", `vim.schedule(function() vim.o.eventignore = "all" end)`, "all"},
+		{"defer0", `vim.defer_fn(function() vim.o.eventignore = "all" end, 0)`, "all"},
+		{"defer20", `vim.defer_fn(function() vim.o.eventignore = "BufEnter,TextChanged" end, 20)`, "BufEnter,TextChanged"},
+		{"enter", `vim.api.nvim_create_autocmd("VimEnter", { callback = function()
+  vim.o.eventignore = "BufWritePost"
+end })`, "BufWritePost"},
+		{"hidden", `vim.api.nvim_create_autocmd("VimEnter", { callback = function()
+  vim.g.pisar_reloading = true
+  vim.o.hidden = false
+  vim.o.laststatus = 0
+end })`, ""},
+		{"nested", `vim.api.nvim_create_autocmd("VimEnter", { callback = function()
+  vim.schedule(function()
+    vim.o.eventignore = "all"
+    vim.o.hidden = false
+    vim.g.pisar_reloading = true
+  end)
+end })`, "all"},
+		{"chan", `vim.schedule(function() vim.g.pisar_channel = "not a channel" end)`, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := startUser(t, "vim.g.user_ran = true\n"+tc.src+"\n")
+			p.notBlocked(t)
+			if ei, _, _ := p.ignoring(t); ei != "" {
+				t.Errorf("eventignore = %q after the start, want it empty", ei)
+			}
+			if st := p.state(t); !st.Hidden || st.Laststatus != 2 {
+				t.Errorf("hidden %v, laststatus %d after the start", st.Hidden, st.Laststatus)
+			}
+			if v := p.global(t, "pisar_reloading"); v != nil && v != false {
+				t.Errorf("g:pisar_reloading = %#v, want it unset", v)
+			}
+			u := p.UserConfig()
+			if tc.events == "" && u != (UserConfig{}) {
+				t.Errorf("UserConfig = %+v, want it empty", u)
+			}
+			if tc.events != "" && u.Events != tc.events {
+				t.Errorf("events taken out = %q, want %q, from the end of the start too", u.Events, tc.events)
+			}
+			if tc.events != "" {
+				if m := p.messages(t); !strings.Contains(m, "user.lua je isključio događaje") {
+					t.Errorf("messages = %q, want the note about the events", m)
+				}
+			}
+			// The channel is Go's, and every event arrives once.
+			userFlow(t, p)
+		})
+	}
+}
+
+// TestULateAnn: a pass that comes after Go has connected tells the user itself.
+// The file's VimEnter autocmd waits until Go is connected and only then ignores
+// the events: Go has read its notes by then, and Pisar's pass in the same
+// VimEnter puts them back, leaves g:pisar_channel as Go set it and shows the
+// note from the texts init.lua has.
+func TestULateAnn(t *testing.T) {
+	p := startUser(t, `vim.g.user_ran = true
+vim.api.nvim_create_autocmd("VimEnter", { callback = function()
+  vim.wait(5000, function() return vim.g.pisar_channel ~= nil end, 5)
+  vim.o.eventignore = "all"
+end })
+`)
+	var ch interface{}
+	eventually(t, "the second pass", func() bool {
+		ei, _, _ := p.ignoring(t)
+		return ei == ""
+	})
+	if ch = p.global(t, "pisar_channel"); ch == nil || ch == false {
+		t.Errorf("g:pisar_channel = %#v, want Go's channel", ch)
+	}
+	if u := p.UserConfig(); u != (UserConfig{}) {
+		t.Errorf("UserConfig = %+v: Go had read it before the file ignored anything", u)
+	}
+	var note struct{ Events string }
+	p.lua(t, &note, `return { Events = (vim.g.pisar_user_note or {}).events }`)
+	if note.Events != "all" {
+		t.Errorf("g:pisar_user_note = %+v, want the events of the late pass in it", note)
+	}
+	if m := strings.TrimSpace(p.messages(t)); strings.Count(m, "user.lua je isključio događaje") != 1 || strings.Contains(m, "\n") {
+		t.Errorf("messages = %q, want the note once, from init.lua", m)
+	}
+	userFlow(t, p)
+}
+
+// TestULimit documents the limit of the protection: it covers the loading of
+// user.lua and the end of Neovim's start, not later work. An autocmd of the
+// user's that ignores an event on a later event still silences Pisar's. That is
+// the user's own code and the limit is accepted (init.lua says so next to the
+// list of what comes back); this test states today's behaviour so that a change
+// of it is a decision.
+func TestULimit(t *testing.T) {
+	p := startUser(t, `vim.g.user_ran = true
+vim.api.nvim_create_autocmd("BufWinEnter", { callback = function() vim.o.eventignore = "BufWritePost" end })
+`)
+	ctx := testCtx(t)
+	a := mkFile(t, tempDir(t), "a.md", "alpha\n")
+	if err := p.OpenFile(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	p.write(t, "ix\x1b:w\r")
+	evs := settled(t, p)
+	if ei, _, _ := p.ignoring(t); ei != "BufWritePost" {
+		t.Fatalf("eventignore = %q, want the user's later setting to stand", ei)
+	}
+	if n := len(only(evs, EventSaved)); n != 0 {
+		t.Errorf("%d saved events: the accepted limit no longer holds, update the comment in init.lua", n)
+	}
+}
+
+// TestUFrame: the texts are filled in the same way in Lua (init.lua) and in Go
+// (frame): every placeholder, in one pass, so a value that holds the placeholder
+// itself is not replaced again, and "%" is just a character.
+func TestUFrame(t *testing.T) {
+	p, _ := newProc(t, nil)
+	tests := []struct{ name, template, value, want string }{
+		{"one", "a {x} b", "V", "a V b"},
+		{"two", "{x} and {x}", "V", "V and V"},
+		{"again", "[{x}]", "{x}", "[{x}]"},
+		{"again two", "{x}-{x}", "q{x}r", "q{x}r-q{x}r"},
+		{"percent", "{x} {x}", "100%1%%", "100%1%% 100%1%%"},
+		{"other", "{y} {x}", "V", "{y} V"},
+		{"none", "no placeholder", "V", "no placeholder"},
+		{"empty", "", "V", "V"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got string
+			p.lua(t, &got, `return pisar_msg.framed(select(1, ...), "x", select(2, ...))`, tc.template, tc.value)
+			if got != tc.want {
+				t.Errorf("Lua: framed(%q, x, %q) = %q, want %q", tc.template, tc.value, got, tc.want)
+			}
+			if got := frame(tc.template, "x", tc.value); got != tc.want {
+				t.Errorf("Go: frame(%q, x, %q) = %q, want %q", tc.template, tc.value, got, tc.want)
+			}
 		})
 	}
 }

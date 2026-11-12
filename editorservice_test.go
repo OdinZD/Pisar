@@ -2104,7 +2104,7 @@ func TestEdText(t *testing.T) {
 		t.Fatalf("PISAR_TEXT is not JSON: %v: %q", err, got[0])
 	}
 	want := nvimText(text)
-	if len(want) < 16 {
+	if len(want) < 17 {
 		t.Fatalf("nvimText has %d texts: %v", len(want), want)
 	}
 	if !maps.Equal(env, want) {

@@ -450,11 +450,6 @@ func (p *Process) connect(ctx context.Context, timeout time.Duration) error {
 	p.serverPid = pid
 	p.mu.Unlock()
 
-	if err := p.call(ctx, "register channel", func(nv *nvimrpc.Nvim) error {
-		return nv.SetVar(channelVar, nv.ChannelID())
-	}); err != nil {
-		return err
-	}
 	return p.readUserConfig(ctx)
 }
 
@@ -845,7 +840,8 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 }
 
 // messageLua defines msg_width(), fit(text, max) and show(text) for the chunks
-// that report errors to the user. They are the functions of init.lua
+// that report errors to the user, and framed(template, name, value), which fills
+// in a text. They are the functions of init.lua
 // (_G.pisar_msg), taken by name: a message that does not fit on the message line
 // opens a hit-enter prompt, which inside an RPC call freezes Neovim, so there is
 // one copy of the cutting and its reasons are written down there. Only the
@@ -853,7 +849,7 @@ func (p *Process) Reload(ctx context.Context, path string) error {
 // in this package that puts text on Neovim's message line, and it holds no
 // sentence of its own: the sentences are Options.Text.
 const messageLua = `
-	local msg_width, fit, show = pisar_msg.width, pisar_msg.fit, pisar_msg.show`
+	local msg_width, fit, show, framed = pisar_msg.width, pisar_msg.fit, pisar_msg.show, pisar_msg.framed`
 
 // promptGuardLua defines refuseDuringPrompt(), which Save and SaveAll call
 // before they write anything. While a prompt is up (mode() starts with "r":
@@ -920,7 +916,12 @@ func (p *Process) SaveAll(ctx context.Context) error {
 				local name = vim.api.nvim_buf_get_name(b)
 				if name == "" then
 					unnamed = unnamed + 1
-					show("E141: No file name for buffer " .. b)
+					-- Without the text (Options.Text) nothing is said here: Go
+					-- returns ErrUnnamedBuffer either way.
+					local template = ...
+					if template and template ~= "" then
+						show(framed(template, "buffer", tostring(b)))
+					end
 				else
 					-- pcall inside the callback: the error keeps its own text
 					-- instead of being wrapped by nvim_buf_call.
@@ -938,7 +939,7 @@ func (p *Process) SaveAll(ctx context.Context) error {
 				end
 			end
 		end
-		return { Unnamed = unnamed, Errors = errs }`)
+		return { Unnamed = unnamed, Errors = errs }`, p.texts["nvimNoFileName"])
 	if err != nil {
 		return err
 	}

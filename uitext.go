@@ -45,6 +45,7 @@ type uiText struct {
 	NvimUserLuaError      string `json:"nvimUserLuaError"`   // placeholder {reason}
 	NvimSpellMissing      string `json:"nvimSpellMissing"`   // placeholder {languages}
 	NvimEventsRestored    string `json:"nvimEventsRestored"` // placeholder {events}
+	NvimNoFileName        string `json:"nvimNoFileName"`     // placeholder {buffer}
 	NvimRestoreFailed     string `json:"nvimRestoreFailed"`  // placeholder {reason}
 	NvimMapRows           string `json:"nvimMapRows"`
 	NvimMapSpell          string `json:"nvimMapSpell"`
