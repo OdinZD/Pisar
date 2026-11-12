@@ -15,7 +15,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 6, korak 8 (`plan-reviewer`, zatim vlasnikova ručna provjera)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (plan faze 6 odobren)
+- Zadnja izmjena: 2026-11-12 (faza 6: koraci 1–7 izvedeni, pregled plana u tijeku)
 
 ## Priprema (2026-11-11)
 
@@ -1917,7 +1917,7 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
       - Izgled ikone u Docku i Finderu nije viđen (ručna provjera).
 - [x] 6. Potpisivanje: `task sign` u korijenskom `Taskfile.yml` (`deps: [package]`; `xattr -cr`, `codesign --force
       --deep --options runtime --sign "$SIGN_IDENTITY"`, `codesign --verify --deep --strict`). Ime identiteta
-      nije u repozitoriju. Bez entitlements datoteke: potpisana aplikacija pod hardened runtimeom pokreće
+      nije u `Taskfile.yml` ni u skriptama (dolazi samo iz okoline; spominje ga ovaj zapis). Bez entitlements datoteke: potpisana aplikacija pod hardened runtimeom pokreće
       Neovim i pandoc (dokazuje `smoke-app.sh`).
       - Bez `SIGN_IDENTITY` zadatak pada s jasnom porukom, ali tek NAKON `package` (Task izvršava `deps`
         prije `preconditions`), pa ostane ad-hoc potpisan paket.
@@ -1935,9 +1935,81 @@ alate; prazna vrijednost znači „bez dodatnih mapa”. Samo za provjere, kao `
       - Prolazi i nad ad-hoc i nad potpisanim paketom (potpisani: 4 pokretanja kod `coder`-a, 2 kod glavne sesije).
       - **Incident (2026-11-12, 18:41):** `coder` je u pokusu jednom pokrenuo `nvim --server ''` (prazan socket);
         vlasnikova `~/.local/state/nvim/shada/main.shada` ima vrijeme izmjene 18:41 i 14 111 bajtova (prije
-        13 882), pa je vjerojatno prepisana i drugi put. Sadržaj nije provjeravan ni vraćan. Skripta sada
-        odbija prazan socket.
+        13 882), pa je vjerojatno prepisana i drugi put. Sadržaj nije provjeravan ni vraćan. `remote()` u obje dimne skripte od kruga 1 pregleda odbija prazan socket i
+        klijenta pokreće s `-i NONE` i `XDG_*` u privremenoj mapi.
 - [ ] 8. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+
+### Pregled plana — krug 1 (2026-11-12): FAIL, jedan bloker; ispravljeno
+
+Prvi pokušaj pregleda prekinut je bez nalaza (sesija je završila); ponovljen je ispočetka. Reviewer je sam
+pokrenuo sve provjere (prolaze, nad ad-hoc i nad potpisanim paketom) i potvrdio brojeve u zapisu.
+
+1. **Bloker:** zapis je tvrdio da `smoke-app.sh` odbija prazan socket, a `remote()` to nije radio (prazan
+   socket se nije događao samo zato što ga pozivatelji prije provjere). Klijent `nvim --server` uz to nije
+   imao `-i NONE` ni preusmjerene `XDG_*`, pa mu je `nvim.log` mogao završiti u vlasnikovom
+   `~/.local/state/nvim/`. **Ispravak (glavna sesija):** `remote()` odbija prazan socket i klijenta pokreće
+   s `-i NONE` i sva četiri `XDG_*` u privremenoj mapi skripte — u `smoke-app.sh` i, izvan diffa faze, u
+   `smoke.sh` (isti rizik). Nakon obje skripte vlasnikovi `main.shada` i `nvim.log` imaju staro vrijeme izmjene.
+2. Tvrdnja „ime identiteta nije u repozitoriju” nije bila točna (bilo je u komentaru `smoke-app.sh`):
+   komentar sada ima `<identity>`, a tvrdnja je sužena.
+3. Zastario redak „Zadnja izmjena” — ispravljen.
+4. Obavijest o alatima mogla je ostati zastarjela: alat instaliran bez klika na „Provjeri ponovno”, dokument
+   otvoren, pa nakon `:q` opet „Neovim nije pronađen”. **Ispravak (glavna sesija, 6 redaka u
+   `EditorPane.svelte`):** provjera se ponavlja svaki put kad se vrati prazno stanje.
+
+Napomene bez izmjene: u pokretanju B dimne skripte dokument je na naredbenom retku, pa frontend pokazuje
+stanje `failed` s `errorNvimMissing` (i ono nosi naredbu za instalaciju), a ne obavijest s gumbom — obavijest
+ostaje u ručnoj provjeri; dijalog o neuspjelom pokretanju umeće engleski tekst greške u hrvatsku rečenicu
+(isti obrazac kao `nvimUserLuaError`); `task package` traži `wails3` na PATH-u (`~/go/bin`; postojeće stanje).
+
+### Dokazi po kriterijima (2026-11-12)
+
+Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene (s `~/go/bin` na PATH-u i `SIGN_IDENTITY` u okolini).
+
+- `task test` → exit 0, svih 8 Go paketa `ok`, vitest `Tests 834 passed`; `go test -count=1 -race ./...` → svih
+  8 `ok` (prije ispravaka kruga 1; nakon njih Go kod nije mijenjan); `task lint` → `0 issues.`, svelte-check
+  `239 FILES 0 ERRORS 0 WARNINGS`; `bash scripts/smoke.sh` → `smoke: all checks passed`;
+  `bash scripts/shutdown.sh` → `shutdown: all checks passed`.
+
+1. `.app` se gradi i pokreće izvan razvojnog okruženja: `task package` → exit 0, `bin/Pisar.app` s
+   `Contents/MacOS/pisar`; `bash scripts/smoke-app.sh` → `smoke-app: all checks passed` (24 provjere; nad
+   ad-hoc i nad potpisanim paketom). Pokretanje je kroz `open` pod `env -i` (PATH sustava, bez locale
+   varijabli, radna mapa `/`) — emulacija Findera; pravi dvoklik je u ručnoj provjeri.
+2. Provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom: `TestTools`, `TestToolsFolder`,
+   `TestToolsLooksAgain`; `TestPrepareEnvironmentMakesToolFindable`; vitest `toolsState.test.ts`;
+   `smoke-app.sh` A (`Tools nvim=true pandoc=true` iz golog okruženja, `.docx` pretvoren) i B (`Tools
+   nvim=false pandoc=false`, aplikacija živa). Izgled obavijesti je u ručnoj provjeri.
+3. Ikona, naziv, verzija; potpisivanje: `plutil -lint bin/Pisar.app/Contents/Info.plist` → `OK`; `PlistBuddy` →
+   `CFBundleName = Pisar`, `CFBundleIdentifier = com.odinwolf.pisar`, `CFBundleShortVersionString = 0.1.0`,
+   `CFBundleVersion = 0.1.0`, `CFBundleIconFile = icons`; `Resources` sadrži `icons.icns` (iz
+   `build/appicon.svg`, 1024×1024); `task sign` → exit 0; `codesign --verify --deep --strict bin/Pisar.app` →
+   exit 0; `codesign -dv --verbose=2` → `Authority=Trag Dev`, `flags=0x10000(runtime)`, bez `Signature=adhoc`.
+
+### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
+
+Paket: `SIGN_IDENTITY="…" task sign` → `bin/Pisar.app` (po želji ga povuci u `/Applications`).
+
+1. Dvoklik u Finderu: aplikacija se otvara, stablo i projekti su tu, dokument se otvara u Neovimu.
+2. Ikona u Finderu i Docku je Pisarova (bijeli list s recima i plavim kursorom na plavoj podlozi), ne Wailsova;
+   sviđa li ti se — **[R]** odluka o izgledu.
+3. Izbornik aplikacije → „About Pisar”: naziv „Pisar”, verzija 0.1.0, ista ikona.
+4. `"+y` u Neovimu na tekstu s č ć š ž đ pa `⌘V` u drugoj aplikaciji; obrnuto: kopiraj takav tekst drugdje pa
+   `"+p`. Znakovi moraju ostati ispravni (ovo ovisi o `LC_CTYPE`, koji nije mjeren sa stvarnim clipboardom).
+5. `.docx` iz mape u Documents: macOS pita za pristup mapi JEDNOM; nakon ponovnog `task sign` i pokretanja ne
+   pita opet.
+6. Obavijest o alatu koji nedostaje: `open --env PISAR_TOOL_DIRS= bin/Pisar.app` iz terminala s golim PATH-om
+   (`env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/open -n --env PISAR_TOOL_DIRS= bin/Pisar.app`):
+   u praznom editoru naslov, dva retka s naredbama `brew install …` i gumb „Provjeri ponovno”; stablo radi.
+
+### Otvoreno nakon faze 6
+
+- Vlasnikova `~/.local/state/nvim/shada/main.shada` vjerojatno je prepisana i drugi put (18:41); nije vraćana.
+- `LC_CTYPE=en_US.UTF-8` je postavljen prema `man pbcopy` i `locale charmap`; učinak na clipboard nije mjeren.
+- Dijalog o neuspjelom pokretanju nije viđen; tekst greške u njemu je engleski.
+- Nema `Assets.car` (Liquid Glass ikone) dok nema punog Xcodea.
+- Wailsovi `darwin:sign`, `darwin:sign:notarize` i DMG zadaci računaju na `pisar.app` i ne rade s `Pisar.app`.
+- `task sign` bez `SIGN_IDENTITY` ostavlja ad-hoc potpisan paket (pada tek nakon gradnje).
+- Najmanja verzija Neovima i pandoca se ne provjerava; alat u mapi izvan PATH-a i dviju Homebrewovih nije nađen.
 
 ### Izvan opsega
 

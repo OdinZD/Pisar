@@ -8,7 +8,7 @@
 # cleanly. Run B (PISAR_TOOL_DIRS empty) proves that without the tools it still
 # runs and reports both as missing.
 #   task package && bash scripts/smoke-app.sh
-#   SIGN_IDENTITY="Trag Dev" task sign && bash scripts/smoke-app.sh
+#   SIGN_IDENTITY="<identity>" task sign && bash scripts/smoke-app.sh
 #
 # The bundle is not built here. No keys or clicks are sent: Neovim is driven
 # through its socket only. Everything temporary lives in one mktemp directory;
@@ -78,7 +78,13 @@ descendants() {
 # watchdog so a stuck server cannot hang the script.
 remote() {
   local out="$TMP/remote.out" pid i
-  nvim --server "$1" "$2" "$3" >"$out" 2>"$TMP/remote.err" &
+  # An empty socket would make this an ordinary Neovim session. The client also
+  # keeps its own state (log, shada) inside the temporary folder, never in the
+  # user's ~/.local/state/nvim.
+  [[ -n "$1" ]] || return 1
+  env XDG_CONFIG_HOME="$TMP/nvim-client/config" XDG_DATA_HOME="$TMP/nvim-client/data" \
+    XDG_STATE_HOME="$TMP/nvim-client/state" XDG_CACHE_HOME="$TMP/nvim-client/cache" \
+    nvim -i NONE --server "$1" "$2" "$3" >"$out" 2>"$TMP/remote.err" &
   pid=$!
   for i in $(seq 1 50); do
     is_running "$pid" || break

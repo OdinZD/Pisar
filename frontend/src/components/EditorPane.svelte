@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import type { EditorController } from '../lib/editorController.svelte'
   import { errorMessage } from '../lib/errorMessage'
   import { noTerminalFocus } from '../lib/focus'
@@ -22,6 +23,12 @@
   const searchInset = $derived(hasTerminal ? reportedInset : 0)
   $effect(() => {
     if (!hasTerminal) reportedInset = 0
+  })
+
+  // The notice is only as fresh as the last check, and a tool may have been installed since: look
+  // again whenever the empty state comes back (Neovim quit), not only on the button.
+  $effect(() => {
+    if (!hasTerminal) untrack(() => void editor.checkTools())
   })
 
   $effect(() => {
