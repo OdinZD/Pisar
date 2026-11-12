@@ -2096,7 +2096,13 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
 
 ### Koraci
 
-- [ ] 1. Konfiguracija v2 s temom (`internal/config`)
+- [x] 1. Konfiguracija v2 s temom (`internal/config`): `fileVersion` 2, ID-evi tema i `Themes()`, `Store.Theme` /
+      `SetTheme`; v1 ima vlastitu strogu strukturu (`fileFormatV1`), pa je v1 s poljem `theme` i dalje
+      oštećena; 12 novih testova (`TestTheme*`), `TestNewerVersion` sada koristi verziju 3 (tvrdnje iste).
+      - Nepoznata tema u v2 ne seli datoteku, ali je prvi sljedeći zapis prepisuje s `pisar`.
+      - Prazan `"theme": ""` vrijedi kao izostavljeno polje (bez upozorenja). Tekst upozorenja u logu
+        nema test.
+      - `ThemeWindowBackground` dolazi u koraku 7, zajedno s testom koji ga veže uz `tokens.ts`.
 - [ ] 2. Registar tema s jednom temom; čiste funkcije primaju paletu (`theme/*`, `lib/previewFrame.ts`)
 - [ ] 3. Palete Catppuccin Mocha i Dracula, tablice u `DESIGN.md`, snimke colorschemea
 - [ ] 4. Validator colorschemea prihvaća `dark` (`colorscheme.go`)
