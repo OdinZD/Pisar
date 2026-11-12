@@ -25,21 +25,32 @@ export class ThemeController {
 
   /** Subscribes to theme:changed and returns the cleanup that removes the listener. */
   start(): () => void {
-    const stop = Events.On(ThemeChanged, (ev) => this.#apply(ev.data))
+    // True once an event arrived or the listener was removed: the answer below is then out of date.
+    let superseded = false
+    const off = Events.On(ThemeChanged, (ev) => {
+      superseded = true
+      this.#apply(ev.data)
+    })
     // A theme chosen between main.ts asking Go and the subscription above was announced to nobody.
-    // Asking once more, now that the listener exists, closes that gap.
+    // Asking once more, now that the listener exists, closes that gap. The call and the events travel
+    // separately, so the answer may be older than an event that already arrived; an event is always at
+    // least as new as what the call could have read, hence the answer is dropped in that case.
     Theme().then(
       (id) => {
-        if (id !== this.id) this.#apply(id)
+        if (!superseded && id !== this.id) this.#apply(id)
       },
       (err: unknown) => console.error('asking for the theme after start failed', err),
     )
-    return stop
+    return () => {
+      superseded = true
+      off()
+    }
   }
 
+  // id comes from Go, as an event payload or as the answer of SettingsService.Theme().
   #apply(id: unknown): void {
     if (!isThemeId(id)) {
-      console.error('theme:changed with an unknown theme id', id)
+      console.error('Go named an unknown theme id', id)
       return
     }
     setActiveTheme(id)
