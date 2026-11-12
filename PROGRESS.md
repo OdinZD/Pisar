@@ -4,16 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 5 — Udobnost pisanja (plan faze u izradi). Faza 4 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 5 — Udobnost pisanja (plan odobren 2026-11-12, u tijeku korak 1). Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: plan faze 5 i vlasnikovo odobrenje
+- Sljedeći korak: faza 5, korak 1 (proza i pravopis)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4 prihvaćena)
+- Zadnja izmjena: 2026-11-12 (plan faze 5 odobren)
 
 ## Priprema (2026-11-11)
 
@@ -1497,10 +1497,60 @@ postavke za prozu i pravopis, pakiranje, tamna tema.
 
 ## Faza 5 — Udobnost pisanja
 
+Effort high. Plan faze odobren 2026-11-12.
+
+### Odluke vlasnika (2026-11-12)
+
+- Hrvatski rječnik (Vimov službeni `hr.utf-8.spl`, LGPL) ulazi u repozitorij i u aplikaciju.
+- Prečaci: u Neovimu `␣b`, `␣i`, `␣h`, `␣l`; uz to izbornik „Oblikovanje” s `⌘B` i `⌘I`.
+- Zadano: pravopis uključen, brojevi redaka isključeni; `␣s` i `␣n` ih mijenjaju.
+- **Tehničke konstante izvan `internal/config`** (otvoreno od faze 3: `maxXMLDepth`, `maxToolOutput`,
+  `killGrace`, `maxFieldDepth`, `maxInstrBytes`, `maxLabelBytes`, `copyBufSize`, `maxWorkMetaBytes`,
+  `xattrRetries`, broj pokušaja slučajnog imena, `search.debounceMs`, `search.reservedRows`) **ostaju
+  u paketima kao prihvaćena iznimka**: to su unutarnje zaštitne granice, ne postavke. Pravilo iz
+  `CLAUDE.md` i dalje vrijedi za sve što ima smisla kao postavka (rokovi, veličine, broj backupa).
+
+### Ovisnosti (odobrene)
+
+- Nema novih Go ni npm ovisnosti. Novi resurs: `hr.utf-8.spl` + `README_hr.txt` (LGPL).
+
+### Izmjereno prije plana (Neovim 0.12)
+
+- Neovim nosi samo engleski rječnik; za jezik kojeg nema pri pokretanju pita smije li ga preuzeti
+  (to bi zamrznulo aplikaciju), pa se dodatak za preuzimanje isključuje.
+- Vimov `hr.utf-8.spl` (1,26 MB; SHA-256 počinje s `36ea13e3561a4fac`): na probnom tekstu od 110
+  riječi označene samo tri namjerno krive. LibreOfficeov `hr_HR` preveden s `:mkspell` označio je 58
+  od 110 ispravnih (aliasi `AF` u `.aff` nisu podržani) — odbačen.
+- `spelllang=hr,en` radi zajedno. Colorscheme iz faze 2 već ima `SpellBad` kao valovitu crtu.
+
+### Ugovor Go ↔ frontend
+
+```go
+EditorService.Format(ctx, kind string) error   // "bold" | "italic" | "heading" | "list"; nepoznato → kod "invalid-format"
+event "menu:format" string                      // "bold" | "italic" (izbornik „Oblikovanje”, ⌘B / ⌘I)
+```
+
+### Koraci
+
+- [ ] 1. Proza i pravopis: putanje u `config`, rječnik u aplikaciji, zadane opcije, kretanje po prikazanim
+      recima, `␣n`, `␣s`
+- [ ] 2. Oblikovanje u Neovimu: Lua funkcije, `␣b` `␣i` `␣h` `␣l`, `Format(ctx, kind)`
+- [ ] 3. `user.lua`: učitavanje na kraju, hvatanje greške, ponovno postavljanje onoga o čemu Go ovisi
+- [ ] 4. Usluga, izbornik „Oblikovanje” (`⌘B`, `⌘I`), frontend
+- [ ] 5. Dimna provjera (`scripts/smoke.sh`)
+- [ ] 6. Kraj faze: dokazi, popis za ručnu provjeru, `plan-reviewer`, sažetak
+
+### Izvan opsega
+
+Drugi jezici i izbor jezika u sučelju, gramatika, automatsko ispravljanje, sinonimi, rastavljanje
+riječi, prečaci za poveznicu, sliku, tablicu i citat, WYSIWYG, način bez ometanja, brojač riječi,
+postavke u sučelju aplikacije, dodaci za Neovim, stvaranje ili uređivanje `user.lua` iz aplikacije,
+pakiranje, tamna tema.
+
 ### Kriteriji prihvaćanja
 
 - [ ] `init.lua`: prelamanje po riječima, kretanje po prikazanim recima, bez brojeva redaka za prozu (prekidač)
-- [ ] provjera pravopisa hr + en (provjeriti odakle dolazi hrvatski rječnik i može li se isporučiti s aplikacijom)
+- [ ] provjera pravopisa hr + en **(provjeriti** odakle dolazi hrvatski rječnik i može li se isporučiti s aplikacijom**)**
 - [ ] prečaci za naslov, bold, italic, listu (umeću Markdown oznake)
 - [ ] neobavezni `user.lua` učitava se nakon ugrađene konfiguracije
 
