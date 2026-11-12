@@ -32,9 +32,10 @@ tasks:
       - task: "{{.GOOS}}:package"
 
   icon:
-    summary: Regenerates build/appicon.png, icons.icns and Assets.car from build/appicon.svg
+    summary: Regenerates build/appicon.png and build/darwin/icons.icns from build/appicon.svg
     desc: |
-      build/appicon.svg is the full icon (with backing); build/appicon.icon holds the Icon Composer layers.
+      build/appicon.svg is the whole icon, backing included. The bundle uses icons.icns only: there is no
+      Assets.car, because building one needs actool from a full Xcode.
       The PNG is drawn by sips, so another macOS version may produce different bytes.
     platforms: [darwin]
     preconditions:
