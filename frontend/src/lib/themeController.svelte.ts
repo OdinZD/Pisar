@@ -5,6 +5,7 @@
 import { Events } from '@wailsio/runtime'
 import { ThemeChanged } from '../../bindings/events'
 import { SetColorscheme } from '../../bindings/Pisar/editorservice'
+import { Theme } from '../../bindings/Pisar/settingsservice'
 import { activeTheme, isThemeId, setActiveTheme } from '../theme/active'
 import { applyTheme } from '../theme/cssVars'
 import { nvimColorscheme } from '../theme/nvimColorscheme'
@@ -24,17 +25,27 @@ export class ThemeController {
 
   /** Subscribes to theme:changed and returns the cleanup that removes the listener. */
   start(): () => void {
-    return Events.On(ThemeChanged, (ev) => {
-      const id: unknown = ev.data
-      if (!isThemeId(id)) {
-        console.error('theme:changed with an unknown theme id', id)
-        return
-      }
-      setActiveTheme(id)
-      applyTheme(document.documentElement, themes[id].colors)
-      this.id = id
-      this.#sender.request(id)
-    })
+    const stop = Events.On(ThemeChanged, (ev) => this.#apply(ev.data))
+    // A theme chosen between main.ts asking Go and the subscription above was announced to nobody.
+    // Asking once more, now that the listener exists, closes that gap.
+    Theme().then(
+      (id) => {
+        if (id !== this.id) this.#apply(id)
+      },
+      (err: unknown) => console.error('asking for the theme after start failed', err),
+    )
+    return stop
+  }
+
+  #apply(id: unknown): void {
+    if (!isThemeId(id)) {
+      console.error('theme:changed with an unknown theme id', id)
+      return
+    }
+    setActiveTheme(id)
+    applyTheme(document.documentElement, themes[id].colors)
+    this.id = id
+    this.#sender.request(id)
   }
 
   /**
