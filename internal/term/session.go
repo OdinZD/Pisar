@@ -449,6 +449,17 @@ func (s *Session) Format(ctx context.Context, kind string) error {
 	return p.Format(ctx, kind)
 }
 
+// Colorscheme reloads colors/pisar.lua in the running Neovim and repaints; see
+// nvim.Process.Colorscheme, in particular what it returns while a prompt is
+// open. Without a process it fails with nvim.ErrNotRunning (wrapped).
+func (s *Session) Colorscheme(ctx context.Context) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.Colorscheme(ctx)
+}
+
 // UserConfig reports what became of the user's own user.lua when the running
 // Neovim started; see nvim.Process.UserConfig. Without a process it is empty.
 func (s *Session) UserConfig() nvim.UserConfig {

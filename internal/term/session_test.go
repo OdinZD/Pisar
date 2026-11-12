@@ -668,6 +668,7 @@ func TestNoProc(t *testing.T) {
 			"SetReadOnly": s.SetReadOnly(ctx, "x", true),
 			"Reload":      s.Reload(ctx, "x"),
 			"SetPreview":  s.SetPreview(ctx, true),
+			"Colorscheme": s.Colorscheme(ctx),
 		}
 		_, errs["CopyVisual"] = s.CopyVisual(ctx)
 		_, _, errs["BufferText"] = s.BufferText(ctx, 100)
@@ -963,5 +964,62 @@ func TestFmt(t *testing.T) {
 	text, _, err := s.BufferText(ctx, 1<<20)
 	if err != nil || string(text) != "# jedna riječ\n" {
 		t.Errorf("text after list and heading = %q, %v; want the heading", text, err)
+	}
+}
+
+// Colorscheme reaches the running Neovim: ColorScheme autocmd records the
+// 'background' the file set, once for each call. The file is a copy of the
+// generator's output, changed from light to dark between the calls.
+func TestScheme(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "colorscheme", name+".lua"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	rtp := t.TempDir()
+	file := filepath.Join(rtp, "colors", "pisar.lua")
+	if err := os.Mkdir(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	put := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(file, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := filepath.Join(t.TempDir(), "seen")
+	s, _ := newSessionInit(t, `
+		vim.opt.runtimepath:prepend(`+strconv.Quote(rtp)+`)
+		vim.api.nvim_create_autocmd("ColorScheme", {
+			callback = function() vim.fn.writefile({ vim.o.background }, `+strconv.Quote(log)+`, "a") end,
+		})`)
+	ctx := testCtx(t)
+	if err := s.Start(ctx, testSize, testRows); err != nil {
+		t.Fatal(err)
+	}
+
+	put(read("pisar"))
+	if err := s.Colorscheme(ctx); err != nil {
+		t.Fatal(err)
+	}
+	put(read("dracula"))
+	if err := s.Colorscheme(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "light\ndark\n" {
+		t.Errorf("backgrounds seen = %q, want light then dark", got)
+	}
+
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Colorscheme(ctx); err == nil || errors.Is(err, nvim.ErrNotRunning) {
+		t.Errorf("Colorscheme without the file = %v, want an error from Neovim", err)
 	}
 }
