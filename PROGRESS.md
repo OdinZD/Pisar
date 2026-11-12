@@ -4,15 +4,16 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 4 — Pregled i tražilica (plan odobren 2026-11-12, koraci 1–7 gotovi, pregled plana u tijeku). Faza 3 je prihvaćena 2026-11-12: vlasnik je
+- Trenutna faza: 4 — Pregled i tražilica: svi koraci gotovi, `plan-reviewer` PASS u krugu 3 (2026-11-12); čeka se
+  vlasnikova ručna provjera **[R]** i prihvaćanje faze. Faza 3 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 2 je prihvaćena 2026-11-11:
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 4, korak 8 (`plan-reviewer`, sažetak)
+- Sljedeći korak: vlasnikova ručna provjera faze 4 (popis u odjeljku faze); zatim plan faze 5
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 4, ispravci nakon pregleda, krug 2)
+- Zadnja izmjena: 2026-11-12 (faza 4 dovršena, čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -1316,7 +1317,8 @@ event "menu:search" ""         // ⌘P
         `editorservice.go`, commit `8ec9832`. `coder` je prije toga ispravno stao i prijavio da
         aplikacija taj događaj ne bilježi.
       - Skripta ne može vidjeti webview: dokazuje da je Go poslao stranicu, ne da je nacrtana.
-- [ ] 8. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
+- [x] 8. Kraj faze: dokazi po kriterijima, popis **[R]**, `plan-reviewer` (krug 1 FAIL, krug 2 FAIL, krug 3
+      **PASS**), sažetak vlasniku
 
 ### Pregled plana — krug 1 (2026-11-12): FAIL, bez blokera; ispravljeno
 
@@ -1368,6 +1370,14 @@ Napomene: `TestRenderFootnotes` ima više slučajeva nego što je pisalo (isprav
 provjere kaže da u praznom stanju radi samo `⌘P`; commit `588c64a` je spojio četiri ispravka (od
 kruga 2 svaki ispravak je zaseban commit).
 
+### Pregled plana — krug 3 (2026-11-12): PASS
+
+Reviewer je tri puta pokrenuo `task test:race` bez predmemorije i 30 puta testove gašenja i reda (sve
+prolazi), ponovio vlastite neprijateljske ulaze za bilješke u opisu slike, i provjerio da ispravak
+gašenja ne mijenja obično spremanje (otisak „odbijeno” preskače samo ponovljenu obavijest istog
+zapisa; svaki novi `:w` daje novi otisak i ponovno pita). Otvoreno ostaje ono iz „Otvoreno nakon
+faze 4” i kriterij **[R]**.
+
 ### Odstupanja od plana faze (datoteke i ponašanje)
 
 Uz odstupanja zapisana uz pojedine korake:
@@ -1377,7 +1387,9 @@ Uz odstupanja zapisana uz pojedine korake:
   otme fokus polju tražilice); `frontend/src/lib/apiError.ts` i `errorMessage.ts` (kod
   `preview-too-large`; popis kodova je tipiziran pa svaki Go kod mora imati par); `theme/cssVars.ts`
   (varijable fonta i tipografije pregleda); `components/EmptyState.svelte` (natuknice tipki, vidi
-  krug 1 pregleda); `internal/nvim/reload_test.go` i ispravak `Reload`-a (greška iz faze 3).
+  krug 1 pregleda); `internal/nvim/reload_test.go` i ispravak `Reload`-a (greška iz faze 3);
+  `editorwords.go` i `editorwords_test.go` (ispravak redoslijeda zadataka izvoza pri gašenju, greška
+  iz faze 3 nađena u krugu 2 pregleda).
 - **Ugovor:** tip rezultata pretrage je `project.Hit` (plan ga je zvao `SearchHit`); polja i JSON imena
   su ista. Poredak ima i mjerilo „kraće ime prije duljeg” ispred abecednog, koje plan nije naveo.
 - **Čitač pregleda** prima sirovi HTML (plan je mjerio s isključenim); razlog je uz korak 1.
@@ -1464,6 +1476,9 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (ispravci 
 - Tražilica ne vidi izmjenu napravljenu izvana dok je promatrač ne javi; `dj` ne nalazi `đ`.
 - Položaj ploče tražilice pretpostavlja Neovimove zadane `laststatus=2` i `cmdheight=1`.
 - Prevelik `.txt` buffer u pregledu daje grešku „prevelik”, a ne poruku „nije podržano”.
+- Bilješka u opisu slike unutar retka ne vidi se u pregledu (kao ni u čistom pandocu).
+- Prazno stanje nudi `␣f`, a dok Neovim ne radi stvarno radi samo `⌘P` (doslovno po `DESIGN.md`).
+- Konstante izvan `internal/config` (popis u „Odstupanja od plana faze”) čekaju vlasnikovu odluku.
 
 ### Izvan opsega
 
@@ -1477,7 +1492,8 @@ postavke za prozu i pravopis, pakiranje, tamna tema.
 - [x] pregled je u sandboxed iframeu; skripta u dokumentu se ne izvršava (test) — dokaz 2
 - [x] tražilica: `␣f` i `⌘P`, pretraga kroz sve projekte, `⌃p` sužava, `↵` otvara, `Esc` vraća fokus — dokaz 3
       (tipke u prozoru i fokus su u ručnoj provjeri)
-- [ ] **[R]** izgled odgovara `docs/design/DESIGN.md`
+- [ ] **[R]** izgled odgovara `docs/design/DESIGN.md` — čeka vlasnikovu ručnu provjeru (popis gore); agent
+      ovo ne označava
 
 ## Faza 5 — Udobnost pisanja
 
