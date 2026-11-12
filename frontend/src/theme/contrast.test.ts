@@ -22,7 +22,7 @@ describe('contrastRatio', () => {
 // Pairs actually used for text. text.linenr on bg.cursorline (4.25) is left out on purpose: phase 2 decides it.
 const pairs: [ColorToken, ColorToken[]][] = [
   ['text', ['bg.app', 'bg.chrome', 'bg.editor', 'bg.desk', 'bg.cursorline', 'bg.selected']],
-  ['text.muted', ['bg.app', 'bg.chrome', 'bg.editor', 'bg.desk', 'bg.selected']],
+  ['text.muted', ['bg.app', 'bg.chrome', 'bg.editor', 'bg.desk', 'bg.selected', 'bg.cursorline']],
   ['text.status', ['bg.desk']],
   ['text.linenr', ['bg.editor']],
   ['accent.text', ['accent']],

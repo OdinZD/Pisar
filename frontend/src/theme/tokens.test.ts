@@ -4,21 +4,45 @@ import design from '../../../docs/design/DESIGN.md?raw'
 import tokensSource from './tokens.ts?raw'
 import { defaultTheme, themeIds, themes } from './tokens'
 
+// A theme's section starts at "### Tema: Name (`id`, light|dark)" and runs to the next "###" or "##" heading.
+const sectionHeading = /^### Tema: .*\(`([a-z-]+)`, [^)]*\)\s*$/gm
+
+function themeSection(id: string): string | undefined {
+  for (const m of design.matchAll(sectionHeading)) {
+    if (m[1] !== id) continue
+    const start = m.index + m[0].length
+    const rest = design.slice(start)
+    const end = rest.search(/^##+ /m)
+    return end === -1 ? rest : rest.slice(0, end)
+  }
+  return undefined
+}
+
 // Rows look like: | `bg.app` | `#F5F6F7` | where |
-function designColors(): Record<string, string> {
+function designColors(section: string): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const m of design.matchAll(/^\|\s*`([a-z.]+)`\s*\|\s*`(#[0-9A-Fa-f]{6})`\s*\|/gm)) {
+  for (const m of section.matchAll(/^\|\s*`([a-z.]+)`\s*\|\s*`(#[0-9A-Fa-f]{6})`\s*\|/gm)) {
     out[m[1]] = m[2].toUpperCase()
   }
   return out
 }
 
-describe('colour tokens', () => {
-  it('match the table in DESIGN.md (names and values)', () => {
-    const fromDesign = designColors()
-    expect(Object.keys(fromDesign).length).toBe(17)
-    const fromCode = Object.fromEntries(Object.entries(themes.pisar.colors).map(([k, v]) => [k, v.toUpperCase()]))
-    expect(fromCode).toEqual(fromDesign)
+describe('colour tokens in DESIGN.md', () => {
+  it('has one "### Tema:" section per theme id, in the order of themeIds', () => {
+    const ids = [...design.matchAll(sectionHeading)].map((m) => m[1])
+    expect(ids).toEqual([...themeIds])
+    expect([...design.matchAll(/^### Tema:/gm)]).toHaveLength(themeIds.length)
+  })
+
+  describe.each(themeIds)('theme %s', (id) => {
+    it('matches the table in DESIGN.md (names and values)', () => {
+      const section = themeSection(id)
+      expect(section, 'a section in DESIGN.md').toBeDefined()
+      const fromDesign = designColors(section ?? '')
+      expect(Object.keys(fromDesign).length).toBe(17)
+      const fromCode = Object.fromEntries(Object.entries(themes[id].colors).map(([k, v]) => [k, v.toUpperCase()]))
+      expect(fromCode).toEqual(fromDesign)
+    })
   })
 })
 

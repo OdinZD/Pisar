@@ -1,6 +1,6 @@
 // The only place in the frontend where colours, sizes, spacing and font families are written down.
 // Components read them as CSS variables (see cssVars.ts). Values mirror docs/design/DESIGN.md;
-// tokens.test.ts fails if the colour table there and the `pisar` palette here drift apart.
+// tokens.test.ts fails if a theme's colour table there and its palette here drift apart.
 
 // A palette is one object per theme with the same keys, the colour name being the key. Adding a theme
 // means a new palette below, a new entry in `themes` and in `themeIds`.
@@ -30,7 +30,52 @@ const pisar = {
 export type ColorToken = keyof typeof pisar
 export type Palette = Readonly<Record<ColorToken, string>>
 
-export const themeIds = ['pisar'] as const
+// Catppuccin Mocha: the official palette (catppuccin/palette, palette.json). Each value is a named
+// Mocha colour; docs/design/DESIGN.md lists which one.
+const catppuccinMocha: Palette = {
+  'bg.app': '#181825',
+  'bg.chrome': '#181825',
+  'bg.editor': '#1E1E2E',
+  'bg.desk': '#11111B',
+  'bg.cursorline': '#313244',
+  'bg.selected': '#45475A',
+  border: '#313244',
+  'border.strong': '#45475A',
+  text: '#CDD6F4',
+  'text.muted': '#BAC2DE',
+  'text.status': '#BAC2DE',
+  'text.linenr': '#9399B2',
+  accent: '#B4BEFE',
+  'accent.text': '#11111B',
+  'syntax.list': '#FAB387',
+  'syntax.code': '#A6E3A1',
+  danger: '#F38BA8',
+}
+
+// Dracula: the official spec (draculatheme.com/spec). Four tokens (bg.cursorline, bg.selected,
+// text.muted, text.linenr) deviate from it because the official Current Line, Selection and Comment
+// colours do not reach the 4.5:1 text contrast required in DESIGN.md.
+const dracula: Palette = {
+  'bg.app': '#21222C',
+  'bg.chrome': '#21222C',
+  'bg.editor': '#282A36',
+  'bg.desk': '#191A21',
+  'bg.cursorline': '#21222C',
+  'bg.selected': '#343746',
+  border: '#343746',
+  'border.strong': '#44475A',
+  text: '#F8F8F2',
+  'text.muted': '#A1AAC8',
+  'text.status': '#F8F8F2',
+  'text.linenr': '#8995BB',
+  accent: '#BD93F9',
+  'accent.text': '#282A36',
+  'syntax.list': '#FFB86C',
+  'syntax.code': '#50FA7B',
+  danger: '#FF5555',
+}
+
+export const themeIds = ['pisar', 'catppuccin-mocha', 'dracula'] as const
 export type ThemeId = (typeof themeIds)[number]
 
 export interface Theme {
@@ -41,6 +86,8 @@ export interface Theme {
 
 export const themes: Readonly<Record<ThemeId, Theme>> = {
   pisar: { background: 'light', colors: pisar },
+  'catppuccin-mocha': { background: 'dark', colors: catppuccinMocha },
+  dracula: { background: 'dark', colors: dracula },
 }
 export const defaultTheme: ThemeId = 'pisar'
 

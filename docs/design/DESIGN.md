@@ -25,7 +25,9 @@ Ovaj tekst je mjerodavan. `pisar.png` (izvoz artboarda „5 · Odabrano” s diz
 
 ## Tokeni
 
-Jedini izvor je `frontend/src/theme/tokens.ts`. Imena su semantička, da se tamna tema doda kao drugi skup.
+Jedini izvor je `frontend/src/theme/tokens.ts`. Imena su semantička, pa svaka tema ima isti skup od 17 tokena. Tema se bira u meniju Prikaz → Tema.
+
+### Tema: Pisar (`pisar`, svijetla)
 
 | Token | Vrijednost | Gdje |
 |---|---|---|
@@ -47,7 +49,53 @@ Jedini izvor je `frontend/src/theme/tokens.ts`. Imena su semantička, da se tamn
 | `syntax.code` | `#0F6B3C` | kod u retku |
 | `danger` | `#B42318` | poruke o grešci |
 
-Kontrast teksta prema podlozi mora biti najmanje 4.5:1. Ako promijeniš boju, provjeri omjer.
+### Tema: Catppuccin Mocha (`catppuccin-mocha`, tamna)
+
+| Token | Vrijednost | Izvor |
+|---|---|---|
+| `bg.app` | `#181825` | mantle |
+| `bg.chrome` | `#181825` | mantle |
+| `bg.editor` | `#1E1E2E` | base |
+| `bg.desk` | `#11111B` | crust |
+| `bg.cursorline` | `#313244` | surface0 |
+| `bg.selected` | `#45475A` | surface1 |
+| `border` | `#313244` | surface0 |
+| `border.strong` | `#45475A` | surface1 |
+| `text` | `#CDD6F4` | text |
+| `text.muted` | `#BAC2DE` | subtext1 |
+| `text.status` | `#BAC2DE` | subtext1 |
+| `text.linenr` | `#9399B2` | overlay2 |
+| `accent` | `#B4BEFE` | lavender |
+| `accent.text` | `#11111B` | crust |
+| `syntax.list` | `#FAB387` | peach |
+| `syntax.code` | `#A6E3A1` | green |
+| `danger` | `#F38BA8` | red |
+
+### Tema: Dracula (`dracula`, tamna)
+
+| Token | Vrijednost | Izvor |
+|---|---|---|
+| `bg.app` | `#21222C` | Background Dark |
+| `bg.chrome` | `#21222C` | Background Dark |
+| `bg.editor` | `#282A36` | Background |
+| `bg.desk` | `#191A21` | Background Darker |
+| `bg.cursorline` | `#21222C` | Background Dark (prilagođeno: službeni Current Line ne daje kontrast) |
+| `bg.selected` | `#343746` | Background Light (prilagođeno: službeni Selection `#44475A` ne daje kontrast) |
+| `border` | `#343746` | Background Light |
+| `border.strong` | `#44475A` | Selection |
+| `text` | `#F8F8F2` | Foreground |
+| `text.muted` | `#A1AAC8` | prilagođeno: posvijetljeni Comment `#6272A4` |
+| `text.status` | `#F8F8F2` | Foreground |
+| `text.linenr` | `#8995BB` | prilagođeno: posvijetljeni Comment `#6272A4` |
+| `accent` | `#BD93F9` | Purple |
+| `accent.text` | `#282A36` | Background |
+| `syntax.list` | `#FFB86C` | Orange |
+| `syntax.code` | `#50FA7B` | Green |
+| `danger` | `#FF5555` | Red |
+
+Četiri tokena Dracule odstupaju od službene palete jer službene boje ne daju kontrast 4.5:1.
+
+Kontrast teksta prema podlozi mora biti najmanje 4.5:1 u svakoj temi. Ako promijeniš boju, provjeri omjer.
 
 ### Tri potrošača tokena
 
