@@ -2078,7 +2078,7 @@ dalje čeka vlasnikovu ručnu provjeru; faze 7 i 8 o njoj ne ovise.
 
 ```go
 // config.json v2: { "version": 2, "theme": "dracula", "projects": [...] }
-config.Themes []string; config.DefaultTheme; config.ErrUnknownTheme
+config.Themes() []string; config.DefaultTheme; config.ErrUnknownTheme
 (*config.Store).Theme() string
 (*config.Store).SetTheme(id string) error
 config.ThemeWindowBackground(id string)            // boja bg.app za nativni prozor
@@ -2137,6 +2137,8 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Nuspojava: `:mode` briše tekst u retku za poruke (kao i `Redraw`).
       - Nije provjereno: prompt „-- More --” (dugi izlaz); njega `Enter` ne zatvara, treba `q` ili `Esc`.
       - `internal/nvim` sada uvozi `internal/config` (zbog `NvimColorscheme`).
+      - Odstupanje od plana: plan navodi izmjenu `internal/nvim/nvim.go`; metoda je u novoj datoteci
+        `internal/nvim/colorscheme.go` (kao `format.go` i `preview.go`), a `nvim.go` nije diran.
 - [x] 6. `EditorService.SetColorscheme(ctx, colorscheme)`: provjera kao u `Start`, atomski zapis pod `startMu`,
       zatim `session.Colorscheme` ako Neovim radi. `DeadlineExceeded` (prompt) i `ErrNotRunning` vraćaju nil
       uz zapis u logu. Testovi `TestEdSetScheme*` (6), među njima prompt (`CommandTimeout` 400 ms) i utrka
@@ -2145,6 +2147,8 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
         ne zaključa `Start` do `CommandTimeout`.
       - Neispravan colorscheme stiže frontendu s kodom `internal` (kao i kod `Start`; `codeOf` nema granu).
       - Prompt test prepoznaje prompt po tekstu „ENTER” u izlazu PTY-ja (10 od 10 uz `-race`).
+      - Odstupanje od plana: plan kaže „`tokenColor()` dobiva neobavezan opseg teme”; `tokenColor` je ostao
+        isti, a opseg teme čita zasebna `tokenColorIn` (postojeći pozivi nisu dirani).
 - [x] 7. `settingsservice.go` (`SettingsService.Theme`, neizvezeni `setTheme`: store → boja prozora → događaj),
       `menu.go` (`themeItems`, izbornik „Prikaz” između „Oblikovanje” i Window, podizbornik „Tema” s tri
       radio stavke), `main.go` (`theme:changed`, `BackgroundColour` i `URL` `/?theme=<id>` iz zapamćene
@@ -2169,6 +2173,14 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Dimna provjera agenta bez klikanja: home s `"theme":"dracula"` → log `method=Theme theme=dracula`,
         zatim `Start`; Neovim preko socketa javlja `dark pisar`.
       - Neuspjelo slanje colorschemea se samo logira (sučelje je tada u novoj temi, Neovim u staroj).
+      - Odstupanje od plana: plan za „vrijedi zadnji” navodi `lib/latest.ts`; on samo odbacuje zakašnjele
+        ODGOVORE i ne može poredati slanja (Wails svaki poziv obrađuje u vlastitoj goroutini), pa je uveden
+        novi `lib/themeSender.ts`, a `latest.ts` se ovdje ne koristi.
+      - Odstupanje od plana: izvan popisa datoteka dirnut je `components/EditorPane.svelte` (samo
+        prosljeđuje `theme` u `Terminal`). `theme/active.ts` je dobio i `startTheme`.
+      - Ispravak glavne sesije nakon kruga 1 pregleda (oko 15 redaka, bez testa jer kontroler nema
+        testove): `ThemeController.start()` nakon pretplate još jednom pita `SettingsService.Theme()`, da se
+        ne izgubi tema izabrana između potvrde u `main.ts` i pretplate na `theme:changed`.
       - NIJE viđeno (ručna provjera): promjena na klik u meniju, boje terminala i pregleda nakon promjene,
         skrol pregleda, promjena teme usred pokretanja Neovima. Komponente i kontroler nemaju testove.
 - [x] 9. Dimna provjera i dokumenti: `scripts/smoke.sh` ima još jedno pokretanje (v2 `config.json` s
@@ -2178,7 +2190,7 @@ v1 se učitava s temom `pisar` i ne prepisuje pri otvaranju; prvi zapis piše v2
       - Negativna proba (`coder`): s `"theme": "pisar"` u novom odjeljku skripta pada na tri provjere.
       - Promjena teme klikom u meniju se u skripti ne može dokazati (bez tipki i klikova).
       - `PROMPT.md` i dalje u sažetku dizajna kaže „Svijetla tema”; vlasnikova datoteka, nije dirana.
-      - `plan-reviewer`: vidi „Pregled” dolje.
+      - `plan-reviewer`: vidi „Pregled plana” dolje.
 
 ### Izvan opsega
 
@@ -2203,6 +2215,16 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda (commit ko
    is pisar`, `Normal in Neovim has exactly those colours` (`F8F8F2 282A36`), `config.json is byte for byte
    what it was`.
 5. `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka (exit 1).
+
+### Pregled plana (`plan-reviewer`)
+
+- Krug 1: FAIL bez blokera. Kod radi sve što plan traži, sve naredbe prolaze (reviewer ih je sam
+  ponovio, uz `go test -race -count=1 ./...` i `smoke.sh`), nijedan test nije oslabljen, nema novih
+  ovisnosti ni rada iz faze 8. Šest manjih nalaza, svi u ovom dokumentu: četiri nezabilježena odstupanja
+  od plana (`themeSender.ts` umjesto `latest.ts`, `colorscheme.go` umjesto `nvim.go`, `tokenColorIn` uz
+  `tokenColor`, dirnut `EditorPane.svelte`), `config.Themes` zapisan kao varijabla umjesto funkcije i
+  nepostojeći odjeljak na koji je korak 9 upućivao. Sve je ispravljeno ovdje. Uz to zapažanje o
+  izgubljenom događaju `theme:changed` tijekom učitavanja stranice: ispravljeno u kodu (korak 8).
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
