@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 - Sljedeći korak: faza 5, korak 6 (`plan-reviewer`, sažetak)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 5, poruke i opisi mapiranja na hrvatskom)
+- Zadnja izmjena: 2026-11-12 (faza 5, ispravci nakon pregleda, krug 2)
 
 ## Priprema (2026-11-11)
 
@@ -1667,6 +1667,32 @@ podvlaka i dalje završava riječ (`snake_case` → `**snake**_case`), jer to tv
 `underscore ends a word` (podvlaka je u Markdownu oznaka naglaska); zahtjev glavne sesije za suprotnim
 je povučen.
 
+### Pregled plana — krug 2 (2026-11-12): FAIL, bez blokera; ispravljeno
+
+Nalazi kruga 1 potvrđeni kao riješeni, osim jednog dijela prvog:
+
+1. Vraćanje nakon `user.lua` vrijedilo je samo za ono što `user.lua` promijeni dok se učitava;
+   `vim.schedule` ili `VimEnter` autocmd iz `user.lua` i dalje su mogli postaviti `eventignore`, ugasiti
+   `hidden` ili postaviti `g:pisar_reloading`. **Ispravak:** vraćanje se ponavlja tri puta: sinkrono u
+   Pisarovom `VimEnter` autocmdu (registriran nakon `user.lua`, pa ide iza vlasnikovih), zatim
+   zakazano, i još jednom na zahtjev Go-a u istom RPC pozivu u kojem Go postavlja `g:pisar_channel` i
+   čita napomenu (pa čita nakon svih prolaza, bez utrke). Izmjereni redoslijed: učitavanje → vlasnikov
+   `VimEnter` → Pisarov `VimEnter` → zakazani pozivi iz `user.lua` i `vim.defer_fn` → ono što je
+   zakazao vlasnikov `VimEnter` → Pisarov zakazani prolaz → spajanje Go-a. Kasniji prolazi ne diraju
+   `g:pisar_channel` ni `g:pisar_preview`. Testovi `TestULate` (7 slučajeva), `TestULateAnn`.
+   - **Prihvaćena granica (zapisana i u komentaru u `init.lua`, tvrdi je `TestULimit`):** `user.lua` je
+     vlasnikov kod. Zaštita pokriva učitavanje i kraj pokretanja, ne kasniji rad: autocmd koji
+     postavku promijeni kasnije (npr. na `BufWinEnter`), `vim.defer_fn` s duljim kašnjenjem, dvostruko
+     zakazan poziv koji stigne nakon spajanja Go-a, ili zamjena Neovimovih funkcija (`vim.rpcnotify`)
+     i dalje mogu utišati obavijesti.
+
+Iz napomena: poruka za buffer bez imena pri „Spremi sve” bila je engleska kopija Neovimove (E141) —
+novi ključ `nvimNoFileName` („Dokument bez naziva (br. {buffer}) nije spremljen; …”; `coder` je
+predložio „Međuspremnik”, što na hrvatskom znači clipboard, pa je glavna sesija tekst uskladila s
+ostatkom sučelja); u `nvimUserLuaError` uputa je sada ispred razloga, jer se na 80 stupaca uvijek
+odrezala; Lua i Go predložak poruke ispunjavaju jednako (sva pojavljivanja). Nedostižan engleski tekst
+`"unknown format: "` u `init.lua` ostaje (korisnik ga ne može vidjeti).
+
 ### Dokazi po kriterijima (2026-11-12)
 
 Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
@@ -1675,10 +1701,10 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
   passed`, `Tests 826 passed`); `task lint` → `0 issues.`, svelte-check `0 ERRORS 0 WARNINGS`;
   `task build` → exit 0; `bash scripts/smoke.sh` → exit 0 (146 provjera, dvaput zaredom);
   `bash scripts/shutdown.sh` → exit 0.
-- Go testovi (`go test -list`, nakon ispravaka kruga 1 i prevođenja poruka): `Pisar` 188, `config` 33,
-  `convert` 55, `docsafe` 92, `nvim` 117,
+- Go testovi (`go test -list`, nakon ispravaka kruga 2): `Pisar` 188, `config` 33,
+  `convert` 55, `docsafe` 92, `nvim` 121,
   `preview` 24, `project` 44, `term` 36. Pokrivenost (`go test -count=1 -cover ./...`): `Pisar`
-  84,4 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 88,8 %, `preview` 92,2 %,
+  84,3 %, `config` 84,5 %, `convert` 92,8 %, `docsafe` 85,2 %, `nvim` 89,0 %, `preview` 92,2 %,
   `project` 96,3 %, `term` 92,6 % (mijenja se između pokretanja; `nvim` za do oko jedan postotni bod,
   jer grane ovise o vremenu pokretanja i gašenja Neovima).
 
@@ -1698,7 +1724,8 @@ Naredbe iz korijena repozitorija, pokrenute nakon zadnje izmjene koda.
    `serialSender.test.ts` (redoslijed tipki i oblikovanja); `smoke.sh` (`␣b` `␣i` `␣h` `␣l`).
 4. `user.lua` nakon ugrađene konfiguracije: `TestUOpts` (njegova opcija nadjačava ugrađenu), `TestUErr`
    (greška ne ruši, ugrađeno vrijedi), `TestUKeep` (vraćeno ono o čemu Go ovisi, događaji stižu i
-   nisu dvostruki), `TestUEi` i `TestWdIgnore` (`eventignore` ne može utišati obavijesti), `TestUFile` (bez datoteke, mapa, veze), `TestUNoWrite`, `TestUOut`, `TestUIn`,
+   nisu dvostruki), `TestUEi`, `TestULate` i `TestWdIgnore` (`eventignore` postavljen pri učitavanju ili
+   do kraja pokretanja ne može utišati obavijesti; kasnije može — `TestULimit`), `TestUFile` (bez datoteke, mapa, veze), `TestUNoWrite`, `TestUOut`, `TestUIn`,
    `TestUSpell`; `TestEdUserPath`, `TestEdUserLua`, `TestEdUserLuaLog`; `smoke.sh` (B i C).
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
@@ -1726,19 +1753,22 @@ Faza nema kriterij **[R]** u planu; ovo su stvari koje se vide samo u prozoru.
 - Bez hrvatskog rječnika (ne bi se smjelo dogoditi: ugrađen je) pravopis radi samo za engleski.
 - `user.lua` i dalje može zamrznuti pokretanje s `vim.fn.input()`, `confirm()`, `getchar()` ili
   beskrajnom petljom; `Start` tada istekne nakon `NvimStartTimeout`.
+- `user.lua` koji postavke o kojima Go ovisi promijeni NAKON pokretanja (kasniji autocmd, tajmer) ili
+  zamijeni Neovimove funkcije i dalje može utišati Pisarove obavijesti; tada `:w` na Wordovom
+  dokumentu ne pokreće izvoz. Prihvaćena granica: to je vlasnikov kod.
 - Tipke utipkane nakon `⌘B`, a prije nego događaj izbornika stigne u frontend (nekoliko ms), mogu
   proći prije oblikovanja.
 - U insert modu oblikovanje je dio tekućeg unosa: `u` vraća cijeli unos, ne samo oznake.
 - Blokovski odabir se za podebljano i kurziv odbija; naslov zamjenjuje oznaku liste.
 - Valovita crta i izbornik „Oblikovanje” nisu viđeni u prozoru (ručna provjera).
-- `init.lua` ima 1443 retka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
+- `init.lua` ima 1525 redaka u jednoj datoteci (oblikovanje i `user.lua` nisu izdvojeni u module).
 - `.md` bez dozvole pisanja (Neovimov `readonly`, ne `nomodifiable`): oblikovanje mijenja tekst uz
   Neovimovo upozorenje W10, isto kao tipkanje. Wordovi dokumenti samo za čitanje su `nomodifiable` i
   zaštićeni.
 - Pismo bez razmaka između riječi (kineski, japanski): podebljano i kurziv u normal modu ne nalaze
   riječ pod kursorom; visual mod radi.
 - **Odluke vlasnika tijekom pregleda (2026-11-12): „Poruke neka budu na hrvatskom” i „i opisi mapiranja
-  neka budu na hrvatskom”.** Provedeno: 16 novih ključeva `nvim*` u `strings.json` (6 poruka, 10 opisa
+  neka budu na hrvatskom”.** Provedeno: 17 novih ključeva `nvim*` u `strings.json` (7 poruka, 10 opisa
   mapiranja). Jedan put do Neovima: Go složi tekstove iz `uiText` u JSON i preda ih kroz okolinu
   procesa (`PISAR_TEXT`, `nvim.Options.Text`); `init.lua` ih čita na vrhu i nema nijedne vlastite
   rečenice. Bez varijable ili s neispravnim JSON-om mapiranja nemaju opis, a poruka nosi samo
