@@ -281,6 +281,268 @@ if [[ -n "$SOCK" ]]; then
   check "the RPC socket and its folder are gone" test ! -e "$SOCK" -a ! -e "$(dirname "$SOCK")"
 fi
 
+# ---- Word documents ---------------------------------------------------------
+#
+# The built application, started once per document with a home of its own, and
+# a copy of a test document in a "user's folder" in the temporary directory
+# (testdata/ is never written to). Neovim is driven through its socket only.
+# Waits are on real conditions (the debug log says the export finished, the
+# file changed), each with a limit, never a blind sleep.
+
+skip() { printf 'skip %s\n' "$1"; }
+
+# only_in <dir> <name>...: the folder holds exactly these entries, hidden ones included.
+only_in() {
+  local dir=$1 got want
+  shift
+  got=$(ls -A "$dir" | sort | tr '\n' ' ')
+  want=$(printf '%s\n' "$@" | sort | tr '\n' ' ')
+  [[ "$got" == "$want" ]]
+}
+
+wlogged() { grep -Eq "$1" "$WLOG" 2>/dev/null; }
+
+# nv <expression>: evaluated in this application's Neovim.
+nv() { remote "$WSOCK" --remote-expr "$1"; }
+
+# word_start <label> <document>: a fresh home and a fresh "user's folder" that
+# holds a copy of the fixture (and a second copy to compare against).
+word_start() {
+  local label=$1 doc=$2
+  WBASE="$TMP/word-$label"
+  WHOME="$WBASE/home"
+  WUSER="$WBASE/user"
+  WLOG="$WBASE/app.log"
+  mkdir -p "$WHOME" "$WUSER" "$WBASE/orig"
+  printf '{\n  "version": 1,\n  "projects": []\n}\n' >"$WHOME/config.json"
+  cp "$WORD_FIXTURES/$doc" "$WUSER/$doc"
+  cp "$WORD_FIXTURES/$doc" "$WBASE/orig/$doc"
+}
+
+# word_launch <document>: starts the application with the document on the
+# command line. Sets APP_PID, WSOCK and NVIM_PIDS.
+word_launch() {
+  local doc=$1
+  PISAR_HOME="$WHOME" PISAR_LOG=debug "$BIN" "$WUSER/$doc" >"$WLOG" 2>&1 &
+  APP_PID=$!
+  WSOCK=""
+  NVIM_PIDS=""
+}
+
+word_up() {
+  local pid cmd
+  is_running "$APP_PID" || return 1
+  if [[ -z "$WSOCK" ]]; then
+    for pid in $(descendants "$APP_PID"); do
+      cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+      if [[ "$cmd" =~ --listen\ ([^\ ]+) ]]; then
+        WSOCK=${BASH_REMATCH[1]}
+        break
+      fi
+    done
+  fi
+  [[ -n "$WSOCK" ]] || return 1
+  [[ "$(nv 'fnamemodify(bufname(""), ":t")' 2>/dev/null)" == doc.md ]]
+}
+
+# word_open <label> <document>: everything above; returns 1 (after reporting)
+# when the application does not get to the point of showing doc.md.
+word_open() {
+  local label=$1 doc=$2
+  word_launch "$doc"
+  if wait_for 40 word_up; then
+    NVIM_PIDS=$(pgrep -f -- "$WSOCK" | tr '\n' ' ')
+    return 0
+  fi
+  fail "$label: the application showed doc.md in Neovim within 40 s"
+  grep -Ev 'event=pty:data|method=Write' "$WLOG" | tail -n 10 | sed 's/^/     log: /'
+  word_stop "$label" || true
+  return 1
+}
+
+# word_stop <label>: ends the application through its own pid and checks that
+# nothing of it is left.
+word_stop() {
+  local label=$1
+  [[ -n "$APP_PID" ]] || return 0
+  kill -TERM "$APP_PID"
+  if wait_for 10 app_gone; then
+    ok "$label: the application and its Neovim exited within 10 s of SIGTERM"
+  else
+    fail "$label: the application and its Neovim exited within 10 s of SIGTERM"
+    local p
+    for p in $NVIM_PIDS; do
+      if is_running "$p"; then kill -KILL "$p" 2>/dev/null || true; fi
+    done
+  fi
+  wait "$APP_PID" 2>/dev/null || true
+  APP_PID=""
+  if [[ -n "$WSOCK" ]]; then
+    check "$label: the RPC socket and its folder are gone" test ! -e "$WSOCK" -a ! -e "$(dirname "$WSOCK")"
+  fi
+  check "$label: no working copy of a saved document is left in work/" test -z "$(ls -A "$WHOME/work" 2>/dev/null)"
+}
+
+# work_layout [pictures]: the buffer is doc.md in a working folder of this
+# application's home, and the folder holds what the conversion makes (and, when
+# a number is given, that many pictures in media/).
+work_layout() {
+  local buf dir
+  buf=$(nv 'expand("%:p")') || return 1
+  dir=$(dirname "$buf")
+  [[ "$(basename "$buf")" == doc.md ]] || return 1
+  # Compared as real paths: the temporary folder sits behind /var -> /private/var.
+  [[ "$(cd -P "$(dirname "$dir")" && pwd)" == "$(cd -P "$WHOME/work" && pwd)" ]] || return 1
+  [[ -s "$dir/doc.md" && -s "$dir/reference.docx" && -s "$dir/meta.json" ]] || return 1
+  [[ -z "${1:-}" || "$(find "$dir/media" -type f 2>/dev/null | wc -l | tr -d ' ')" == "$1" ]]
+}
+
+# add_line <text>: appends a paragraph to the buffer through the socket. The
+# blank line matters: the fixtures end with a footnote definition, and a line
+# right after it would be taken for a continuation of the footnote.
+add_line() { nv "nvim_buf_set_lines(0, -1, -1, v:false, ['', '$1'])" >/dev/null; }
+write_buffer() { remote "$WSOCK" --remote-send '<Cmd>write<CR>' >/dev/null; }
+
+# exports <file>: how many times the log says <file> was exported.
+exports() { grep -Ec "event=document:export file=$1 phase=saved" "$WLOG" 2>/dev/null || true; }
+
+# exported <file> <reference> <count>: the application exported <file> that
+# many times and the file differs from <reference>.
+exported() { [[ "$(exports "$1")" -ge "$3" ]] && ! cmp -s "$2" "$WUSER/$1"; }
+
+# docx_has <file> <text>: <file> is a valid archive whose document.xml has <text>.
+docx_has() {
+  unzip -p "$1" word/document.xml >"$WBASE/document.xml" 2>/dev/null && grep -Fq -- "$2" "$WBASE/document.xml"
+}
+docx_valid() { unzip -tq "$1" >/dev/null 2>&1; }
+
+# media_of <docx>: the image entries, one per line, in a file.
+media_of() {
+  unzip -Z1 "$1" >"$WBASE/entries.txt"
+  grep '^word/media/' "$WBASE/entries.txt" || true
+}
+
+# same_media <docx> <docx>: each has exactly one image and the bytes agree.
+same_media() {
+  local a b
+  a=$(media_of "$1")
+  b=$(media_of "$2")
+  [[ -n "$a" && -n "$b" && "$(wc -l <<<"$a" | tr -d ' ')" == 1 && "$(wc -l <<<"$b" | tr -d ' ')" == 1 ]] || return 1
+  unzip -p "$1" "$a" >"$WBASE/media.a"
+  unzip -p "$2" "$b" >"$WBASE/media.b"
+  [[ -s "$WBASE/media.a" ]] && cmp -s "$WBASE/media.a" "$WBASE/media.b"
+}
+
+readonly_now() { [[ "$(nv '&modifiable . " " . &readonly' 2>/dev/null)" == "0 1" ]]; }
+
+backups() { find "$WHOME/backups" -type f 2>/dev/null; }
+
+# one_backup_of <file>: exactly one backup exists and it is a copy of <file>.
+one_backup_of() {
+  local list
+  list=$(backups)
+  [[ -n "$list" && "$(wc -l <<<"$list" | tr -d ' ')" == 1 ]] && cmp -s "$list" "$1"
+}
+no_backup() { [[ -z "$(backups)" ]]; }
+
+# kept <name>: the file in the user's folder is still byte for byte the original.
+kept() { cmp -s "$WUSER/$1" "$WBASE/orig/$1"; }
+
+if ! command -v pandoc >/dev/null 2>&1; then
+  skip "Word documents (basic.docx, comments.docx, legacy.doc): pandoc is not installed"
+else
+  WORD_FIXTURES="$ROOT/testdata/docx"
+  echo "--- Word documents"
+
+  # A. basic.docx: opens as a working copy and is exported safely.
+  L="basic.docx"
+  word_start A basic.docx
+  chmod 0640 "$WUSER/basic.docx"
+  xattr -w com.pisar.smoke "smoke-value" "$WUSER/basic.docx"
+  if word_open "$L" basic.docx; then
+    check "$L: Neovim shows doc.md in the working folder (doc.md, reference.docx, meta.json, one picture in media/)" work_layout 1
+    check "$L: the .docx is unchanged after opening" kept basic.docx
+    check "$L: nothing else is beside the .docx" only_in "$WUSER" basic.docx
+
+    T1="Smoke prvi zapis: čćšžđ ČĆŠŽĐ $$"
+    add_line "$T1"
+    write_buffer
+    check "$L: after :w the application exported and the .docx changed (within 30 s)" \
+      wait_for 30 exported basic.docx "$WBASE/orig/basic.docx" 1
+    check "$L: the .docx is a valid archive" docx_valid "$WUSER/basic.docx"
+    check "$L: word/document.xml has the new text" docx_has "$WUSER/basic.docx" "$T1"
+    check "$L: one picture in word/media/, byte for byte the one of the original" \
+      same_media "$WUSER/basic.docx" "$WBASE/orig/basic.docx"
+    check "$L: exactly one backup, identical to the original" one_backup_of "$WBASE/orig/basic.docx"
+    check "$L: still nothing else beside the .docx (hidden files included)" only_in "$WUSER" basic.docx
+    check "$L: the permissions are unchanged (640)" test "$(stat -f %Lp "$WUSER/basic.docx")" = 640
+    check "$L: the extended attribute set before the start survived the save" \
+      test "$(xattr -p com.pisar.smoke "$WUSER/basic.docx" 2>/dev/null)" = "smoke-value"
+
+    cp "$WUSER/basic.docx" "$WBASE/after-first.docx"
+    T2="Smoke drugi zapis: žđšćč $$"
+    add_line "$T2"
+    write_buffer
+    check "$L: the second :w exported again and the .docx changed (within 30 s)" \
+      wait_for 30 exported basic.docx "$WBASE/after-first.docx" 2
+    check "$L: the .docx is valid and has the second text and the first" \
+      sh -c 'unzip -tq "$1" >/dev/null && unzip -p "$1" word/document.xml >"$2" && grep -Fq -- "$3" "$2" && grep -Fq -- "$4" "$2"' _ \
+      "$WUSER/basic.docx" "$WBASE/document.xml" "$T1" "$T2"
+    check "$L: still exactly one backup, still the original" one_backup_of "$WBASE/orig/basic.docx"
+    check "$L: still nothing else beside the .docx" only_in "$WUSER" basic.docx
+    word_stop "$L"
+  fi
+
+  # B. comments.docx: read-only; nothing may reach the file.
+  L="comments.docx"
+  word_start B comments.docx
+  if word_open "$L" comments.docx; then
+    check "$L: Neovim shows doc.md in the working folder" work_layout
+    check "$L: the buffer is not modifiable and is readonly (within 20 s)" wait_for 20 readonly_now
+    before=$(nv 'sha256(join(getline(1, "$"), "\n"))' || true)
+    nv "nvim_buf_set_lines(0, -1, -1, v:false, ['Smoke izmjena čćšžđ'])" >/dev/null 2>&1 || true
+    nv 'execute("silent! normal! Ohello")' >/dev/null 2>&1 || true
+    after=$(nv 'sha256(join(getline(1, "$"), "\n"))' || true)
+    check "$L: changes through the socket leave the buffer as it was" test -n "$before" -a "$before" = "$after"
+    # :w! overrides 'readonly', so Neovim does write the working copy and the
+    # application hears about it ("saved"); it must not turn that into an
+    # export. It decides that before anything is queued, so once the write is
+    # in the log there is nothing left that could still reach the file.
+    remote "$WSOCK" --remote-send '<Cmd>silent! write!<CR>' >/dev/null || true
+    heard() { wlogged 'event=saved path=.*/doc\.md'; }
+    check "$L: the application heard the :w! write (within 20 s)" wait_for 20 heard
+    # A round trip to Neovim: whatever it was going to do has been done.
+    nv '1' >/dev/null || true
+    check "$L: the application started no export (no conversion in the log)" \
+      sh -c '! grep -Eq "event=document:export .*phase=(converting|saved)" "$1"' _ "$WLOG"
+    check "$L: the .docx is unchanged after :w!" kept comments.docx
+    check "$L: no backup was made" no_backup
+    check "$L: nothing else is beside the .docx" only_in "$WUSER" comments.docx
+    word_stop "$L"
+  fi
+
+  # C. legacy.doc: never written; the first save makes a new .docx beside it.
+  L="legacy.doc"
+  word_start C legacy.doc
+  if word_open "$L" legacy.doc; then
+    check "$L: Neovim shows doc.md in the working folder" work_layout
+    check "$L: the .doc is unchanged after opening" kept legacy.doc
+    check "$L: nothing else is beside the .doc" only_in "$WUSER" legacy.doc
+
+    T3="Smoke zapis iz doca: čćšžđ $$"
+    add_line "$T3"
+    write_buffer
+    new_docx() { [[ "$(exports legacy.docx)" -ge 1 && -s "$WUSER/legacy.docx" ]]; }
+    check "$L: after :w a legacy.docx appeared beside the .doc (within 30 s)" wait_for 30 new_docx
+    check "$L: legacy.docx is a valid archive with the new text" \
+      sh -c 'unzip -tq "$1" >/dev/null && unzip -p "$1" word/document.xml >"$2" && grep -Fq -- "$3" "$2"' _ \
+      "$WUSER/legacy.docx" "$WBASE/document.xml" "$T3"
+    check "$L: the .doc is still byte for byte the original" kept legacy.doc
+    check "$L: only legacy.doc and legacy.docx are in the folder" only_in "$WUSER" legacy.doc legacy.docx
+    word_stop "$L"
+  fi
+fi
+
 check "config.json is unchanged" cmp -s "$CONFIG" "$TMP/config.before"
 check "the temporary home holds only config.json and Neovim's own folder" \
   test "$(ls -A "$TMP/home" | sort | tr '\n' ' ')" = "config.json nvim "

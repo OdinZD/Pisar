@@ -4,14 +4,14 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
+- Trenutna faza: 3 — `.docx` i `.doc` (plan odobren 2026-11-11, koraci 1–7 i 9 gotovi). Faza 2 je prihvaćena 2026-11-11: vlasnik je prošao
   ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 3, korak 9 (dimna provjera), pa korak 8 (čeka vlasnikove odluke i mapu s dokumentima)
+- Sljedeći korak: faza 3, korak 8a (grafovi samo za čitanje, upozorenje o oblikovanju)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 3, korak 7)
+- Zadnja izmjena: 2026-11-12 (faza 3, korak 9)
 
 ## Priprema (2026-11-11)
 
@@ -669,6 +669,15 @@ Effort high. Preduvjet: `pandoc` instaliran (3.13 u `/opt/homebrew/bin`). Plan f
 - Probni dokumenti: generirani skup u repozitoriju (`testdata/docx/`) + vlasnikovi pravi Wordovi
   dokumenti za ručno mjerenje gubitaka. Vlasnikovi dokumenti ne ulaze u repozitorij; mapa se dogovara
   prije koraka 8.
+- 2026-11-12, nakon mjerenja izravnog oblikovanja (pandoc 3.13, krug `.docx → .md → .docx`):
+  - Graf (`c:chart`), SmartArt i ugrađeni objekti nestaju bez traga → dokument se otvara **samo za
+    čitanje**, kao onaj s tekstualnim okvirom.
+  - Izravno oblikovanje se gubi (poravnanje, boja, veličina i vrsta fonta, prored, uvlaka → citat,
+    prijelom stranice, tabulator → razmak, polja → običan tekst, stilovi odlomka izvan osnovnih,
+    sjenčanje i obrubi tablica) → **upozorenje u alatnoj traci**, dokument se i dalje sprema. Ostaju:
+    isticanje, podcrtano, precrtano, eksponent, kapitalke, formule, fusnote. `docx+styles` je odbačen
+    (svaki odlomak omota u `::: {custom-style="…"}`).
+  - Putanju do mape s pravim dokumentima vlasnik još treba upisati.
 
 ### Ovisnosti (odobrene)
 
@@ -869,8 +878,19 @@ skriptom; vlasnikovi pravi dokumenti se samo čitaju i prije obrade kopiraju u p
       - Ograničenje: dokument samo za čitanje s izmijenjenim bufferom ne može nastati (buffer je
         nepromjenjiv), pa gumb „Spremi kao kopiju” u praksi uvijek stoji. Izgled trake nije provjeren
         okom (ide u ručnu provjeru).
-- [ ] 8. `docs/known-losses.md`
-- [ ] 9. Dimna provjera (`scripts/smoke.sh`)
+- [ ] 8a. Dorada po vlasnikovim odlukama od 2026-11-12: graf / SmartArt / ugrađeni objekt → samo za čitanje;
+      izravno oblikovanje → upozorenje u alatnoj traci; probni dokumenti `chart.docx`, `formatting.docx`
+- [ ] 8b. `docs/known-losses.md` iz golden rezultata i mjerenja; mjerenje na vlasnikovim pravim dokumentima
+      (čeka putanju do mape)
+- [x] 9. Dimna provjera (`scripts/smoke.sh`): 63 provjere (19 starih + 44 nove), oko 10 s. `basic.docx` s
+      naredbenog retka → `doc.md` u `work/`, izmjena kroz Neovimov socket + `:w` → valjan `.docx` s novim
+      tekstom i istom slikom, jedan backup jednak izvorniku, bez drugih datoteka pored dokumenta, iste
+      dozvole (0640) i xattr; drugo spremanje bez novog backupa. `comments.docx` → `modifiable=0`,
+      `readonly=1`, `:w!` ne mijenja datoteku, nema backupa. `legacy.doc` → nastaje `legacy.docx`, `.doc`
+      bajt-identičan. Nakon gašenja `work/` je prazan. Čekanje: uvjet u logu (`document:export …
+      phase=saved`) + promjena datoteke, rok 30 s; bez `sleep`-a. Bez `pandoc`-a provjere se preskaču.
+      - Nalaz: `doc.md` završava definicijama fusnota; redak dopisan odmah iza zadnje (bez praznog
+        retka) pandoc čita kao nastavak fusnote. Svojstvo Markdowna; ide u `docs/known-losses.md`.
 - [ ] 10. Kraj faze: dokazi, popis **[R]**, `plan-reviewer`, sažetak
 
 ### Izvan opsega
