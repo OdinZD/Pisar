@@ -629,6 +629,15 @@ func TestEdStartTwice(t *testing.T) {
 
 func (e *edEnv) paths() config.NvimPaths { return e.store.Nvim() }
 
+// withBackground replaces the generator's background line in a valid sample.
+func withBackground(good, line string) string {
+	const orig = `vim.o.background = "light"`
+	if strings.Count(good, orig) != 1 {
+		panic("the sample must have exactly one background line")
+	}
+	return strings.Replace(good, orig, line, 1)
+}
+
 func TestEdBadScheme(t *testing.T) {
 	good := ""
 	{
@@ -663,6 +672,11 @@ func TestEdBadScheme(t *testing.T) {
 		{"multi-line expression", good + group + "{\n  fg = \"#000000\" })\n"},
 		{"multi-line header trick", good + "vim.o.background = \"light\"\nos.execute(\"x\")\n"},
 		{"two calls on a line", good + group + "{ bold = true }) " + group + "{ bold = true })\n"},
+		{"background is a word", withBackground(good, `vim.o.background = "blue"`)},
+		{"background dark with code after it", withBackground(good, `vim.o.background = "dark"; os.exit()`)},
+		{"background dark with a comment after it", withBackground(good, `vim.o.background = "dark" -- x`)},
+		{"background in capitals", withBackground(good, `vim.o.background = "Dark"`)},
+		{"background in single quotes", withBackground(good, `vim.o.background = 'dark'`)},
 		{"NUL", good + "\x00"},
 		{"invalid UTF-8", good + "\xff\xfe\n"},
 		{"too large", good + strings.Repeat("\n", config.DefaultMaxColorscheme)},
@@ -690,12 +704,28 @@ func TestEdBadScheme(t *testing.T) {
 }
 
 func TestEdSampleAccepted(t *testing.T) {
-	if err := checkColorscheme(sample(t), config.DefaultMaxColorscheme); err != nil {
-		t.Fatalf("the generator's own output was refused: %v", err)
+	files, err := filepath.Glob(filepath.Join("testdata", "colorscheme", "*.lua"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Blank lines are fine, the generator writes them.
-	if err := checkColorscheme("\n\n"+sample(t)+"\n\n", config.DefaultMaxColorscheme); err != nil {
-		t.Fatalf("blank lines refused: %v", err)
+	// An empty glob would pass silently; one theme is light and two are dark.
+	if len(files) < 3 {
+		t.Fatalf("found %d colorscheme samples %v, want at least 3", len(files), files)
+	}
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := checkColorscheme(string(b), config.DefaultMaxColorscheme); err != nil {
+				t.Fatalf("the generator's own output was refused: %v", err)
+			}
+			// Blank lines are fine, the generator writes them.
+			if err := checkColorscheme("\n\n"+string(b)+"\n\n", config.DefaultMaxColorscheme); err != nil {
+				t.Fatalf("blank lines refused: %v", err)
+			}
+		})
 	}
 }
 

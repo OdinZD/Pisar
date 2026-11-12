@@ -33,12 +33,15 @@ var errInvalidColorscheme = errors.New("invalid colorscheme")
 
 // headerLines are the fixed lines the generator writes before the groups,
 // character for character (a copy of nvimColorscheme() in nvimColorscheme.ts).
+// The generator writes the background line as "light" or "dark" depending on the
+// theme, so both spellings are listed; nothing else is accepted on that line.
 var headerLines = map[string]struct{}{
 	"-- Generated from frontend/src/theme/tokens.ts by Pisar. Do not edit: the file is rewritten at start.": {},
 	"-- Drop a previous colorscheme first: changing 'background' while g:colors_name is set":                {},
 	"-- would reload that scheme.":                         {},
 	"vim.g.colors_name = nil":                              {},
 	`vim.o.background = "light"`:                           {},
+	`vim.o.background = "dark"`:                            {},
 	`vim.cmd("highlight clear")`:                           {},
 	`vim.g.colors_name = "` + config.NvimColorscheme + `"`: {},
 }
