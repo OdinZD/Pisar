@@ -4,14 +4,21 @@
   import { errorMessage } from '../lib/errorMessage'
   import { noTerminalFocus } from '../lib/focus'
   import type { SearchController } from '../lib/searchController.svelte'
+  import type { ShortcutsController } from '../lib/shortcutsController.svelte'
   import type { ThemeController } from '../lib/themeController.svelte'
   import { toolsNotice } from '../lib/toolsState'
   import { strings } from '../strings'
   import EmptyState from './EmptyState.svelte'
   import SearchPanel from './SearchPanel.svelte'
+  import ShortcutsPanel from './ShortcutsPanel.svelte'
   import Terminal from './Terminal.svelte'
 
-  let { editor, search, theme }: { editor: EditorController; search: SearchController; theme: ThemeController } = $props()
+  let {
+    editor,
+    search,
+    shortcuts,
+    theme,
+  }: { editor: EditorController; search: SearchController; shortcuts: ShortcutsController; theme: ThemeController } = $props()
 
   let terminal: ReturnType<typeof Terminal> | undefined = $state()
 
@@ -46,7 +53,7 @@
       onstarted={() => editor.terminalStarted()}
       onfailed={(err) => editor.terminalFailed(err)}
       onlayout={(px) => (reportedInset = px)}
-      keepsFocus={() => search.open}
+      keepsFocus={() => search.open || shortcuts.open}
       {theme}
     />
   {:else if editor.phase === 'failed'}
@@ -56,6 +63,9 @@
   {/if}
   {#if search.open}
     <SearchPanel {search} inset={searchInset} />
+  {/if}
+  {#if shortcuts.open}
+    <ShortcutsPanel {shortcuts} />
   {/if}
 </main>
 

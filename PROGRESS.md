@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 6 (pregled prečaca u frontendu); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 7 (dimna provjera i dokumenti), zatim `plan-reviewer`; ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2384,7 +2384,21 @@ Nema novih.
       - Posljedica: buffer s predloškom je `modified`, pa dijalog pri izlasku pita za `user.lua` ako ga
         korisnik nije spremio ni zatvorio. Uključen pregled prikazuje Lua izvor kao Markdown.
       - `ErrNotRegularFile` i `ErrPromptOpen` stižu frontendu kao kod `internal` (novi kod nije dodavan).
-- [ ] 6. Pregled prečaca u frontendu (`ShortcutsPanel.svelte`, `lib/shortcuts*.ts`)
+- [x] 6. Pregled prečaca u frontendu: `lib/shortcuts.ts` (`formatAccel`, `formatNvimKeys`, statični redci
+      stabla i tražilice, `buildSections`), `lib/shortcutsState.ts` (čisti stroj stanja), `lib/shortcutsKeys.ts`,
+      `lib/shortcutsController.svelte.ts`, `components/ShortcutsPanel.svelte`; `App.svelte` i `EditorPane.svelte`
+      (kontroler, panel, `keepsFocus` uključuje otvoren pregled); 22 nova teksta `shortcuts*`. Vitest: 109
+      novih testova u tri datoteke (ukupno 34 datoteke, 1392 testa).
+      - `⌘/` i `␣?` otvaraju i zatvaraju; `Esc` zatvara i vraća fokus u terminal (bez Neovima u stablo);
+        klik izvan panela i odlazak fokusa zatvaraju bez vraćanja fokusa, kao kod tražilice. Zato `⌘P`
+        zatvara pregled, a `⌘/` tražilicu.
+      - Odjeljak Neovim: isti prečac u više modova je jedan redak s oznakama modova; prefiks „Pisar: ” se
+        ne prikazuje; ime grupe po najduljem ključu iz `groups` koji je prefiks tipki iza leadera.
+      - Test čuva da svaka tipka navedena za stablo i tražilicu stvarno daje radnju u `keyToAction` /
+        `keyToSearchAction`.
+      - Ako `MenuShortcuts` ne uspije, odjeljak Aplikacija ostaje prazan bez napomene (greška u konzoli).
+      - Kontroler i komponenta nemaju testove (kao ni kod tražilice); izgled, fokus i tipke u pokrenutoj
+        aplikaciji nisu viđeni (ručna provjera).
 - [ ] 7. Dimna provjera i dokumenti (`scripts/smoke.sh`, `DESIGN.md`), zatim `plan-reviewer`
 
 ### Izvan opsega

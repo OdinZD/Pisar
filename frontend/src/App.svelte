@@ -7,6 +7,7 @@
   import { EditorController } from './lib/editorController.svelte'
   import { PreviewController } from './lib/previewController.svelte'
   import { SearchController } from './lib/searchController.svelte'
+  import { ShortcutsController } from './lib/shortcutsController.svelte'
   import { ThemeController } from './lib/themeController.svelte'
   import { TreeController } from './lib/treeController.svelte'
 
@@ -14,6 +15,7 @@
   const tree = new TreeController(editor)
   const preview = new PreviewController()
   const search = new SearchController(editor, tree)
+  const shortcuts = new ShortcutsController(editor, tree)
   const theme = new ThemeController()
 
   // Follows the document Neovim has open, whoever changed it. The effect depends only on
@@ -30,12 +32,14 @@
     const stopEditor = editor.start()
     const stopPreview = preview.start()
     const stopSearch = search.start()
+    const stopShortcuts = shortcuts.start()
     const stopTheme = theme.start()
     return () => {
       stopTree()
       stopEditor()
       stopPreview()
       stopSearch()
+      stopShortcuts()
       stopTheme()
     }
   })
@@ -45,7 +49,7 @@
   <Toolbar {tree} {editor} {preview} />
   <div class="body">
     <Sidebar {tree} {editor} />
-    <EditorPane {editor} {search} {theme} />
+    <EditorPane {editor} {search} {shortcuts} {theme} />
     {#if preview.open}
       <Preview {preview} {editor} {theme} />
     {/if}
