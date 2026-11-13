@@ -663,6 +663,26 @@ func TestReadOnlyReload(t *testing.T) {
 	}
 }
 
+// OpenUserLua reaches the running Neovim: a user.lua that is not there opens as
+// a new buffer with the template in it, and nothing is written.
+func TestUserLua(t *testing.T) {
+	s, _, ctx := started(t)
+	path := filepath.Join(t.TempDir(), "user.lua")
+	if err := s.OpenUserLua(ctx, path, "-- a\n-- b\n"); err != nil {
+		t.Fatal(err)
+	}
+	text, _, err := s.BufferText(ctx, 1<<20)
+	if err != nil || string(text) != "-- a\n-- b\n" {
+		t.Errorf("text = %q, %v; want the template", text, err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Stat after opening = %v, want ErrNotExist", err)
+	}
+	if err := s.OpenUserLua(ctx, "relative/user.lua", ""); err == nil {
+		t.Error("a relative path: no error")
+	}
+}
+
 func TestNoProc(t *testing.T) {
 	check := func(t *testing.T, s *Session, ctx context.Context, want error) {
 		t.Helper()
@@ -670,6 +690,7 @@ func TestNoProc(t *testing.T) {
 			"Save":        s.Save(ctx),
 			"SaveAll":     s.SaveAll(ctx),
 			"OpenFile":    s.OpenFile(ctx, "x"),
+			"OpenUserLua": s.OpenUserLua(ctx, "/x/user.lua", ""),
 			"Write":       s.Write("x"),
 			"Resize":      s.Resize(80, 24),
 			"SetReadOnly": s.SetReadOnly(ctx, "x", true),

@@ -207,6 +207,8 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 		Words:       words,
 		Preview:     renderer,
 		Text:        nvimText(text),
+
+		UserLuaTemplate: text.UserLuaTemplate,
 	})
 	if err != nil {
 		return nil, nil, err

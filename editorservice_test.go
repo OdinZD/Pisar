@@ -189,6 +189,8 @@ func newEd(t *testing.T, mutate ...func(*editorServiceDeps)) *edEnv {
 		Limits:    limits,
 		RunDir:    mk("r"),
 		Text:      nvimText(uiTextFor(t)),
+
+		UserLuaTemplate: uiTextFor(t).UserLuaTemplate,
 	}
 	for _, m := range mutate {
 		m(&deps)
@@ -1268,6 +1270,41 @@ func TestEdSave(t *testing.T) {
 	if got := readString(t, file); !strings.Contains(got, "Hello") {
 		t.Errorf("file after Save = %q", got)
 	}
+}
+
+// The menu item "Uredi user.lua": the file of the home opens in Neovim without
+// being created, and only the user's own save writes it.
+func TestEdOpenUserLua(t *testing.T) {
+	e := startEd(t)
+	file := e.store.Nvim().UserLua
+	if filepath.Dir(file) != e.home {
+		t.Fatalf("user.lua is at %s, want it in the home %s", file, e.home)
+	}
+	from := e.rec.mark()
+	if err := e.svc.OpenUserLua(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	d := e.rec.waitActive(t, from, "user.lua", func(d DocumentActive) bool { return d.Name == "user.lua" })
+	if d.ProjectID != "" || d.Rel != "" {
+		t.Errorf("active = %+v, want no project", d)
+	}
+	if _, err := os.Lstat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("user.lua after opening: %v, want ErrNotExist", err)
+	}
+
+	from = e.rec.mark()
+	if err := e.svc.Save(context.Background()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	e.rec.waitState(t, from, d.Path, false)
+	if got := readString(t, file); got != uiTextFor(t).UserLuaTemplate+"\n" {
+		t.Errorf("user.lua after Save = %q, want the template", got)
+	}
+}
+
+func TestEdOpenUserLuaStopped(t *testing.T) {
+	e := newEd(t)
+	wantCode(t, e.svc.OpenUserLua(context.Background()), codeNotRunning)
 }
 
 func TestEdUnnamed(t *testing.T) {

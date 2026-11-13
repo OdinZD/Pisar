@@ -2,6 +2,9 @@ package nvim
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	nvimrpc "github.com/neovim/go-client/nvim"
@@ -123,3 +126,91 @@ func (p *Process) readUserConfig(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ErrNotRegularFile: the path exists but is not a regular file (a folder, a FIFO...).
+var ErrNotRegularFile = errors.New("nvim: not a regular file")
+
+// OpenUserLua edits the user's own user.lua at path in the current window. It
+// never creates or writes the file: when there is none, the buffer is a new one
+// that holds the lines of template and is 'modified', and the file comes into
+// being only when the user saves it. A file that is there is opened as it is.
+// path must be absolute. template may be empty (nothing is put into the buffer).
+//
+// It refuses with ErrPromptOpen while a prompt is up, and with ErrNotRegularFile
+// (after one line on the message line) when path is a folder, a FIFO or the
+// like: such a path is not opened at all, a FIFO would block Neovim on read.
+func (p *Process) OpenUserLua(ctx context.Context, path, template string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("nvim: open user.lua: path is not absolute: %q", path)
+	}
+	lines := []string{}
+	if template != "" {
+		lines = strings.Split(strings.TrimSuffix(template, "\n"), "\n")
+	}
+	// One chunk, so that nothing can happen between looking at the file and
+	// opening it. The kind of the file is decided by vim.uv.fs_stat, which follows
+	// links like user_file() in init.lua does: a dangling link has no type and
+	// counts as "no file". The failure of :edit travels like in OpenFile (see
+	// there for the structured argument and the :redraw).
+	//
+	// Two guards for a prompt. In a hit-enter prompt or another blocking read a
+	// Lua call is not answered at all (measured with Neovim 0.12), so the mode is
+	// asked first, as Keymaps does. In the question about a swap file the call is
+	// answered, with a buffer that is only half loaded: refuseDuringPrompt of the
+	// chunk sees that.
+	var res string
+	err := p.call(ctx, "open user.lua", func(nv *nvimrpc.Nvim) error {
+		if m, err := nv.Mode(); err != nil {
+			return err
+		} else if m.Blocking {
+			return ErrPromptOpen
+		}
+		return nv.ExecLua(openUserLuaChunk, &res, path, lines, p.texts["nvimUserLuaNotFile"])
+	})
+	if err != nil {
+		return err
+	}
+	if res == "notfile" {
+		return fmt.Errorf("nvim: open user.lua: %w: %s", ErrNotRegularFile, path)
+	}
+	return nil
+}
+
+// openUserLuaChunk is the Lua of OpenUserLua. Arguments: the path, the lines of
+// the template and the text for "not a regular file". It returns "notfile" when
+// it opened nothing for that reason, "" otherwise.
+const openUserLuaChunk = messageLua + promptGuardLua + bufferLua + findLua + `
+		refuseDuringPrompt()
+		local path, lines, notfile = ...
+		local st = vim.uv.fs_stat(path)
+		if st and st.type ~= "file" then
+			if notfile ~= "" then show(notfile) end
+			return "notfile"
+		end
+
+		-- :edit of the file that is already current fails with E37 when it has
+		-- unsaved changes, which is the normal state of a new user.lua that is
+		-- being written. There is nothing to open then.
+		local here = false
+		for _, b in ipairs(buffersOf(path)) do
+			if b == vim.api.nvim_get_current_buf() then here = true end
+		end
+		if not here then
+			local ok, err = pcall(vim.cmd, { cmd = "edit", args = { path }, magic = { file = false, bar = false } })
+			vim.cmd.redraw()
+			if not ok then
+				error(err, 0)
+			end
+		end
+
+		-- The template goes only into an empty buffer for a file that is not there:
+		-- a buffer that already has text (a second open) keeps the user's own.
+		if not st and #lines > 0 then
+			local buf = vim.api.nvim_get_current_buf()
+			local text = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+			if not vim.bo[buf].modified and #text == 1 and text[1] == "" then
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+				vim.api.nvim_win_set_cursor(0, { 1, 0 })
+			end
+		end
+		return ""`

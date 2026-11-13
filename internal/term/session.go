@@ -329,6 +329,16 @@ func (s *Session) OpenFile(ctx context.Context, path string) error {
 	return p.OpenFile(ctx, path)
 }
 
+// OpenUserLua edits the user's user.lua at path in Neovim's current window; see
+// nvim.Process.OpenUserLua for what happens when the file is not there.
+func (s *Session) OpenUserLua(ctx context.Context, path, template string) error {
+	p, err := s.proc()
+	if err != nil {
+		return err
+	}
+	return p.OpenUserLua(ctx, path, template)
+}
+
 // Current returns the current buffer. Without a process it returns an empty
 // Buffer and nil: there is nothing to report, and that is not a failure.
 func (s *Session) Current(ctx context.Context) (nvim.Buffer, error) {

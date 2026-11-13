@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 5 (otvaranje `user.lua`); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 6 (pregled prečaca u frontendu); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2365,7 +2365,25 @@ Nema novih.
         valjan akcelerator. Okida li `⌘/` stavku u pokrenutoj aplikaciji nije viđeno (ručna provjera).
       - Generirani tip povrata je `MenuShortcut[] | null`, iako Go nikad ne vraća nil; frontend s tim računa.
       - Frontend događaje sluša tek od koraka 6.
-- [ ] 5. Otvaranje `user.lua` (`EditorService.OpenUserLua`, stavka menija, rečenica u `CLAUDE.md`)
+- [x] 5. Otvaranje `user.lua`: `Process.OpenUserLua(ctx, path, template)` i `ErrNotRegularFile`
+      (`internal/nvim/userlua.go`), `Session.OpenUserLua`, `EditorService.OpenUserLua(ctx)`, stavka menija
+      Datoteka → „Uredi user.lua” (na kraju, iza razdjelnika, bez prečaca; `menuActions.editUserLua`), tekstovi
+      `menuEditUserLua`, `nvimUserLuaNotFile`, `userLuaTemplate`; rečenica u `CLAUDE.md` („`.md`, `.txt` i
+      `<home>/user.lua` zapisuje sam Neovim na `:w`”). Testovi `TestUserLuaOpen*`, `TestEdOpenUserLua`, menija.
+      - Go datoteku ne stvara, ne piše i ne briše. Bez datoteke Neovim dobije buffer s predloškom
+        (`modified`); datoteka nastaje na `:w` / `⌘S`. Postojeća se otvara bajt-identična, bez predloška.
+      - Predložak je u `strings.json` (`userLuaTemplate`, ne ide u `PISAR_TEXT`); svi primjeri su
+        zakomentirani. Test ga učitava kao `user.lua` kakav jest i s odkomentiranim primjerima.
+      - Folder, FIFO i slično: ništa se ne otvara, jedan redak na liniji poruka, `ErrNotRegularFile`. Viseći
+        link se računa kao da datoteke nema (spremanje tada stvara cilj linka, kako Neovim inače radi).
+      - Hit-enter prompt: Lua poziv tamo ne dobiva odgovor, pa se prvo pita `nv.Mode()` (kao `Keymaps`);
+        upit o swap datoteci hvata `refuseDuringPrompt`. Oba vraćaju `ErrPromptOpen`.
+      - Kad je `user.lua` već trenutni buffer, `:edit` se preskače (s izmjenama bi dao E37).
+      - Prije koraka provjereno: `describePath` i frontend (`activeRowKey`, `followActive`) već podržavaju
+        dokument izvan svih projekata; traka prikazuje ime, stablo ga preskače. Izmjena nije trebala.
+      - Posljedica: buffer s predloškom je `modified`, pa dijalog pri izlasku pita za `user.lua` ako ga
+        korisnik nije spremio ni zatvorio. Uključen pregled prikazuje Lua izvor kao Markdown.
+      - `ErrNotRegularFile` i `ErrPromptOpen` stižu frontendu kao kod `internal` (novi kod nije dodavan).
 - [ ] 6. Pregled prečaca u frontendu (`ShortcutsPanel.svelte`, `lib/shortcuts*.ts`)
 - [ ] 7. Dimna provjera i dokumenti (`scripts/smoke.sh`, `DESIGN.md`), zatim `plan-reviewer`
 

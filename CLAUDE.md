@@ -27,7 +27,7 @@ Plan i faze: `docs/plans/2026-11-11-pisar-design.md`. Radni protokol: `PROMPT.md
 ## Pisanje u korisnikove datoteke (VAŽNO)
 
 - Jedino mjesto koje smije pisati u korisnikove datoteke je `internal/docsafe`.
-  Iznimka: `.md` i `.txt` zapisuje sam Neovim na `:w`.
+  Iznimka: `.md`, `.txt` i `<home>/user.lua` zapisuje sam Neovim na `:w`.
 - `.docx`: uvijek backup prije prvog prepisivanja u sesiji; zapis je atomski
   (temp u istom folderu + fsync + rename, uz prijenos dozvola i xattr-a).
 - `.docx` s komentarima, praćenim izmjenama ili tekstualnim okvirima otvara se samo za čitanje.

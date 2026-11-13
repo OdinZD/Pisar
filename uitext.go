@@ -26,6 +26,7 @@ type uiText struct {
 	MenuCopy              string `json:"menuCopy"`
 	MenuPaste             string `json:"menuPaste"`
 	MenuSearch            string `json:"menuSearch"`
+	MenuEditUserLua       string `json:"menuEditUserLua"`
 	MenuShortcuts         string `json:"menuShortcuts"`
 	MenuFormat            string `json:"menuFormat"`
 	MenuBold              string `json:"menuBold"`
@@ -47,8 +48,9 @@ type uiText struct {
 	QuitUnresponsive      string `json:"quitUnresponsive"`
 	QuitAnyway            string `json:"quitAnyway"`
 	NvimPromptOpen        string `json:"nvimPromptOpen"`
-	NvimFormatFailed      string `json:"nvimFormatFailed"`   // placeholder {reason}
-	NvimUserLuaError      string `json:"nvimUserLuaError"`   // placeholder {reason}
+	NvimFormatFailed      string `json:"nvimFormatFailed"` // placeholder {reason}
+	NvimUserLuaError      string `json:"nvimUserLuaError"` // placeholder {reason}
+	NvimUserLuaNotFile    string `json:"nvimUserLuaNotFile"`
 	NvimSpellMissing      string `json:"nvimSpellMissing"`   // placeholder {languages}
 	NvimEventsRestored    string `json:"nvimEventsRestored"` // placeholder {events}
 	NvimNoFileName        string `json:"nvimNoFileName"`     // placeholder {buffer}
@@ -66,6 +68,9 @@ type uiText struct {
 	NvimMapKeys           string `json:"nvimMapKeys"`
 	NvimMapShortcuts      string `json:"nvimMapShortcuts"`
 	NvimKeysTitle         string `json:"nvimKeysTitle"`
+	// UserLuaTemplate does not start with "nvim" on purpose: it is not a message
+	// but the text of a new user.lua, which Go hands to Neovim as an argument.
+	UserLuaTemplate       string `json:"userLuaTemplate"`
 	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
 	ErrorConflict         string `json:"errorConflict"`
 	ErrorConvertFailed    string `json:"errorConvertFailed"`

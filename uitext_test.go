@@ -161,7 +161,8 @@ func TestUITextNvim(t *testing.T) {
 	got := nvimText(text)
 	for key, placeholder := range map[string]string{
 		"nvimPromptOpen": "", "nvimNoFileName": "{buffer}", "nvimFormatFailed": "{reason}", "nvimUserLuaError": "{reason}",
-		"nvimSpellMissing": "{languages}", "nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}",
+		"nvimUserLuaNotFile": "user.lua",
+		"nvimSpellMissing":   "{languages}", "nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}",
 		"nvimMapRows": "Pisar: ", "nvimMapSpell": "Pisar: ", "nvimMapNumbers": "Pisar: ", "nvimMapTree": "Pisar: ",
 		"nvimMapPreview": "Pisar: ", "nvimMapSearch": "Pisar: ", "nvimMapBold": "Pisar: ", "nvimMapItalic": "Pisar: ",
 		"nvimMapHeading": "Pisar: ", "nvimMapList": "Pisar: ", "nvimMapKeys": "Pisar: ", "nvimMapShortcuts": "Pisar: ", "nvimKeysTitle": "",
@@ -170,7 +171,14 @@ func TestUITextNvim(t *testing.T) {
 			t.Errorf("%s = %q, want a text with %q", key, got[key], placeholder)
 		}
 	}
-	if len(got) != 20 {
-		t.Errorf("nvimText has %d texts, want 20: %v", len(got), got)
+	if len(got) != 21 {
+		t.Errorf("nvimText has %d texts, want 21: %v", len(got), got)
+	}
+	// The template of a new user.lua is data for the open call, not a message.
+	if _, ok := got["userLuaTemplate"]; ok {
+		t.Error("userLuaTemplate is among the texts that go to Neovim")
+	}
+	if !strings.Contains(text.UserLuaTemplate, "user.lua") || strings.TrimSpace(text.MenuEditUserLua) == "" {
+		t.Errorf("userLuaTemplate = %q, menuEditUserLua = %q", text.UserLuaTemplate, text.MenuEditUserLua)
 	}
 }

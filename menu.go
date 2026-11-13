@@ -122,6 +122,7 @@ func menuShortcuts(text uiText) []menuShortcut {
 type menuEditor interface {
 	running() bool
 	Save(ctx context.Context) error
+	OpenUserLua(ctx context.Context) error
 }
 
 // menuActions holds what the own menu items do. It knows nothing about Wails,
@@ -143,6 +144,21 @@ func (a *menuActions) save() {
 	defer cancel()
 	if err := a.editor.Save(ctx); err != nil {
 		slog.Error("menu: save", "err", err)
+	}
+}
+
+// editUserLua opens the user's user.lua in Neovim. Like save, it does nothing
+// without a running Neovim, and a failure is only logged: Neovim has shown the
+// reason to the user (a path that is not a regular file) or there is nothing to
+// show (a prompt is open, the user is answering it).
+func (a *menuActions) editUserLua() {
+	if !a.editor.running() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
+	defer cancel()
+	if err := a.editor.OpenUserLua(ctx); err != nil {
+		slog.Error("menu: open user.lua", "err", err)
 	}
 }
 
@@ -203,6 +219,12 @@ func newMenu(app *application.App, text uiText, a *menuActions, theme string, ch
 	})
 	file.Add(text.MenuSearch).SetAccelerator(accelSearch).OnClick(func(*application.Context) {
 		go a.search()
+	})
+	// No shortcut: it is a rare action, and a key that is free today could be
+	// wanted by a later step.
+	file.AddSeparator()
+	file.Add(text.MenuEditUserLua).OnClick(func(*application.Context) {
+		go a.editUserLua()
 	})
 
 	edit := menu.AddSubmenu(text.MenuEdit)

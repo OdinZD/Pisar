@@ -70,6 +70,17 @@ export function OpenDocument(projectID: string, rel: string): $CancellablePromis
 }
 
 /**
+ * OpenUserLua opens the user's own user.lua in Neovim. The application never
+ * creates the file: when it is not there, Neovim gets a new buffer with a
+ * template in it, and the file comes into being when the user saves it. A path
+ * that is not a regular file is refused (nvim.ErrNotRegularFile, with the
+ * internal code), and Neovim has already told the user why in its message line.
+ */
+export function OpenUserLua(): $CancellablePromise<void> {
+    return $Call.ByID(884763291);
+}
+
+/**
  * Resize tells Neovim the terminal size changed.
  */
 export function Resize(cols: number, rows: number): $CancellablePromise<void> {

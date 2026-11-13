@@ -118,6 +118,11 @@ type editorServiceDeps struct {
 
 	// Text is what Neovim shows to the user, by key (see nvimText).
 	Text map[string]string
+
+	// UserLuaTemplate is the text a new user.lua starts with when the user opens
+	// it before the file exists (uiText.UserLuaTemplate). It is not among Text:
+	// it is not shown as a message, Go hands it to Neovim with the open call.
+	UserLuaTemplate string
 }
 
 // EditorService is the Wails service behind the editor: it runs Neovim, moves
@@ -133,6 +138,8 @@ type EditorService struct {
 	clipboard func(text string) bool
 	session   *term.Session
 	runDir    string // holds the RPC socket; removed by shutdown
+
+	userLuaTemplate string // see editorServiceDeps.UserLuaTemplate
 
 	// words, queue and marks are the Word documents' part (editorwords.go);
 	// queue is nil exactly when words is.
@@ -191,6 +198,8 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 		clipboard: d.Clipboard,
 		runDir:    runDir,
 		words:     d.Words,
+
+		userLuaTemplate: d.UserLuaTemplate,
 	}
 	if d.InitialFile != "" {
 		abs, err := filepath.Abs(d.InitialFile)
@@ -723,6 +732,21 @@ func (e *EditorService) Save(ctx context.Context) error {
 	}
 	if err := e.session.Save(ctx); err != nil {
 		return failEditor("save", err)
+	}
+	return nil
+}
+
+// OpenUserLua opens the user's own user.lua in Neovim. The application never
+// creates the file: when it is not there, Neovim gets a new buffer with a
+// template in it, and the file comes into being when the user saves it. A path
+// that is not a regular file is refused (nvim.ErrNotRegularFile, with the
+// internal code), and Neovim has already told the user why in its message line.
+func (e *EditorService) OpenUserLua(ctx context.Context) error {
+	slog.Debug("service call", "method", "OpenUserLua")
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	if err := e.session.OpenUserLua(ctx, e.paths.UserLua, e.userLuaTemplate); err != nil {
+		return failEditor("open user.lua", err)
 	}
 	return nil
 }
