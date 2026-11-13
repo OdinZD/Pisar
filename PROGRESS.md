@@ -2476,7 +2476,10 @@ privremeni home nema projekata, pa bez toga `␣` nema kome stići (vlasnik je n
   greška, ispražnjen upit i zatvaranje. Prvi upit nakon otvaranja i dalje ne pokazuje poruku dok se čeka.
   Devet novih testova; bez ispravka dva padaju. `task test` (vitest 1403), `task lint`, `task build`: exit 0.
   Izgled u aplikaciji nije viđen.
-- Prazno stanje editora i dalje nudi `␣f`, iako bez Neovima radi samo `⌘P` (starije od faze 8, nije dirano).
+- **Ispravljeno (vlasnik zatražio 2026-11-13):** prazno stanje editora više ne nudi `␣f`, samo `⌘P`. To se
+  stanje prikazuje dok Neovim ne radi, pa njegovo mapiranje nema kome stići (`EmptyState.svelte`, jedan
+  redak; `DESIGN.md`, odlomak „Prazno stanje”). Izmjenu je napravila glavna sesija (ispravak nakon pregleda,
+  dva retka). `task test` (vitest 1409), `task lint`, `task build`: exit 0. Izgled nije viđen.
 
 ### Nije provjereno / poznata ograničenja
 

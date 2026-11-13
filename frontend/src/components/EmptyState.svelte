@@ -32,8 +32,9 @@
     <p class="title">{error ?? strings.emptyOpenDocument}</p>
   {/if}
   {#if error === undefined && !notice}
-    <!-- The keys are the ones DESIGN.md names; the search panel itself is opened by the shell. -->
-    <p class="hints"><span class="key">␣f</span> <span aria-hidden="true">/</span> <span class="key">⌘P</span> {strings.emptySearchHint}</p>
+    <!-- Only ⌘P: this state is shown while Neovim does not run, so ␣f (a mapping of Neovim's) has
+         nobody to reach. The search panel itself is opened by the shell. -->
+    <p class="hints"><span class="key">⌘P</span> {strings.emptySearchHint}</p>
   {/if}
 </div>
 

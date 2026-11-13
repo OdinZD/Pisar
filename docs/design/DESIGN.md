@@ -150,8 +150,8 @@ imena grupa (`vim.g.pisar_groups`) i gašenje (`vim.g.pisar_whichkey = false`) i
 Stablo, Tražilica i Neovim. Redak je tipke (mono) i opis, uz oznaku moda i ime grupe prigušeno. `Esc` ili
 `⌘/` zatvara panel; zatvara ga i klik izvan panela.
 
-**Prazno stanje.** Bez otvorenog dokumenta stupac editora prikazuje „Otvori dokument” i tipke
-`␣f` / `⌘P`.
+**Prazno stanje.** Bez otvorenog dokumenta stupac editora prikazuje „Otvori dokument” i tipku `⌘P`.
+`␣f` se ne nudi: Neovim tada ne radi, pa njegovo mapiranje nema kome stići.
 
 ## Tipkovnica i fokus
 
