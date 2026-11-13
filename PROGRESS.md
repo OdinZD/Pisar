@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 9 — Log datoteka i provjera verzija alata (svi koraci izvedeni 2026-11-13; slijedi `plan-reviewer`, zatim ručna provjera). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: 9 — Log datoteka i provjera verzija alata (svi koraci izvedeni 2026-11-13, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -12,10 +12,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: `plan-reviewer` za fazu 9, zatim vlasnikova ručna provjera
+- Sljedeći korak: vlasnikova ručna provjera faze 9 i odluka o prihvaćanju
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-13 (faza 9 započeta)
+- Zadnja izmjena: 2026-11-13 (faza 9: svi koraci izvedeni, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -2679,6 +2679,26 @@ U `logging.go` su dva `//nolint:errorlint` s obrazloženjem (funkcija sama hoda 
 svaki pogodak, ne prvi); to su prvi `nolint` komentari u repozitoriju.
 
 Nakon ispravaka: `task test` (vitest 1430), `task test:race`, `task lint` (`0 issues.`), `task build`,
+`bash scripts/smoke.sh` (189 `ok`): exit 0.
+
+### Pregled plana (`plan-reviewer`) — krug 2 (2026-11-13): PASS
+
+Bloker je zatvoren. Reviewer je u kopiji repozitorija pokrenuo pravi pandoc na Markdownu koji pada (izlazni
+kod 64, citat retka dokumenta) i potvrdio da tekst ne prolazi kroz `exportFailed`, `apiError`, `failEditor`,
+`ProjectService.fail`, `errors.Join`, `slog.Group` ni `slog.With`. Sve naredbe iz kriterija i `smoke.sh`
+(189 `ok`) ponovno prolaze.
+
+1. Manji, ispravljeno: komentar funkcije `initialFile` u `main.go` ostao je iznad umetnute `pandocReadyOf`.
+2. Zapažanje, ostaje kao ograničenje: redakcija ne hvata grešku koja nije atribut tipa `error` (pretvorena
+   u string, umetnuta u poruku, u `[]error`, ili omotana tako da joj tekst uđe i citiran s `%q`). Reviewer
+   je grepom potvrdio da takvih oblika u produkcijskom kodu nema.
+3. Zapažanje, ispravljeno: `main()` je grešku pokretanja ispisivao još jednom kroz `log.Fatal`, kao poruku
+   koju redakcija ne pokriva. Sada samo izlazi s kodom 1; grešku je već zapisao `run()` (u datoteku i na
+   stderr, kroz redakciju).
+4. Zapažanje: dokaz 5 broji tri pisanja u `openLog`; nakon kruga 1 tamo su i dva `Chmod` poziva (mapa i
+   datoteka loga). `toolversion.go` i dalje ne piše ništa.
+
+Nakon zadnje izmjene (`main.go`): `task test` (vitest 1430), `task lint` (`0 issues.`), `task build`,
 `bash scripts/smoke.sh` (189 `ok`): exit 0.
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)

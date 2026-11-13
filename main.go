@@ -5,7 +5,6 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/url"
 	"os"
@@ -55,8 +54,6 @@ func init() {
 	application.RegisterEvent[string](eventMenuEditUserLua)
 }
 
-// initialFile is the document named on the command line, "" if none. An
-// argument that starts with "-" is a flag (macOS used to add -psn_...), not a file.
 // pandocReadyOf is the check the pandoc guards run, asked of a service that does
 // not exist yet when they are built. Before it exists the answer is nil and it
 // is logged: a tool that cannot be checked is not blocked, like one whose version
@@ -72,6 +69,8 @@ func pandocReadyOf(service func() *EditorService) func(context.Context) error {
 	}
 }
 
+// initialFile is the document named on the command line, "" if none. An
+// argument that starts with "-" is a flag (macOS used to add -psn_...), not a file.
 func initialFile(args []string) string {
 	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
 		return ""
@@ -80,8 +79,11 @@ func initialFile(args []string) string {
 }
 
 func main() {
+	// run has already logged the error, to the file and to stderr, through the
+	// handler that keeps tool output out of the log. Printing it once more with
+	// the log package would put its raw text on stderr.
 	if err := run(); err != nil {
-		log.Fatal(err)
+		os.Exit(1)
 	}
 }
 
