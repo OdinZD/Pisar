@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 8 — Prečaci i which-key (svi koraci izvedeni 2026-11-13; slijedi `plan-reviewer`, zatim ručna provjera). Faza 7 — Teme: svi koraci izvedeni; vlasnik je 2026-11-13 rekao „kreni” za fazu 8 (bez prijavljenih primjedbi na fazu 7; kućica **[R]** ostaje neoznačena dok vlasnik ne potvrdi ručnu provjeru). Faza 6 — Pakiranje: svi koraci
+- Trenutna faza: 8 — Prečaci i which-key (svi koraci izvedeni 2026-11-13, `plan-reviewer` PASS u krugu 1; čeka ručnu provjeru). Faza 7 — Teme: svi koraci izvedeni; vlasnik je 2026-11-13 rekao „kreni” za fazu 8 (bez prijavljenih primjedbi na fazu 7; kućica **[R]** ostaje neoznačena dok vlasnik ne potvrdi ručnu provjeru). Faza 6 — Pakiranje: svi koraci
   izvedeni, čeka vlasnikovu ručnu provjeru. Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
@@ -13,10 +13,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: `plan-reviewer` za fazu 8, zatim vlasnikova ručna provjera faza 6, 7 i 8; ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: vlasnikova ručna provjera faza 6, 7 i 8 i odluka o prihvaćanju; ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-13 (faza 8: svi koraci izvedeni, dokazi upisani)
+- Zadnja izmjena: 2026-11-13 (faza 8: svi koraci izvedeni, `plan-reviewer` PASS; čeka ručnu provjeru)
 
 ## Priprema (2026-11-11)
 
@@ -2384,6 +2384,7 @@ Nema novih.
       - Posljedica: buffer s predloškom je `modified`, pa dijalog pri izlasku pita za `user.lua` ako ga
         korisnik nije spremio ni zatvorio. Uključen pregled prikazuje Lua izvor kao Markdown.
       - `ErrNotRegularFile` i `ErrPromptOpen` stižu frontendu kao kod `internal` (novi kod nije dodavan).
+      - `TestUITextNvim` sada očekuje 21 tekst (`nvimUserLuaNotFile`).
 - [x] 6. Pregled prečaca u frontendu: `lib/shortcuts.ts` (`formatAccel`, `formatNvimKeys`, statični redci
       stabla i tražilice, `buildSections`), `lib/shortcutsState.ts` (čisti stroj stanja), `lib/shortcutsKeys.ts`,
       `lib/shortcutsController.svelte.ts`, `components/ShortcutsPanel.svelte`; `App.svelte` i `EditorPane.svelte`
@@ -2420,6 +2421,23 @@ Nema novih.
 3. `cd frontend && npx vitest run src/lib/shortcuts` → `Test Files 3 passed`, `Tests 109 passed`.
    `bash scripts/smoke.sh` → `smoke: all checks passed` (165 `ok`, 0 `FAIL`), s novim provjerama iz koraka 7.
 
+### Pregled plana (`plan-reviewer`) — krug 1 (2026-11-13): PASS
+
+Bez blokera; reviewer je sam pokrenuo sve automatske kriterije i `scripts/smoke.sh` (165 `ok`). Nalazi:
+
+1. Manji, zabilježen kao ograničenje: uska utrka u stanju `drain` (vidi „Nije provjereno / poznata
+   ograničenja”). Predloženi popravak (držati `drain` samo kad je `key ~= typed`) nije primijenjen: mapiranje
+   koje počinje istom tipkom (`j` → `jzz`) ima `key == typed`, a ostatak bi ipak procurio.
+2. Manji, ispravljen: zastarjeli broj tekstova u napomeni koraka 5 (`TestUITextNvim` 21).
+3. Zapažanje, dodan test: grupa na dvije razine (podtest `deep` u `TestWhichKeyUser`: `+3`, naslov `t`,
+   `+Druga`, naslov `Druga`, izvršeno mapiranje, hvatač skinut).
+4. Zapažanje, dodan test: statični redci stabla i tražilice sada nose očekivane vrste radnje (`actions`),
+   a test provjerava koju radnju tipka daje i smjer kretanja; zamjena `r` i `d` u `treeKeys.ts` ga obara.
+5. Zapažanje, zabilježeno kao ograničenje: „Uredi user.lua” bez pokrenutog Neovima tiho ne radi ništa.
+
+Nakon dodanih testova (bez izmjene produkcijskog ponašanja): `task test` exit 0 (vitest 1394), `task test:race`
+exit 0 (`internal/nvim` 97 s), `task lint` `0 issues.` i svelte-check 0 grešaka, `task build` exit 0.
+
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
 Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-precaci bin/pisar`.
@@ -2454,6 +2472,10 @@ Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-precaci bin/p
   tj. vlastite stavke s prečacem. Ne navodi ni buffer-lokalna ni zadana Neovimova mapiranja.
 - Dok Neovim čeka u promptu, odjeljak Neovim pokazuje napomenu, a u logu ostaje greška (kod `internal`).
 - Nespremljen predložak `user.lua` je izmijenjen buffer: dijalog pri izlasku pita za njega.
+- Uska utrka: ako zahtjev za oblikovanje (`⌘B` u vizualnom modu) stigne u istoj obradi događaja u kojoj
+  tipka zatvara which-key prozor, stanje `drain` može progutati `<Esc>` kojim `pisar_format` izlazi iz
+  vizualnog moda. Nije pokriveno testom.
+- „Uredi user.lua” bez pokrenutog Neovima ne radi ništa i ne javlja ništa (kao `⌘S`).
 
 ### Izvan opsega
 

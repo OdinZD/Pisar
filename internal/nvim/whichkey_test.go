@@ -447,7 +447,7 @@ func TestWhichKey(t *testing.T) {
 // userKeys is the user.lua of the tests with mappings of the user's own.
 const userKeys = `
 vim.g.user_ran = true
-vim.g.pisar_groups = { g = "Git" }
+vim.g.pisar_groups = { g = "Git", ta = "Druga" }
 vim.keymap.set("n", "<leader>gs", function() vim.g.hit = "gs" end, { desc = "status" })
 vim.keymap.set("n", "<leader>gc", function() vim.g.hit = "gc" end, { desc = "commit" })
 vim.keymap.set("n", "<leader>hx", function() vim.g.hit = "hx" end, { desc = "ex" })
@@ -460,6 +460,9 @@ vim.keymap.set("n", "<leader><Down>", function() vim.g.hit = "down" end, { desc 
 vim.keymap.set("n", "<leader>č", function() vim.g.hit = "cc" end, { desc = "letter" })
 vim.keymap.set("n", "<leader>m", function() vim.g.hit = "m" end, { desc = "short" })
 vim.keymap.set("n", "<leader>mm", function() vim.g.hit = "mm" end, { desc = "long" })
+vim.keymap.set("n", "<leader>tas", function() vim.g.hit = "tas" end, { desc = "sdesc" })
+vim.keymap.set("n", "<leader>tac", function() vim.g.hit = "tac" end, { desc = "cdesc" })
+vim.keymap.set("n", "<leader>tb", function() vim.g.hit = "tb" end, { desc = "bdesc" })
 vim.keymap.set("n", "<leader>w", function() vim.g.hit = "w" end, { desc = "a very long description that does not fit in the window at all, not even close to it" })
 `
 
@@ -611,6 +614,30 @@ func TestWhichKeyUser(t *testing.T) {
 			t.Errorf("rows = %q, want m as a group of one", f.Text)
 		}
 		p.write(t, keyEsc)
+		p.hookGone(t, base)
+	})
+
+	// A group inside a group: the first level has no name (the title is the keys
+	// after the leader), the second has one.
+	t.Run("deep", func(t *testing.T) {
+		p.fresh(t, base)
+		f := p.open(t)
+		if !hasRow(f.Text, "t", "+3") {
+			t.Errorf("rows = %q, want t as an unnamed group of all three mappings below it", f.Text)
+		}
+		p.write(t, "t")
+		first := p.waitFloat(t, "the first level", func(f floatInfo) bool { return f.Title == "t" })
+		if !hasRow(first.Text, "a", "+Druga") || !hasRow(first.Text, "b", "bdesc") || len(first.Text) != 2 {
+			t.Errorf("first level rows = %q, want a as +Druga and b with its description", first.Text)
+		}
+		p.write(t, "a")
+		second := p.waitFloat(t, "the second level", func(f floatInfo) bool { return f.Title == "Druga" })
+		if want := []string{"c  cdesc", "s  sdesc"}; !slices.Equal(second.Text, want) {
+			t.Errorf("second level rows = %q, want %q", second.Text, want)
+		}
+		clear()
+		p.write(t, "s")
+		eventually(t, "the mapping two levels down", func() bool { return hit() == "tas" })
 		p.hookGone(t, base)
 	})
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Keymaps } from '../../bindings/Pisar/models'
 import { strings } from '../strings'
 import { keyToSearchAction } from './searchKeys'
-import { buildSections, formatAccel, formatNvimKeys, searchShortcuts, treeShortcuts, type KeySpec } from './shortcuts'
+import { buildSections, formatAccel, formatNvimKeys, searchShortcuts, treeShortcuts, type KeySpec, type StaticShortcut } from './shortcuts'
 import type { DirRow, DocRow, ItemRow, ProjectRow } from './tree'
 import { keyToAction } from './treeKeys'
 
@@ -79,6 +79,38 @@ describe('the fixed rows', () => {
 
   it.each(searchShortcuts.flatMap((s) => s.keys.map((k) => [s.display, k] as const)))('the search panel really handles %s %j', (_display, spec: KeySpec) => {
     expect(keyToSearchAction({ shiftKey: false, ...spec })).not.toBeNull()
+  })
+
+  // The tests above only say that a key does something; these say what. Swapping two keys in
+  // treeKeys.ts (r and d, j and k) must fail here.
+  const moveDelta: Readonly<Record<string, 1 | -1>> = {
+    [strings.shortcutsTreeNext]: 1,
+    [strings.shortcutsTreePrev]: -1,
+    [strings.shortcutsSearchNext]: 1,
+    [strings.shortcutsSearchPrev]: -1,
+  }
+
+  const checkActions = (shortcuts: readonly StaticShortcut<string>[], actionsOf: (spec: KeySpec) => ({ type: string; delta?: number } | null)[]) => {
+    for (const s of shortcuts) {
+      const seen = new Set<string>()
+      for (const spec of s.keys) {
+        for (const action of actionsOf(spec)) {
+          if (action === null) continue
+          expect(s.actions, `${s.display} gives ${action.type}`).toContain(action.type)
+          seen.add(action.type)
+          if (action.type === 'move') expect(action.delta, `${s.display} moves`).toBe(moveDelta[s.label])
+        }
+      }
+      expect([...seen].sort(), `kinds of action of ${s.display}`).toEqual([...s.actions].sort())
+    }
+  }
+
+  it('the tree gives exactly the kinds of action each fixed row names', () => {
+    checkActions(treeShortcuts, (spec) => rowKinds.map((row) => keyToAction({ shiftKey: false, ...spec }, row)))
+  })
+
+  it('the search panel gives exactly the kinds of action each fixed row names', () => {
+    checkActions(searchShortcuts, (spec) => [keyToSearchAction({ shiftKey: false, ...spec })])
   })
 
   it('every row has a key, a display and a label', () => {

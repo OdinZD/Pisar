@@ -3,6 +3,8 @@
 // touches Svelte, Wails or the DOM.
 import type { Keymaps, MenuShortcut } from '../../bindings/Pisar/models'
 import { strings } from '../strings'
+import type { SearchAction } from './searchKeys'
+import type { TreeAction } from './treeKeys'
 
 // ---- accelerators of the menu -----------------------------------------------------------------
 
@@ -95,33 +97,38 @@ export interface KeySpec {
   shiftKey?: boolean
 }
 
-export interface StaticShortcut {
+export interface StaticShortcut<T extends string> {
   /** every key press that does it (j and ↓ do the same) */
   keys: KeySpec[]
   display: string
   label: string
+  /**
+   * The kinds of action the keys give, for the tests only (the panel does not show it). A set, because
+   * some keys do something else on another kind of row: ↵ opens a document and toggles a folder.
+   */
+  actions: readonly T[]
 }
 
 const plain = (key: string): KeySpec => ({ key, metaKey: false, ctrlKey: false, altKey: false })
 
 // Derived from treeKeys.ts and searchKeys.ts; shortcuts.test.ts feeds every KeySpec back into those
 // functions, so the overview cannot list a key that does nothing.
-export const treeShortcuts: readonly StaticShortcut[] = [
-  { keys: [plain('j'), plain('ArrowDown')], display: 'j / ↓', label: strings.shortcutsTreeNext },
-  { keys: [plain('k'), plain('ArrowUp')], display: 'k / ↑', label: strings.shortcutsTreePrev },
-  { keys: [plain('Enter')], display: '↵', label: strings.shortcutsTreeOpen },
-  { keys: [plain('a')], display: 'a', label: strings.shortcutsTreeNew },
-  { keys: [plain('r')], display: 'r', label: strings.shortcutsTreeRename },
-  { keys: [plain('d')], display: 'd', label: strings.shortcutsTreeTrash },
-  { keys: [plain('Escape')], display: 'Esc', label: strings.shortcutsTreeEditor },
+export const treeShortcuts: readonly StaticShortcut<TreeAction['type']>[] = [
+  { keys: [plain('j'), plain('ArrowDown')], display: 'j / ↓', label: strings.shortcutsTreeNext, actions: ['move'] },
+  { keys: [plain('k'), plain('ArrowUp')], display: 'k / ↑', label: strings.shortcutsTreePrev, actions: ['move'] },
+  { keys: [plain('Enter')], display: '↵', label: strings.shortcutsTreeOpen, actions: ['open', 'toggle'] },
+  { keys: [plain('a')], display: 'a', label: strings.shortcutsTreeNew, actions: ['new-document'] },
+  { keys: [plain('r')], display: 'r', label: strings.shortcutsTreeRename, actions: ['rename'] },
+  { keys: [plain('d')], display: 'd', label: strings.shortcutsTreeTrash, actions: ['trash', 'remove-project'] },
+  { keys: [plain('Escape')], display: 'Esc', label: strings.shortcutsTreeEditor, actions: ['focus-editor'] },
 ]
 
-export const searchShortcuts: readonly StaticShortcut[] = [
-  { keys: [plain('ArrowDown')], display: '↓', label: strings.shortcutsSearchNext },
-  { keys: [plain('ArrowUp')], display: '↑', label: strings.shortcutsSearchPrev },
-  { keys: [plain('Enter')], display: '↵', label: strings.shortcutsSearchOpen },
-  { keys: [plain('Escape')], display: 'Esc', label: strings.shortcutsSearchClose },
-  { keys: [{ ...plain('p'), ctrlKey: true }], display: '⌃P', label: strings.shortcutsSearchScope },
+export const searchShortcuts: readonly StaticShortcut<SearchAction['type']>[] = [
+  { keys: [plain('ArrowDown')], display: '↓', label: strings.shortcutsSearchNext, actions: ['move'] },
+  { keys: [plain('ArrowUp')], display: '↑', label: strings.shortcutsSearchPrev, actions: ['move'] },
+  { keys: [plain('Enter')], display: '↵', label: strings.shortcutsSearchOpen, actions: ['open'] },
+  { keys: [plain('Escape')], display: 'Esc', label: strings.shortcutsSearchClose, actions: ['close'] },
+  { keys: [{ ...plain('p'), ctrlKey: true }], display: '⌃P', label: strings.shortcutsSearchScope, actions: ['toggle-scope'] },
 ]
 
 // ---- the sections -----------------------------------------------------------------------------
@@ -206,7 +213,7 @@ function nvimRows(keymaps: Keymaps): Row[] {
   }))
 }
 
-const staticRows = (list: readonly StaticShortcut[]): Row[] =>
+const staticRows = (list: readonly StaticShortcut<string>[]): Row[] =>
   list.map((s) => ({ keys: s.display, label: s.label, modes: [], group: null }))
 
 export function buildSections(input: SectionsInput): Section[] {
