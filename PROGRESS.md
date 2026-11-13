@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 7 — Teme (plan faza 7 i 8 odobren 2026-11-12; koraci izvedeni, čeka ručnu provjeru). Faza 6 — Pakiranje: svi koraci
+- Trenutna faza: 8 — Prečaci i which-key (u tijeku od 2026-11-13). Faza 7 — Teme: svi koraci izvedeni; vlasnik je 2026-11-13 rekao „kreni” za fazu 8 (bez prijavljenih primjedbi na fazu 7; kućica **[R]** ostaje neoznačena dok vlasnik ne potvrdi ručnu provjeru). Faza 6 — Pakiranje: svi koraci
   izvedeni, čeka vlasnikovu ručnu provjeru. Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
@@ -13,10 +13,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faza 6 i 7 i odluka o prihvaćanju; faza 8 kreće nakon „kreni”
+- Sljedeći korak: faza 8, korak 1 (which-key i `timeoutlen`); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-12 (faza 7: svi koraci izvedeni, `plan-reviewer` PASS u krugu 3; čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
 
 ## Priprema (2026-11-11)
 
@@ -2278,11 +2278,72 @@ Automatski dio je dokazan (odjeljak „Dokazi po kriterijima”); zadnja kućica
       zadržava skrol; pokretanje s tamnom temom bez bijelog bljeska; kvačica u meniju točna i nakon
       pokretanja; promjena dok stoji hit-enter prompt primijeni se nakon Entera
 
-## Faza 8 — Prečaci i which-key (odobren plan, čeka prihvaćanje faze 7)
+## Faza 8 — Prečaci i which-key
 
-Odluke vlasnika (2026-11-12): vlastiti which-key u `nvim/init.lua` (bez dodatka), okidač je goli `<Space>` u
-`n` i `x`, tipke hvata `vim.on_key` (Neovim nikad ne blokira); `timeoutlen = 500`; vlastiti prečaci i imena
-grupa (`vim.g.pisar_groups`) u `user.lua`; pregled svih prečaca kao Svelte panel na `⌘/` i `␣?`; stavka
-menija „Uredi user.lua” (Go datoteku ne piše; ako je nema, Neovim otvori nespremljen buffer s predloškom, a
-`CLAUDE.md` dobiva rečenicu da `<home>/user.lua` zapisuje sam Neovim na `:w`). Raspored tipkovnice je sada
-US; `⌥` i dalje slaže znakove. Koraci i kriteriji upisuju se ovdje na početku faze.
+Effort high. Plan je odobren 2026-11-12 (isti plan kao faza 7); vlasnik je 2026-11-13 rekao „kreni”.
+
+### Odluke vlasnika (2026-11-12)
+
+- Vlastiti which-key u `nvim/init.lua` (bez dodatka): okidač je goli `<Space>` u `n` i `x`, tipke hvata
+  `vim.on_key` (Neovim nikad ne blokira); `timeoutlen = 500`.
+- Vlastiti prečaci i imena grupa (`vim.g.pisar_groups`) u `user.lua`; gašenje s `vim.g.pisar_whichkey = false`.
+- Pregled svih prečaca kao Svelte panel na `⌘/` i `␣?`.
+- Stavka menija „Uredi user.lua”: Go datoteku ne piše; ako je nema, Neovim otvori nespremljen buffer s
+  predloškom, a `CLAUDE.md` dobiva rečenicu da `<home>/user.lua` zapisuje sam Neovim na `:w`.
+- Raspored tipkovnice je US; `⌥` i dalje slaže znakove (`macOptionIsMeta: false`), terminal koristi `ev.key`.
+
+### Ovisnosti
+
+Nema novih.
+
+### Izmjereno prije koraka 1 (Neovim 0.12.6, `--headless`, tipke kroz `--remote-send`)
+
+- Goli `<Space>` uz dulja `<Space>…` mapiranja okida se tek nakon `timeoutlen`; brzo utipkan `␣e` ide ravno
+  na `<leader>e` i prozor se ne otvara.
+- `vim.on_key(fn, ns)`: `fn(key, typed)`; povrat `""` odbacuje tipku. Float s `focusable = false`,
+  `noautocmd = true` ne mijenja mod ni trenutni prozor (`mode = n`, `blocking = false`, dva prozora).
+- **Tipka koja je sama mapirana curi.** `j` je u `init.lua` mapiran na `gj`: `on_key` dobije `key = g`,
+  `typed = j`, a zatim `key = j`, `typed = ""`. Ako se nakon prve odbaci samo `g` i skine hvatač, `j` se
+  izvrši (kursor se pomakne). Rješenje: nakon odluke hvatač ostaje u stanju „drain” i odbacuje tipke s
+  `typed == ""` dok ne stigne prva utipkana tipka ili dok ne odradi `vim.schedule` (izmjereno: zakazani
+  poziv dolazi tek kad je ostatak mapiranja potrošen).
+- Izvršavanje: `nvim_feedkeys(brojač .. lhs, "mt", false)` odmah u hvataču. Ubačene tipke stižu s nepraznim
+  `typed` (za Lua mapiranje `key = <t_…>`, `typed = "<Space>j"`), pa prva od njih skida hvatač. Brojač se
+  prenosi (`3␣e` → `vim.v.count == 3` u mapiranju). U vizualnom modu mapiranje se izvrši u modu `v`.
+- `<Down>` iza `␣` stiže kao jedna tipka (`typed` je interni zapis, isti kao `lhsraw`).
+- **Tipka koja je početak nekog mapiranja normalnog moda kasni za `timeoutlen`.** Neovim ima zadana
+  mapiranja `gc`, `gx`, `gr…`, pa `g` utipkan sam stigne hvataču tek nakon 500 ms; `gs` utipkan brzo stiže
+  odmah. Vrijedi za grupe pod `g`, `[`, `]`. Ograničenje se ne zaobilazi (promjena `timeoutlen` dok je
+  prozor otvoren bila bi opasna ako zatvaranje ne uspije).
+- Dvije tipke u istom čitanju (`ej` u jednom slanju): druga se izvrši prije ubačenog mapiranja. U stvarnom
+  radu svaka tipka je zaseban upis u PTY; ograničenje se bilježi, ne rješava.
+- Klik mišem (`<LeftMouse>`) i `:` dok je prozor otvoren stižu kao nepoznata tipka: zatvaraju i gutaju se.
+
+### Koraci
+
+- [ ] 1. Which-key i `timeoutlen` (`nvim/init.lua`, tekstovi, `internal/nvim/whichkey_test.go`, `pisarMaps`)
+- [ ] 2. Boje floata: `PisarKey`, `PisarKeyGroup` u `theme/nvimColorscheme.ts`, tri snimke
+- [ ] 3. Skupljač mapiranja prema Go-u: `_G.pisar_keys`, `Process.Keymaps`, `Session.Keymaps`,
+      `EditorService.Keymaps`, `Limits.MaxKeymaps`
+- [ ] 4. `␣?`, događaji `menu:shortcuts` i `ui:open-shortcuts`, stavka menija „Prečaci tipkovnice” (`⌘/`),
+      `SettingsService.MenuShortcuts`
+- [ ] 5. Otvaranje `user.lua` (`EditorService.OpenUserLua`, stavka menija, rečenica u `CLAUDE.md`)
+- [ ] 6. Pregled prečaca u frontendu (`ShortcutsPanel.svelte`, `lib/shortcuts*.ts`)
+- [ ] 7. Dimna provjera i dokumenti (`scripts/smoke.sh`, `DESIGN.md`), zatim `plan-reviewer`
+
+### Izvan opsega
+
+Which-key za prefikse osim leadera (`g`, `z`, `[`), operator-pending i insert mod; prozor za leader koji
+korisnik promijeni; ponovno učitavanje `user.lua` bez pokretanja; uređivanje prečaca u sučelju; pretraga u
+pregledu; Neovim dodaci; `⌥` kao Meta.
+
+### Kriteriji prihvaćanja
+
+- [ ] `task test`, `task test:race`, `task lint`, `task build` prolaze
+- [ ] `go test ./internal/nvim -run 'TestWhichKey|TestUMap|TestKeymaps|TestUserLuaOpen'` i
+      `go test . -run 'TestMenuShortcutsUnique|TestEdKeymaps|TestEdOpenUserLua'` prolaze
+- [ ] `cd frontend && npx vitest run src/lib/shortcuts` prolazi; `bash scripts/smoke.sh` s tri nove provjere
+- [ ] **[R]** prozor se pojavi oko pola sekunde nakon `␣`, čitljiv u sve tri teme; brzi `␣f` bez treptaja;
+      `⌘S` i `⌘B` rade dok je otvoren; `⌘/` otvara i zatvara pregled iz terminala, stabla i tražilice; klik
+      mišem ili lijepljenje dok je prozor otvoren ne čini ništa neočekivano; „Uredi user.lua” u praznom
+      homeu pokaže predložak, a datoteka nastane tek nakon `⌘S`
