@@ -16,6 +16,7 @@ declare module "@wailsio/runtime" {
             "document:export": main$0.DocumentExport;
             "document:state": main$0.DocumentState;
             "menu:copy": string;
+            "menu:edit-user-lua": string;
             "menu:format": string;
             "menu:new-document": string;
             "menu:search": string;

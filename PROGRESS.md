@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova odluka o popravku „Uredi user.lua” bez Neovima; ručna provjera faza 6, 7 i 8; ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: vlasnikova ručna provjera faza 6, 7 i 8 i odluka o prihvaćanju; ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8: svi koraci izvedeni, `plan-reviewer` PASS; čeka ručnu provjeru)
@@ -2460,10 +2460,16 @@ privremeni home nema projekata, pa bez toga `␣` nema kome stići (vlasnik je n
 
 ### Nalazi vlasnikove ručne provjere (2026-11-13)
 
-- **Otvoreno, čeka odluku vlasnika:** „Uredi user.lua” bez pokrenutog Neovima ne radi ništa, a u praznom
-  homeu Neovim nikad ne radi, pa kriterij „u praznom homeu pokaže predložak” nije ispunjen. Prijedlog:
-  stavka menija šalje događaj frontendu, koji po potrebi pokrene Neovim i zatim pozove `OpenUserLua` (kao kod
-  otvaranja dokumenta). To mijenja ugovor iz plana (meni više ne zove Go izravno).
+- **Ispravljeno (vlasnik odobrio 2026-11-13):** „Uredi user.lua” bez pokrenutog Neovima nije radio ništa, a
+  u praznom homeu Neovim nikad ne radi, pa kriterij „u praznom homeu pokaže predložak” nije bio ispunjen.
+  Sada stavka menija samo šalje događaj `menu:edit-user-lua`; `EditorController` po potrebi pokrene Neovim
+  (isti put kao otvaranje dokumenta: `OpenRequest.userLua`, zahtjev čeka u `pendingOpen`) i zatim pozove
+  `EditorService.OpenUserLua()`, pa da fokus terminalu. **Promjena ugovora iz plana:** meni više ne zove Go
+  izravno, `OpenUserLua` je uklonjen iz `menuEditor`. Tri testa menija iz koraka 5 (koji su tvrdili staro
+  ponašanje) zamijenjena su jednim tabličnim za novo; šest novih testova u `editorState.test.ts`.
+  `task test` (vitest 1409), `go test -race -count=1 .`, `task lint`, `task build`, `scripts/smoke.sh`
+  (165 `ok`): exit 0. Klik na stavku i cijeli put u pokrenutoj aplikaciji nisu viđeni (kontroler nema
+  testove).
 - **Ispravljeno:** u tražilici je poruka „Nema dokumenata za taj upit.” nestajala pri svakom utipkanom znaku
   i vraćala se s odgovorom, pa je panel skakao (greška iz faze 4). `searchState.ts` sada pamti da je zadnji
   odgovor bio prazan (`emptyAnswer`) i poruka ostaje dok se čeka sljedeći; briše je odgovor s pogocima,
@@ -2491,7 +2497,6 @@ privremeni home nema projekata, pa bez toga `␣` nema kome stići (vlasnik je n
 - Uska utrka: ako zahtjev za oblikovanje (`⌘B` u vizualnom modu) stigne u istoj obradi događaja u kojoj
   tipka zatvara which-key prozor, stanje `drain` može progutati `<Esc>` kojim `pisar_format` izlazi iz
   vizualnog moda. Nije pokriveno testom.
-- „Uredi user.lua” bez pokrenutog Neovima ne radi ništa i ne javlja ništa (kao `⌘S`).
 
 ### Izvan opsega
 

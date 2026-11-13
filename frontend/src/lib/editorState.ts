@@ -67,11 +67,17 @@ export interface DocumentModified {
   modified: boolean
 }
 
-/** A request to open a document. `id` lets the controller settle the promise it handed to the caller. */
+/**
+ * A request to open a document. `id` lets the controller settle the promise it handed to the caller.
+ * `userLua` asks for the user's own user.lua instead of a project document; `projectId` and `rel` are
+ * then ''. Every transition treats it like any other request, and with an empty `rel` it is not a
+ * Word document (see isWordRel), so it never marks a conversion.
+ */
 export interface OpenRequest {
   id: number
   projectId: string
   rel: string
+  userLua?: true
 }
 
 export interface EditorState {

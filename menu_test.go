@@ -16,10 +16,6 @@ type fakeMenuEditor struct {
 	saveErr   error
 	saves     int
 	gotDL     bool
-
-	openErr error
-	opens   int
-	openDL  bool
 }
 
 func (f *fakeMenuEditor) running() bool { return f.isRunning }
@@ -28,12 +24,6 @@ func (f *fakeMenuEditor) Save(ctx context.Context) error {
 	f.saves++
 	_, f.gotDL = ctx.Deadline()
 	return f.saveErr
-}
-
-func (f *fakeMenuEditor) OpenUserLua(ctx context.Context) error {
-	f.opens++
-	_, f.openDL = ctx.Deadline()
-	return f.openErr
 }
 
 type menuEmit struct{ name, data string }
@@ -76,38 +66,28 @@ func TestMenuSaveNotRunning(t *testing.T) {
 	}
 }
 
+// The item only emits: the frontend starts Neovim when needed, so the result is
+// the same whether the editor runs or not, and the menu calls nothing on it.
 func TestMenuEditUserLua(t *testing.T) {
-	var out []menuEmit
-	ed := &fakeMenuEditor{isRunning: true}
-	a := newActions(ed, &out)
-	a.editUserLua()
-	if ed.opens != 1 {
-		t.Errorf("OpenUserLua called %d times, want 1", ed.opens)
-	}
-	if !ed.openDL {
-		t.Error("OpenUserLua got a context without a deadline")
-	}
-	if len(out) != 0 || ed.saves != 0 {
-		t.Errorf("emitted %v, saved %d times; want nothing", out, ed.saves)
-	}
-}
-
-func TestMenuEditUserLuaError(t *testing.T) {
-	var out []menuEmit
-	ed := &fakeMenuEditor{isRunning: true, openErr: errors.New("not a regular file")}
-	a := newActions(ed, &out)
-	a.editUserLua() // must neither panic nor retry, and tells the frontend nothing
-	if ed.opens != 1 || len(out) != 0 {
-		t.Errorf("OpenUserLua called %d times, emitted %v; want 1 and nothing", ed.opens, out)
-	}
-}
-
-func TestMenuEditUserLuaNotRunning(t *testing.T) {
-	ed := &fakeMenuEditor{}
-	a := newActions(ed, new([]menuEmit))
-	a.editUserLua()
-	if ed.opens != 0 {
-		t.Errorf("OpenUserLua called %d times without a running editor", ed.opens)
+	for _, c := range []struct {
+		name    string
+		running bool
+	}{
+		{"editor running", true},
+		{"editor not running", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var out []menuEmit
+			ed := &fakeMenuEditor{isRunning: c.running}
+			a := newActions(ed, &out)
+			a.editUserLua()
+			if len(out) != 1 || out[0] != (menuEmit{"menu:edit-user-lua", ""}) {
+				t.Errorf("menuEmit %v", out)
+			}
+			if ed.saves != 0 {
+				t.Errorf("Save called %d times", ed.saves)
+			}
+		})
 	}
 }
 

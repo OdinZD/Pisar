@@ -29,6 +29,11 @@ export const DocumentState = "document:state";
 export const MenuCopy = "menu:copy";
 
 /**
+ * Name of the custom event "menu:edit-user-lua".
+ */
+export const MenuEditUserLua = "menu:edit-user-lua";
+
+/**
  * Name of the custom event "menu:format".
  */
 export const MenuFormat = "menu:format";

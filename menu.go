@@ -28,6 +28,11 @@ const eventMenuShortcuts = "menu:shortcuts"
 // shortcut must do nothing while the focus is in an input field.
 const eventMenuFormat = "menu:format"
 
+// eventMenuEditUserLua asks the frontend to open the user's user.lua. Payload "".
+// The frontend decides because only it can start Neovim (starting needs the size
+// of the terminal), and in an empty home Neovim has never run.
+const eventMenuEditUserLua = "menu:edit-user-lua"
+
 // The formatting actions of the Formatting menu, as EditorService.Format
 // names them.
 const (
@@ -122,7 +127,6 @@ func menuShortcuts(text uiText) []menuShortcut {
 type menuEditor interface {
 	running() bool
 	Save(ctx context.Context) error
-	OpenUserLua(ctx context.Context) error
 }
 
 // menuActions holds what the own menu items do. It knows nothing about Wails,
@@ -147,19 +151,10 @@ func (a *menuActions) save() {
 	}
 }
 
-// editUserLua opens the user's user.lua in Neovim. Like save, it does nothing
-// without a running Neovim, and a failure is only logged: Neovim has shown the
-// reason to the user (a path that is not a regular file) or there is nothing to
-// show (a prompt is open, the user is answering it).
+// editUserLua hands the decision to the frontend (see eventMenuEditUserLua): it
+// starts Neovim if needed and then opens the file through EditorService.
 func (a *menuActions) editUserLua() {
-	if !a.editor.running() {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
-	defer cancel()
-	if err := a.editor.OpenUserLua(ctx); err != nil {
-		slog.Error("menu: open user.lua", "err", err)
-	}
+	a.emit(eventMenuEditUserLua, "")
 }
 
 // copy hands the decision to the frontend (see eventMenuCopy).
@@ -221,10 +216,11 @@ func newMenu(app *application.App, text uiText, a *menuActions, theme string, ch
 		go a.search()
 	})
 	// No shortcut: it is a rare action, and a key that is free today could be
-	// wanted by a later step.
+	// wanted by a later step. Not started with "go": it only emits, like the
+	// Formatting items below.
 	file.AddSeparator()
 	file.Add(text.MenuEditUserLua).OnClick(func(*application.Context) {
-		go a.editUserLua()
+		a.editUserLua()
 	})
 
 	edit := menu.AddSubmenu(text.MenuEdit)

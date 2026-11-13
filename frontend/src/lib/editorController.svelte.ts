@@ -3,7 +3,7 @@
 // the Go service. Starting Neovim itself is done by Terminal.svelte (it needs the terminal's size);
 // it reports back through terminalStarted() / terminalFailed().
 import { Events } from '@wailsio/runtime'
-import { DocumentActive, DocumentExport, DocumentState, MenuCopy, MenuFormat, NvimExit } from '../../bindings/events'
+import { DocumentActive, DocumentExport, DocumentState, MenuCopy, MenuEditUserLua, MenuFormat, NvimExit } from '../../bindings/events'
 import * as service from '../../bindings/Pisar/editorservice'
 import { errorCode, type ErrorCode } from './apiError'
 import { performCopy } from './copyAction'
@@ -100,6 +100,7 @@ export class EditorController {
       }),
       Events.On(MenuCopy, () => void this.#copyFromMenu()),
       Events.On(MenuFormat, (ev) => this.#formatFromMenu(ev.data)),
+      Events.On(MenuEditUserLua, () => void this.#editUserLuaFromMenu()),
     ]
     // The application was started with a document: Go opens it after the first successful Start,
     // so the editor only has to run.
@@ -156,6 +157,18 @@ export class EditorController {
   }
 
   /**
+   * Opens the user's user.lua, starting the editor first if it does not run: the same path as open(),
+   * so the request waits while Neovim starts. Resolves when Neovim has the file (or when a newer
+   * request replaced this one); rejects like open().
+   */
+  openUserLua(): Promise<void> {
+    const id = ++this.#nextId
+    const done = new Promise<void>((resolve, reject) => this.#waiters.set(id, { resolve, reject }))
+    this.#apply(requestOpen(this.#state, { id, projectId: '', rel: '', userLua: true }))
+    return done
+  }
+
+  /**
    * "Spremi kao kopiju" for the active Word document. The service opens a native dialog; closing it is
    * not an error. A real failure goes to the toolbar. Afterwards the terminal gets the keyboard back.
    */
@@ -194,6 +207,19 @@ export class EditorController {
     }
   }
 
+  // "Uredi user.lua". Go only emits the event: Neovim can be started only from here (starting needs the
+  // size of the terminal), and in an empty home it has never run. The menu does not move the DOM focus
+  // and the user asked to edit, so the terminal gets the keyboard once the file is open. open() settles
+  // a request replaced by a newer one as success, so a rejection here is always a real failure.
+  async #editUserLuaFromMenu(): Promise<void> {
+    try {
+      await this.openUserLua()
+      this.focusTerminal()
+    } catch (err) {
+      console.error('opening user.lua failed', err)
+    }
+  }
+
   // Cmd+B / Cmd+I. Only the terminal may be formatted from: in an input field the shortcut must leave
   // the document alone. The call goes through the terminal's ordered queue, so text typed just before
   // is in Neovim before the marks. A failure is only logged: an action that does not apply (a read-only
@@ -225,7 +251,8 @@ export class EditorController {
   async #execute(request: OpenRequest): Promise<void> {
     this.#state = openExecuting(this.#state, request)
     try {
-      await service.OpenDocument(request.projectId, request.rel)
+      if (request.userLua) await service.OpenUserLua()
+      else await service.OpenDocument(request.projectId, request.rel)
       this.#state = openSettled(this.#state, request.id)
       this.#settle(request.id)
     } catch (err) {

@@ -344,3 +344,50 @@ describe('SaveCopy', () => {
     expect(copyStarted(copyFinished(copyStarted(initialState), 'conflict')).copyError).toBeNull()
   })
 })
+
+describe('user.lua requests', () => {
+  const lua: OpenRequest = { id: 10, projectId: '', rel: '', userLua: true }
+
+  it('is kept in idle, starts the editor, and comes back after success', () => {
+    const t = requestOpen(initialState, lua)
+    expect(t.run).toBeNull()
+    expect(t.state.phase).toBe('starting')
+    expect(t.state.pendingOpen).toEqual(lua)
+    const done = startSucceeded(t.state)
+    expect(done.run).toEqual(lua)
+    expect(done.state.phase).toBe('running')
+    expect(done.state.pendingOpen).toBeNull()
+  })
+
+  it('runs at once while the editor runs', () => {
+    const t = requestOpen(inPhase('running'), lua)
+    expect(t.run).toEqual(lua)
+    expect(t.state.pendingOpen).toBeNull()
+  })
+
+  it('replaces an older document request and is replaced by a newer one', () => {
+    const first = requestOpen(initialState, req(1))
+    const second = requestOpen(first.state, lua)
+    expect(second.state.pendingOpen).toEqual(lua)
+    expect(second.dropped).toEqual([{ request: req(1), reason: 'superseded' }])
+    const third = requestOpen(second.state, req(2))
+    expect(third.state.pendingOpen).toEqual(req(2))
+    expect(third.dropped).toEqual([{ request: lua, reason: 'superseded' }])
+  })
+
+  it('is dropped when Start fails', () => {
+    const t = startFailed(requestOpen(initialState, lua).state, 'internal')
+    expect(t.dropped).toEqual([{ request: lua, reason: 'start-failed' }])
+    expect(t.state.pendingOpen).toBeNull()
+  })
+
+  it('is dropped when Neovim exits before it runs', () => {
+    const t = nvimExited(requestOpen(initialState, lua).state)
+    expect(t.dropped).toEqual([{ request: lua, reason: 'exited' }])
+    expect(t.state.pendingOpen).toBeNull()
+  })
+
+  it('does not count as the opening of a Word document', () => {
+    expect(openExecuting(initialState, lua)).toBe(initialState)
+  })
+})

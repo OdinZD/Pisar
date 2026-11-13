@@ -52,6 +52,7 @@ func init() {
 	application.RegisterEvent[string](eventMenuSearch)
 	application.RegisterEvent[string](eventOpenShortcuts)
 	application.RegisterEvent[string](eventMenuShortcuts)
+	application.RegisterEvent[string](eventMenuEditUserLua)
 }
 
 // initialFile is the document named on the command line, "" if none. An
