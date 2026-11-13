@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"Pisar/internal/config"
 )
@@ -49,10 +48,13 @@ func (v toolVersion) part(i int) int {
 	return 0
 }
 
-// versionInLine finds the first dotted number that starts the line or follows
-// white space, with an optional "v" before it. That covers "NVIM v0.12.6" and
-// "pandoc 3.13", and skips digits glued to a name or a path.
-var versionInLine = regexp.MustCompile(`(?:^|\s)v?(\d+(?:\.\d+)*)`)
+// versionInLine matches a line that is the tool's name, white space, an
+// optional "v" and a dotted number: "NVIM v0.12.6", "pandoc 3.13",
+// "pandoc.exe 3.2". The number must come right after the name: a wrapper that
+// prints "pandoc shim 1 for 3.13" holds no version, and reading the 1 as one
+// would lock pandoc out. Leading white space is tolerated (a launcher may
+// indent), the name is a single word.
+var versionInLine = regexp.MustCompile(`^\s*\S+\s+v?(\d+(?:\.\d+)*)`)
 
 // parseToolVersion reads the version from the first line of "<tool> --version":
 // "NVIM v0.12.6", "NVIM v0.13.0-dev-12+gabc" (0.13.0), "pandoc 3.13", "pandoc 3.1.11.1".
@@ -87,10 +89,6 @@ func parseVersionNumber(s string) (toolVersion, bool) {
 	return v, true
 }
 
-// versionWaitDelay bounds how long Wait lingers on the pipes after the process
-// was killed. Not a user-facing limit: the caller's context is the real deadline.
-const versionWaitDelay = time.Second
-
 // probeVersion runs "<path> --version" (path is absolute, already resolved) with env and returns the
 // version of its first line. It is bounded by ctx. An exit code other than 0, no output, an
 // unreadable first line or a deadline is an error.
@@ -103,7 +101,7 @@ func probeVersion(ctx context.Context, path string, env []string) (toolVersion, 
 	// the tool; internal/nvim does the same for the editor.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return killGroup(cmd) }
-	cmd.WaitDelay = versionWaitDelay
+	cmd.WaitDelay = config.VersionWaitDelay
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("probe %s: %w", filepath.Base(path), err)
@@ -131,7 +129,7 @@ func probeVersion(ctx context.Context, path string, env []string) (toolVersion, 
 	v, ok := parseToolVersion(string(data))
 	if !ok {
 		first, _, _ := strings.Cut(string(data), "\n")
-		return nil, fmt.Errorf("probe %s: no version in %q", filepath.Base(path), truncate(first, 80))
+		return nil, fmt.Errorf("probe %s: no version in %q", filepath.Base(path), truncate(first, versionLineShown))
 	}
 	return v, nil
 }
@@ -147,6 +145,10 @@ func killGroup(cmd *exec.Cmd) error {
 	}
 	return nil
 }
+
+// versionLineShown is how many characters of an unreadable first line the error
+// message quotes. It shapes the message, not the behaviour.
+const versionLineShown = 80
 
 func truncate(s string, n int) string {
 	if r := []rune(s); len(r) > n {

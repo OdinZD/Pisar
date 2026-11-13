@@ -2556,9 +2556,9 @@ Nema novih.
       - Odstupanje od plana: prvi zapis nema verziju aplikacije (u Go kodu je nema); nosi home, putanju
         loga, izvršnu datoteku i PID. Dodan je i zapis `pisar: stopped with an error` kad `run()` vrati
         grešku, da se neuspjelo pokretanje iz Findera vidi u logu.
-      - Pregled svih `slog` poziva: nijedan ne bilježi tekst dokumenta, izlaz terminala ni clipboard.
-        Bilježe se putanje, duljine, kodovi i greške; `editorservice.go` bilježi i prvi redak greške iz
-        `user.lua`.
+      - Pregled svih `slog` poziva u ovom koraku zaključio je da nijedan ne bilježi tekst dokumenta. **To je
+        bilo netočno:** greška neuspjele pretvorbe nosi pandocov stderr, koji citira redak dokumenta (našao
+        `plan-reviewer`, vidi „Pregled plana — krug 1”). Ispravljeno redakcijom na izlazu loga.
       - `scripts/smoke.sh`: provjera sadržaja privremenog homea sada očekuje i mapu `logs`
         (`config.json logs nvim spell`). Nakon izmjene `smoke: all checks passed` (165 `ok`); prava
         `~/Library/Application Support/Pisar` nema mapu `logs`.
@@ -2630,8 +2630,8 @@ Nema novih.
       stanja pokrivaju i prestar alat. Skripta sada ima 189 `ok` provjera.
       - Mutacijske provjere: lažni `nvim` s 0.12.6 obara pet provjera prolaza „old nvim”; očekivanje
         dozvola 644 obara samo provjeru dozvola.
-      - Provjera „nema teksta dokumenta u logu” prolazi na današnjem kodu; nije dokazano da bi uhvatila
-        curenje (nema mjesta u kodu koje bi ga proizvelo).
+      - Provjera „nema teksta dokumenta u logu” u dimnoj provjeri ne hvata curenje kroz grešku pretvorbe,
+        jer u njoj nijedna pretvorba ne padne; to čuvaju jedinični testovi redakcije (`logging_test.go`).
 
 ### Dokazi po kriterijima (2026-11-13, nakon zadnjeg commita)
 
@@ -2646,6 +2646,40 @@ Nema novih.
    `~/Library/Application Support/Pisar` nakon toga: `backups config.json nvim spell work` (bez `logs`).
 5. `grep -nE 'os\.(Create|WriteFile|Remove|OpenFile|Rename|MkdirAll)' logging.go toolversion.go` → tri
    pogotka, sva u `openLog` (`MkdirAll` mape loga, `Rename` u `.1`, `OpenFile` loga); `toolversion.go` ništa.
+
+### Pregled plana (`plan-reviewer`) — krug 1 (2026-11-13): FAIL, jedan bloker; ispravljeno
+
+Svih šest koraka odgovara ugovoru, automatski kriteriji i `smoke.sh` prolaze, nijedan test nije oslabljen.
+
+1. **Bloker, ispravljeno:** tekst dokumenta mogao je dospjeti u trajni log. `convert.ToolError` i
+   `preview.ToolError` u tekst greške ugrađuju pandocov stderr, a pandoc citira redak dokumenta (pokus
+   reviewera: neispravno YAML zaglavlje → `2 | title: "Tajni naslov 9911`). Bilježili su je `exportFailed`
+   i `runOpen` (`editorwords.go`), `quit.go`, te uz debug `failEditor` i `ProjectService.fail`. Greška je
+   starija od faze 9, ali tek ova faza čini log trajnim. Ispravak je na jednom mjestu, na izlazu loga:
+   `redactToolOutput` kao `ReplaceAttr` handlera (`logging.go`) svakoj grešci koja u lancu ima `ToolError`
+   s izlazom zamijeni taj dio oblikom „… failed: <uzrok> [tool output omitted]”; omotači zadržavaju svoj
+   tekst; vrijedi za sve razine, datoteku i stderr. Mjesta poziva nisu dirana. Testovi: 11 oblika greške ×
+   oba izlaza, sve razine, stvarni `exportFailed` i `failEditor`; bez `ReplaceAttr` pada 32 podtesta.
+   Granica: redigiraju se atributi tipa `error`; greška pretvorena u tekst prije poziva loga ne bi bila
+   uhvaćena (takvog poziva danas nema: provjereno grepom).
+2. Manji, ispravljeno: dozvole 0600 / 0700 sada se postavljaju i na postojeću datoteku i mapu loga
+   (`Chmod` u `openLog`). Test `TestOpenLogKeepsExistingMode`, koji je tvrdio suprotno po krivoj uputi iz
+   briefa, zamijenjen je s `TestOpenLogRestrictsExistingModes`.
+3. Zapažanje, ispravljeno: `LogDirPerm`, `LogFilePerm` i `VersionWaitDelay` su u `internal/config`. Broj
+   znakova retka verzije u poruci greške (80) ostaje lokalna konstanta jer oblikuje poruku, ne ponašanje.
+4. Zapažanje, ispravljeno: parser verzije traži broj odmah iza imena alata (prve riječi retka), pa omotač
+   koji u prvom retku ima neki drugi broj nije „prestar”, nego „nečitljiv” (ne blokira).
+5. Zapažanje, zabilježeno kao ograničenje: Neovim nasljeđuje korisnikov `NVIM_LOG_FILE` ako je postavljen
+   (i pri provjeri verzije i pri pokretanju editora, od faze 0).
+6. Zapažanje, ispravljeno: `pandocReady` u `main.go` više ne može pasti na nil-pokazivaču ako ga nešto
+   pozove prije nego servis postoji (`pandocReadyOf`; tada ne blokira i upozori u logu).
+7. Zapažanje, već zabilježeno: zapis o alatima u logu nastaje tek kad frontend pozove `Tools`.
+
+U `logging.go` su dva `//nolint:errorlint` s obrazloženjem (funkcija sama hoda stablom grešaka i treba
+svaki pogodak, ne prvi); to su prvi `nolint` komentari u repozitoriju.
+
+Nakon ispravaka: `task test` (vitest 1430), `task test:race`, `task lint` (`0 issues.`), `task build`,
+`bash scripts/smoke.sh` (189 `ok`): exit 0.
 
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
@@ -2670,6 +2704,10 @@ Nema novih.
 - Kod otvaranja `.docx` s prestarim pandocom radna kopija nakratko nastane pa se odbaci.
 - Poruka greške nakon odbijenog pokretanja (`nvim-too-old`) ne nosi brojeve verzija; nosi ih obavijest
   praznog stanja.
+- Neovim nasljeđuje `NVIM_LOG_FILE` iz okoline ako je postavljen; tada bi svoj log pisao tamo, izvan
+  Pisarovog homea. Pri pokretanju iz Findera te varijable nema.
+- Redakcija loga pokriva atribute tipa `error`; tekst greške umetnut u poruku ili pretvoren u string prije
+  poziva loga ne bi bio redigiran (danas takvog poziva nema).
 
 ### Izvan opsega
 

@@ -215,6 +215,18 @@ const (
 // room for that and stops a tool that prints without end from filling memory.
 const MaxVersionOutput = 16 << 10
 
+// LogDirPerm and LogFilePerm are the permissions of the log folder and file. The log is
+// Pisar's own file (not the user's), and it may name documents, so only the owner reads it.
+const (
+	LogDirPerm  os.FileMode = 0o700
+	LogFilePerm os.FileMode = 0o600
+)
+
+// VersionWaitDelay bounds how long Wait lingers on the pipes of "<tool> --version"
+// after the process was killed. Not a user-facing limit: the caller's context is
+// the real deadline.
+const VersionWaitDelay = time.Second
+
 // Folders under the home. Both hold data Pisar owns, never the user's documents.
 const (
 	// workDirName holds one working copy per open Word document.

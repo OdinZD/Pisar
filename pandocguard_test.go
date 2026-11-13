@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +209,31 @@ func TestEdToolsPandocReady(t *testing.T) {
 				t.Errorf("code = %s", codeOf(err))
 			}
 		})
+	}
+}
+
+// The guards are built before the service exists; a check that comes that early
+// does not block and does not panic, and says so in the log.
+func TestEdToolsPandocReadyBeforeTheService(t *testing.T) {
+	restoreDefaultLogger(t)
+	var logged bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+
+	var svc *EditorService
+	ready := pandocReadyOf(func() *EditorService { return svc })
+	if err := ready(context.Background()); err != nil {
+		t.Fatalf("ready before the service = %v, want nil", err)
+	}
+	if !strings.Contains(logged.String(), "before the editor service was built") {
+		t.Errorf("the early call was not logged: %q", logged.String())
+	}
+
+	// Once the service exists the check is its own.
+	e, _ := edTools(t, "NVIM v0.12.6", "pandoc 3.9")
+	svc = e.svc
+	var oe *toolTooOldError
+	if err := ready(context.Background()); !errors.As(err, &oe) {
+		t.Errorf("ready with an old pandoc = %v, want toolTooOldError", err)
 	}
 }
 

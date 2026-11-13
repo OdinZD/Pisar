@@ -57,6 +57,21 @@ func init() {
 
 // initialFile is the document named on the command line, "" if none. An
 // argument that starts with "-" is a flag (macOS used to add -psn_...), not a file.
+// pandocReadyOf is the check the pandoc guards run, asked of a service that does
+// not exist yet when they are built. Before it exists the answer is nil and it
+// is logged: a tool that cannot be checked is not blocked, like one whose version
+// cannot be read, and a call that comes too early must not panic on a nil pointer.
+func pandocReadyOf(service func() *EditorService) func(context.Context) error {
+	return func(ctx context.Context) error {
+		e := service()
+		if e == nil {
+			slog.Warn("pisar: pandoc was used before the editor service was built; its version is not checked")
+			return nil
+		}
+		return e.pandocReady(ctx)
+	}
+}
+
 func initialFile(args []string) string {
 	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
 		return ""
@@ -181,7 +196,7 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	// service is built after the things that need the answer, so it is read
 	// through the variable, like app above; nothing converts before Run.
 	var editor *EditorService
-	pandocReady := func(ctx context.Context) error { return editor.pandocReady(ctx) }
+	pandocReady := pandocReadyOf(func() *EditorService { return editor })
 	words, err := newWordDocs(wordDocsDeps{
 		Convert: pandocGuardedConverter{inner: converter, ready: pandocReady},
 		Examine: func(ctx context.Context, path string) (convert.Report, error) {
