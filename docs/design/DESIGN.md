@@ -152,6 +152,9 @@ Stablo, Tražilica i Neovim. Redak je tipke (mono) i opis, uz oznaku moda i ime 
 
 **Prazno stanje.** Bez otvorenog dokumenta stupac editora prikazuje „Otvori dokument” i tipku `⌘P`.
 `␣f` se ne nudi: Neovim tada ne radi, pa njegovo mapiranje nema kome stići.
+Kad `nvim` ili `pandoc` nedostaje ili je prestar, prazno stanje umjesto toga pokazuje što nije u redu
+(za prestar alat i koju verziju Pisar treba) te naredbu za instalaciju ili nadogradnju (`brew install` ili
+`brew upgrade`), uz gumb „Provjeri ponovno”.
 
 ## Tipkovnica i fokus
 
@@ -177,4 +180,4 @@ Stablo, Tražilica i Neovim. Redak je tipke (mono) i opis, uz oznaku moda i ime 
 ## Stanja koja treba nacrtati
 
 Izmijenjeno / spremljeno · samo za čitanje s razlogom · konverzija u tijeku · greška konverzije ·
-dijalog konflikta · prazno stanje · nedostaje `nvim` ili `pandoc` · tražilica bez rezultata.
+dijalog konflikta · prazno stanje · nedostaje `nvim` ili `pandoc`, ili je prestar · tražilica bez rezultata.

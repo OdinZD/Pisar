@@ -11,7 +11,11 @@
 # options, Croatian spelling, the formatting keys and the user's own words
 # without a user.lua, then with a valid one and with one that fails. One more
 # run, with a remembered dark theme (dracula) in a version 2 config.json, proves
-# that the choice travels from the file to the colours Neovim shows.
+# that the choice travels from the file to the colours Neovim shows. The log file
+# the application always writes is checked in the first run (where it is, its
+# permissions, the start record, the tool records, the same record on stderr, and
+# that no document text is in it), and one short run with a fake Neovim that
+# reports version 0.11.0 proves that a Neovim older than the minimum is refused.
 #   bash scripts/smoke.sh
 #
 # No keys or clicks are sent: Neovim is driven through its socket. Everything temporary lives in one mktemp
@@ -34,6 +38,7 @@ fail() {
   printf 'FAIL %s\n' "$1"
   FAILS=$((FAILS + 1))
 }
+skip() { printf 'skip %s\n' "$1"; }
 check() {
   local name=$1
   shift
@@ -129,6 +134,10 @@ if [[ -e "$REAL_HOME_DIR" ]]; then REAL_HOME_BEFORE=$(ls -la "$REAL_HOME_DIR" | 
 # user.lua is the user's own file; the script must neither create nor touch it there.
 real_user_lua() { { ls -la "$REAL_HOME_DIR/user.lua" 2>&1 || true; } | shasum | cut -d' ' -f1; }
 REAL_USER_LUA_BEFORE=$(real_user_lua)
+# The log folder of the real configuration is the application's own business; this
+# script's runs have a home of their own, so they must not create it there.
+REAL_LOGS_BEFORE=absent
+if [[ -e "$REAL_HOME_DIR/logs" ]]; then REAL_LOGS_BEFORE=present; fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/pisar-smoke.XXXXXX")
 # $TMPDIR ends in a slash on macOS; drop the double slash so paths compare as text.
@@ -211,6 +220,7 @@ editor_up() {
 }
 SOCK=""
 NVIM_PIDS=""
+MAIN_TEXT="Jedinstveni redak glavnog prolaza 8123"
 if wait_for 20 editor_up; then
   ok "editor started and the document from the command line is active (project and path resolved)"
   COLS=$(sed -nE 's/.*method=Start cols=([0-9]+) rows=([0-9]+).*/\1/p' "$LOG" | head -n 1)
@@ -227,6 +237,36 @@ else
   fail "editor started and opened the document from the command line within 20 s"
   grep -E 'method=Start|editor' "$LOG" | sed 's/^/     log: /' | tail -n 10
 fi
+
+# ---- the log file --------------------------------------------------------------
+#
+# The application always writes <home>/logs/pisar.log as well as stderr (which this
+# script redirects to app.log). Checked while it runs: the frontend has long since
+# asked for the tools, which is what writes their records.
+LOGFILE="$TMP/home/logs/pisar.log"
+mode_of() { [[ "$(stat -f '%Lp' "$1" 2>/dev/null)" == "$2" ]]; }
+# start_pid <file>: the pid in the first "pisar: start" record of the file.
+start_pid() { sed -nE '/msg="pisar: start"/s/.* pid=([0-9]+).*/\1/p' "$1" 2>/dev/null | head -n 1; }
+# tool_records <file> <tool> <rest>: how many "editor: tool" records name the tool and match <rest>.
+tool_records() { grep -Ec "msg=\"editor: tool\" tool=$2 $3" "$1" 2>/dev/null || true; }
+check "log: <home>/logs/pisar.log exists" test -f "$LOGFILE"
+check "log: the file has permissions 600" mode_of "$LOGFILE" 600
+check "log: the folder has permissions 700" mode_of "$TMP/home/logs" 700
+check "log: it holds the start record with the path of this home" \
+  grep -Fq "msg=\"pisar: start\" home=$TMP/home " "$LOGFILE"
+nvim_recorded() { [[ "$(tool_records "$LOGFILE" nvim 'found=true .*tooOld=false$')" -ge 1 ]]; }
+check "log: the frontend's check of the tools wrote an editor: tool record for nvim (found, not too old)" \
+  wait_for 20 nvim_recorded
+if command -v pandoc >/dev/null 2>&1; then
+  pandoc_recorded() { [[ "$(tool_records "$LOGFILE" pandoc 'found=true .*tooOld=false$')" -ge 1 ]]; }
+  check "log: ... and one for pandoc (found, not too old)" wait_for 20 pandoc_recorded
+else
+  skip "log: the editor: tool record for pandoc (pandoc is not installed)"
+fi
+check "log: exactly one editor: tool record for nvim and none repeated" \
+  test "$(tool_records "$LOGFILE" nvim '')" = 1
+check "log: the file and stderr carry the same start record (pid $(start_pid "$LOGFILE"), the application's own)" \
+  test -n "$(start_pid "$LOGFILE")" -a "$(start_pid "$LOGFILE")" = "$(start_pid "$LOG")" -a "$(start_pid "$LOGFILE")" = "$APP_PID"
 
 if [[ -z "$SOCK" ]]; then
   fail "found the socket of this application's Neovim"
@@ -277,6 +317,13 @@ else
   check "<Space>e in Neovim asks the application to focus the tree" wait_for 10 focus_asked
   got=$(remote "$SOCK" --remote-expr 'mode() . " " . &modified') || got=""
   check "Neovim stays in normal mode with the buffer unchanged ($got)" test "$got" = "n 0"
+
+  # A line of text nobody else would write, typed into the document and saved: the
+  # log file is read for it after the exit. The text of a document must never be in a log.
+  remote "$SOCK" --remote-expr "nvim_buf_set_lines(0, -1, -1, v:false, ['$MAIN_TEXT'])" >/dev/null || true
+  remote "$SOCK" --remote-send '<Cmd>write<CR>' >/dev/null || true
+  check "the unique line is saved in the document on disk (it went through the application)" \
+    wait_for 10 grep -Fq -- "$MAIN_TEXT" "$PROJ/uvod.md"
 fi
 
 kill -TERM "$APP_PID"
@@ -299,6 +346,8 @@ APP_PID=""
 if [[ -n "$SOCK" ]]; then
   check "the RPC socket and its folder are gone" test ! -e "$SOCK" -a ! -e "$(dirname "$SOCK")"
 fi
+check "log: the text of the document is in neither the log file nor stderr" \
+  sh -c '! grep -Fq -- "$1" "$2" "$3"' _ "$MAIN_TEXT" "$LOGFILE" "$LOG"
 
 # ---- Word documents ---------------------------------------------------------
 #
@@ -307,8 +356,6 @@ fi
 # (testdata/ is never written to). Neovim is driven through its socket only.
 # Waits are on real conditions (the debug log says the export finished, the
 # file changed), each with a limit, never a blind sleep.
-
-skip() { printf 'skip %s\n' "$1"; }
 
 # only_in <dir> <name>...: the folder holds exactly these entries, hidden ones included.
 only_in() {
@@ -815,6 +862,10 @@ MD
 
     # C. Quit through the pid; nothing of the run is left.
     word_stop "$L"
+    # The lines this run typed into the document (and so into the preview) are
+    # not in its log file, which also holds the debug records of the whole run.
+    check "$L: the typed lines of the document are not in the log file either" \
+      sh -c '! grep -Fq -e "$1" -e "$2" "$3"' _ "Jedinstveni redak pregleda 4711" "Drugi jedinstveni redak 4712" "$WHOME/logs/pisar.log"
     check "$L: no process of this run is left (application, Neovim, pandoc)" test -z "$(pgrep -f -- "$WHOME" || true)"
     if [[ "$HAVE_PANDOC" == 1 ]]; then
       check "$L: preview/ in the home holds only the filter" only_in "$WHOME/preview" preview-filter.lua
@@ -1044,6 +1095,74 @@ LUA
 fi
 WANT_BUF=""
 
+# ---- a Neovim older than the minimum -------------------------------------------
+#
+# A fake nvim that reports 0.11.0 stands first on PATH (the application appends
+# its extra tool directories, so nothing it adds can come before it); pandoc stays
+# the real one. The application must not start it: Start answers nvim-too-old
+# before writing any configuration or launching anything, the fake is asked for
+# its version and for nothing else, and the document is left as it was. The real
+# nvim is never run by this script here: only the application runs the fake.
+
+L="old nvim"
+WBASE="$TMP/old-nvim"
+WHOME="$WBASE/home"
+WUSER="$WBASE/user"
+WLOG="$WBASE/app.log"
+OBIN="$WBASE/bin"
+mkdir -p "$WHOME" "$WUSER" "$OBIN"
+printf '{\n  "version": 1,\n  "projects": []\n}\n' >"$WHOME/config.json"
+printf '# Stari Neovim\n\nčćšžđ\n' >"$WUSER/stari.md"
+cp "$WUSER/stari.md" "$WBASE/stari.md.before"
+# The heredoc is not quoted so that $WBASE is filled in; the \$ ones are the fake's own.
+cat >"$OBIN/nvim" <<SH
+#!/bin/sh
+if [ "\$#" -eq 1 ] && [ "\$1" = "--version" ]; then
+  echo "NVIM v0.11.0"
+  exit 0
+fi
+printf '%s\n' "\$@" >>"$WBASE/called-with"
+exit 1
+SH
+chmod 0755 "$OBIN/nvim"
+
+echo "--- an old Neovim"
+PATH="$OBIN:$PATH" PISAR_HOME="$WHOME" PISAR_LOG=debug "$BIN" "$WUSER/stari.md" >"$WLOG" 2>&1 &
+APP_PID=$!
+WSOCK=""
+NVIM_PIDS=""
+FLOG="$WHOME/logs/pisar.log"
+flogged() { grep -Eq "$1" "$FLOG" 2>/dev/null; }
+# Both the refusal and the record of the tool say what the application did.
+refused() { is_running "$APP_PID" && flogged 'op=start code=nvim-too-old'; }
+check "$L: Start was refused with the code nvim-too-old (within 20 s)" wait_for 20 refused
+if ! flogged 'op=start code=nvim-too-old'; then
+  grep -Ev 'event=pty:data' "$WLOG" | tail -n 10 | sed 's/^/     log: /'
+fi
+old_recorded() { [[ "$(tool_records "$FLOG" nvim 'found=true path=[^ ]*/old-nvim/bin/nvim version=0\.11\.0 minimum=0\.12\.0 tooOld=true$')" == 1 ]]; }
+check "$L: the log has one editor: tool record for nvim: the fake, version 0.11.0, tooOld=true" wait_for 20 old_recorded
+if command -v pandoc >/dev/null 2>&1; then
+  check "$L: pandoc is still the real one (found, not too old)" \
+    test "$(tool_records "$FLOG" pandoc 'found=true path=[^ ]+ version=[0-9.]+ minimum=[0-9.]+ tooOld=false$')" = 1
+fi
+check "$L: the application is still running" is_running "$APP_PID"
+check "$L: the fake nvim was asked for its version and for nothing else (no called-with)" test ! -e "$WBASE/called-with"
+no_nvim_process() {
+  local pid cmd
+  for pid in $(descendants "$APP_PID"); do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    case "$cmd" in *nvim*) return 1 ;; esac
+  done
+  [[ -z "$(pgrep -f -- "$OBIN/nvim" || true)" ]]
+}
+check "$L: no Neovim process of this run exists" no_nvim_process
+check "$L: nothing was written for Neovim (no init.lua under <home>/nvim)" \
+  test -z "$(find "$WHOME/nvim" -name init.lua 2>/dev/null)"
+check "$L: the document is byte for byte what it was" cmp -s "$WUSER/stari.md" "$WBASE/stari.md.before"
+word_stop "$L"
+check "$L: no process of this run is left" test -z "$(pgrep -f -- "$WHOME" || true)"
+check "$L: still no called-with after the exit (nothing came late)" test ! -e "$WBASE/called-with"
+
 check "config.json is unchanged" cmp -s "$CONFIG" "$TMP/config.before"
 check "the temporary home holds only config.json, the log folder and Neovim's own folders" \
   test "$(ls -A "$TMP/home" | sort | tr '\n' ' ')" = "config.json logs nvim spell "
@@ -1052,6 +1171,10 @@ check "init.lua and the colorscheme were written under the home" \
 REAL_HOME_AFTER=absent
 if [[ -e "$REAL_HOME_DIR" ]]; then REAL_HOME_AFTER=$(ls -la "$REAL_HOME_DIR" | shasum | cut -d' ' -f1); fi
 check "the real configuration folder was not touched ($REAL_HOME_BEFORE)" test "$REAL_HOME_BEFORE" = "$REAL_HOME_AFTER"
+REAL_LOGS_AFTER=absent
+if [[ -e "$REAL_HOME_DIR/logs" ]]; then REAL_LOGS_AFTER=present; fi
+check "the real configuration folder got no logs folder from this script ($REAL_LOGS_BEFORE)" \
+  test "$REAL_LOGS_BEFORE" = "$REAL_LOGS_AFTER"
 check "no user.lua was created or changed in the real configuration folder" \
   test "$REAL_USER_LUA_BEFORE" = "$(real_user_lua)"
 
