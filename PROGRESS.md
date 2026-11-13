@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 9 — Log datoteka i provjera verzija alata (u tijeku od 2026-11-13). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: 9 — Log datoteka i provjera verzija alata (svi koraci izvedeni 2026-11-13; slijedi `plan-reviewer`, zatim ručna provjera). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 6 (dimna provjera i dokumenti), zatim `plan-reviewer`
+- Sljedeći korak: `plan-reviewer` za fazu 9, zatim vlasnikova ručna provjera
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2621,7 +2621,55 @@ Nema novih.
         jedan redak u tablici kodova.
       - `bash scripts/smoke.sh` nakon koraka: `smoke: all checks passed` (165 `ok`); pravi alati su
         aktualni, ništa nije odbijeno.
-- [ ] 6. Dimna provjera i dokumenti, zatim `plan-reviewer`
+- [x] 6. Dimna provjera i dokumenti: `scripts/smoke.sh` dobio je blok o logu u glavnom prolazu (datoteka
+      postoji, dozvole 600 / 700, početni zapis s putanjom homea, po jedan `editor: tool` zapis za `nvim` i
+      `pandoc`, isti PID u datoteci i na stderr-u, tekst dokumenta nije ni u logu ni na stderr-u) i novi
+      prolaz „old nvim” s lažnim `nvim` 0.11.0 (u logu `nvim-too-old` i `tooOld=true`, lažni alat pozvan samo
+      s `--version`, nema Neovimovog procesa ni `init.lua`, dokument bajt-identičan, aplikacija radi i gasi
+      se uredno); završna provjera da prava mapa nije dobila `logs`. `DESIGN.md`: prazno stanje i popis
+      stanja pokrivaju i prestar alat. Skripta sada ima 189 `ok` provjera.
+      - Mutacijske provjere: lažni `nvim` s 0.12.6 obara pet provjera prolaza „old nvim”; očekivanje
+        dozvola 644 obara samo provjeru dozvola.
+      - Provjera „nema teksta dokumenta u logu” prolazi na današnjem kodu; nije dokazano da bi uhvatila
+        curenje (nema mjesta u kodu koje bi ga proizvelo).
+
+### Dokazi po kriterijima (2026-11-13, nakon zadnjeg commita)
+
+1. `task test` → exit 0 (Go paketi `ok`, vitest `34 passed`, `1430 passed`). `task test:race` → exit 0
+   (`Pisar` 45 s, `internal/nvim` 96 s). `task lint` → `0 issues.`, svelte-check `253 FILES 0 ERRORS`.
+   `task build` → exit 0.
+2. `go test -count=1 . -run 'TestLog|TestToolVersion|TestEdTools|TestMenu'` → `ok` (53 testa i podtesta).
+   `go test -count=1 ./internal/config -run 'Log|MinVersion'` → `ok` (`TestLogFile`). Test granica zove se
+   `TestToolMinimumVersionsShape` i uzorak iz plana ga ne hvata; pokrenut zasebno (`-run Minimum`) → `PASS`.
+3. `cd frontend && npx vitest run src/lib/toolsState src/lib/errorMessage` → `2 passed`, `49 passed`.
+4. `bash scripts/smoke.sh` → `smoke: all checks passed` (189 `ok`, 0 `FAIL`); prava
+   `~/Library/Application Support/Pisar` nakon toga: `backups config.json nvim spell work` (bez `logs`).
+5. `grep -nE 'os\.(Create|WriteFile|Remove|OpenFile|Rename|MkdirAll)' logging.go toolversion.go` → tri
+   pogotka, sva u `openLog` (`MkdirAll` mape loga, `Rename` u `.1`, `OpenFile` loga); `toolversion.go` ništa.
+
+### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
+
+1. Zapakiraj i instaliraj (`SIGN_IDENTITY="Trag Dev" task sign`, pa kopija u `/Applications`), pokreni iz
+   Findera i radi par minuta: `~/Library/Application Support/Pisar/logs/pisar.log` postoji i raste.
+2. Datoteka → „Prikaži log u Finderu” otvori Finder s označenom datotekom.
+3. Lažni stari Neovim: u praznu mapu stavi izvršnu skriptu `nvim` koja ispiše `NVIM v0.11.0`, pa pokreni
+   `PATH=/ta/mapa:$PATH PISAR_HOME=/tmp/pisar-stari bin/pisar`. Prazno stanje kaže da je Neovim 0.11.0
+   prestar, da treba 0.12.0 i nudi `brew upgrade neovim`. Makni skriptu i klikni „Provjeri ponovno”: poruka
+   nestane.
+4. Izgled te obavijesti u sve tri teme.
+
+### Nije provjereno / poznata ograničenja
+
+- Sve iz ručne provjere gore: Finder, izgled obavijesti, log pri pokretanju iz Findera.
+- Granica pandoca 3.13 je stroga: 3.11 i 3.12.1 bi vjerojatno radili, ali nisu isprobani pa se odbijaju.
+- Verzija koja se ne da pročitati ne blokira; tada se proba ponavlja pri svakom pozivu pandoca (greške se
+  ne pamte), što za alat koji visi znači čekanje do `CommandTimeout` po pozivu.
+- Uz `PISAR_LOG=debug` log brzo raste, a rotira se tek pri sljedećem pokretanju; čuva se jedna starija
+  kopija (`pisar.log.1`).
+- Prvi zapis loga nema verziju aplikacije (u Go kodu je nema).
+- Kod otvaranja `.docx` s prestarim pandocom radna kopija nakratko nastane pa se odbaci.
+- Poruka greške nakon odbijenog pokretanja (`nvim-too-old`) ne nosi brojeve verzija; nosi ih obavijest
+  praznog stanja.
 
 ### Izvan opsega
 
@@ -2631,12 +2679,12 @@ sigurnosne kopije dokumenata.
 
 ### Kriteriji prihvaćanja
 
-- [ ] `task test`, `task test:race`, `task lint`, `task build` prolaze
-- [ ] `go test . -run 'TestLog|TestToolVersion|TestEdTools|TestMenu'` i
-      `go test ./internal/config -run 'Log|MinVersion'` prolaze
-- [ ] `cd frontend && npx vitest run src/lib/toolsState src/lib/errorMessage` prolazi
-- [ ] `bash scripts/smoke.sh` → `smoke: all checks passed`, s novim provjerama loga i prestarog Neovima
-- [ ] `grep -rnE 'os\.(Create|WriteFile|Remove)' logging.go toolversion.go` pokazuje pisanje samo u log
+- [x] `task test`, `task test:race`, `task lint`, `task build` prolaze — dokaz 1
+- [x] `go test . -run 'TestLog|TestToolVersion|TestEdTools|TestMenu'` i
+      `go test ./internal/config -run 'Log|MinVersion'` prolaze — dokaz 2
+- [x] `cd frontend && npx vitest run src/lib/toolsState src/lib/errorMessage` prolazi — dokaz 3
+- [x] `bash scripts/smoke.sh` → `smoke: all checks passed`, s novim provjerama loga i prestarog Neovima — dokaz 4
+- [x] `grep -rnE 'os\.(Create|WriteFile|Remove)' logging.go toolversion.go` pokazuje pisanje samo u log — dokaz 5
 - [ ] **[R]** nakon pokretanja iz Findera `~/Library/Application Support/Pisar/logs/pisar.log` raste;
       „Prikaži log u Finderu” ga označi u Finderu; s lažnim starim `nvim` u PATH-u prazno stanje pokaže
       poruku o prestaroj verziji i naredbu, a „Provjeri ponovno” je makne kad se lažni alat ukloni
