@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 5 (odbijanje prestarog alata)
+- Sljedeći korak: faza 9, korak 6 (dimna provjera i dokumenti), zatim `plan-reviewer`
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2602,7 +2602,25 @@ Nema novih.
         `describe('toolsNotice')` (4 testa) zove funkciju s `ToolProblem[]` i očekuje `{title, lines}`.
         Nijedan test nije obrisan.
       - Izgled obavijesti nije viđen (ručna provjera).
-- [ ] 5. Odbijanje prestarog alata (`nvim-too-old`, `pandoc-too-old`)
+- [x] 5. Odbijanje prestarog alata: `toolTooOldError`, kodovi `nvim-too-old` i `pandoc-too-old` (`codeOf`,
+      `codeText`); `Start` odbija prestar Neovim prije `writeConfig`; novi `pandocguard.go`
+      (`pandocGuardedConverter`, `pandocGuardedRenderer`) omotava pretvorbu i pregled u `main.go`;
+      `EditorService.pandocReady`; frontend `apiError.ts`, `errorMessage.ts`, tekstovi `errorNvimTooOld`,
+      `errorPandocTooOld`. Vitest 1430.
+      - **Odstupanje od plana:** provjera pandoca nije na ulazima servisa (`editorwords.go`,
+        `editorpreview.go`), nego na jednom mjestu: omotači sučelja `wordConverter` i `previewRenderer`.
+        Provjerom su omotane metode koje pokreću pandoc (`DocxToMarkdown`, `MarkdownToDocx`, `Render`);
+        `DocToDocx` (textutil) i `MakeReference` (samo zip) prolaze. `internal/` nije diran.
+      - Alat kojeg nema i dalje daje `nvim-missing` odnosno `pandoc-missing`; nečitljiva verzija ne odbija.
+        `.md` i `.txt` rade i s prestarim pandocom.
+      - Kod otvaranja `.docx` s prestarim pandocom radna kopija nakratko nastane pa se odbaci (`prepare`
+        je stvara prije pretvorbe); test potvrđuje da ne ostaje ništa i da je izvornik bajt-identičan.
+      - Dijalog pri izlasku ima vlastiti tekst za prestar pandoc (`uiText.ErrorPandocTooOld`); `coder` je
+        tu ostavio tekst „nije pronađen”, glavna sesija je ispravila (`quit.go`, `uitext.go`, test).
+      - `TestEdCodes` je dobio dva retka (tablica traži redak za svaki kod); `activeDocument.test.ts`
+        jedan redak u tablici kodova.
+      - `bash scripts/smoke.sh` nakon koraka: `smoke: all checks passed` (165 `ok`); pravi alati su
+        aktualni, ništa nije odbijeno.
 - [ ] 6. Dimna provjera i dokumenti, zatim `plan-reviewer`
 
 ### Izvan opsega

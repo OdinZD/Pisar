@@ -626,9 +626,11 @@ const (
 	codeCanceled         = "canceled"
 	codeNotRunning       = "not-running"
 	codeNvimMissing      = "nvim-missing"
+	codeNvimTooOld       = "nvim-too-old"
 	codeUnnamedBuffer    = "unnamed-buffer"
 	codeUnsavedChanges   = "unsaved-changes"
 	codePandocMissing    = "pandoc-missing"
+	codePandocTooOld     = "pandoc-too-old"
 	codeConvertFailed    = "convert-failed"
 	codeNotWord          = "not-word"
 	codeDocumentTooLarge = "document-too-large"
@@ -647,9 +649,13 @@ func codeOf(err error) string {
 	var ae *apiError
 	var te *convert.ToolError
 	var pe *preview.ToolError
+	var oe *toolTooOldError
 	switch {
 	case errors.As(err, &ae):
 		return ae.code
+	// Before the cases below: a tool that is too old says so, whatever it wraps.
+	case errors.As(err, &oe):
+		return oe.code()
 	case errors.Is(err, config.ErrNotFound):
 		return codeNotFound
 	case errors.Is(err, errMissing):
@@ -720,9 +726,11 @@ var codeText = map[string]string{
 	codeCanceled:         "the operation was canceled or timed out",
 	codeNotRunning:       "the editor is not running",
 	codeNvimMissing:      "the Neovim binary was not found",
+	codeNvimTooOld:       "the Neovim binary is older than Pisar works with",
 	codeUnnamedBuffer:    "a modified buffer has no file name",
 	codeUnsavedChanges:   "the document has unsaved changes",
 	codePandocMissing:    "pandoc is not installed",
+	codePandocTooOld:     "pandoc is older than Pisar works with",
 	codeConvertFailed:    "the document conversion failed",
 	codeNotWord:          "not a valid Word document",
 	codeDocumentTooLarge: "the document is too large to open",

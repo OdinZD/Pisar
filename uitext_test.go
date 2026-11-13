@@ -117,7 +117,7 @@ func TestUITextSaveFailures(t *testing.T) {
 		"errorConflict": text.ErrorConflict, "errorConvertFailed": text.ErrorConvertFailed,
 		"errorPandocMissing": text.ErrorPandocMissing, "errorReadOnly": text.ErrorReadOnly,
 		"errorDamagedWork": text.ErrorDamagedWork, "errorDocumentTooLarge": text.ErrorDocumentTooLarge,
-		"errorNotWord": text.ErrorNotWord,
+		"errorNotWord": text.ErrorNotWord, "errorPandocTooOld": text.ErrorPandocTooOld,
 	} {
 		if strings.TrimSpace(v) == "" {
 			t.Errorf("%s is empty", name)

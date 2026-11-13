@@ -375,3 +375,76 @@ func TestEdToolsWarnsOnChange(t *testing.T) {
 		t.Errorf("a changed answer wrote %d warnings in total, want 2", n)
 	}
 }
+
+func TestEdToolsErrorCode(t *testing.T) {
+	nvimOld := &toolTooOldError{tool: toolNvim, version: "0.11.4", minimum: "0.12.0"}
+	pandocOld := &toolTooOldError{tool: toolPandoc, version: "3.9", minimum: "3.13"}
+	for _, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"nvim", nvimOld, codeNvimTooOld},
+		{"pandoc", pandocOld, codePandocTooOld},
+		{"nvim wrapped", fmt.Errorf("start: %w", nvimOld), codeNvimTooOld},
+		{"pandoc wrapped twice", fmt.Errorf("open: %w", fmt.Errorf("convert: %w", pandocOld)), codePandocTooOld},
+		{"pandoc joined", errors.Join(errors.New("other"), pandocOld), codePandocTooOld},
+		{"unknown tool", &toolTooOldError{tool: "other"}, codeInternal},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := codeOf(c.err); got != c.want {
+				t.Errorf("codeOf = %q, want %q", got, c.want)
+			}
+		})
+	}
+	if got, want := nvimOld.Error(), "nvim 0.11.4 is older than the minimum 0.12.0"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+	for _, code := range []string{codeNvimTooOld, codePandocTooOld} {
+		if codeText[code] == "" {
+			t.Errorf("no codeText for %s", code)
+		}
+	}
+}
+
+// An old Neovim is refused before anything is written or started, and it is only asked for its version.
+func TestEdToolsRefuseNvim(t *testing.T) {
+	e := newEd(t)
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "nvim.log")
+	writeScript(t, bin, "nvim", "printf '%s\\n' \"$*\" >> '"+log+"'\n"+printLine("NVIM v0.11.4"))
+	writeScript(t, bin, "pandoc", printLine("pandoc 3.13"))
+	t.Setenv("PATH", bin)
+
+	err := e.svc.Start(context.Background(), 80, 24, sample(t))
+	wantCode(t, err, codeNvimTooOld)
+	var oe *toolTooOldError
+	if !errors.As(err, &oe) || oe.version != "0.11.4" || oe.minimum != config.MinNvimVersion {
+		t.Errorf("error = %v", err)
+	}
+	if e.svc.session.Running() {
+		t.Error("Neovim was started")
+	}
+	for _, p := range []string{e.svc.paths.ColorschemeFile, e.svc.paths.InitLua} {
+		if _, err := os.Lstat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s was written: %v", p, err)
+		}
+	}
+	if got := string(readFile(t, log)); got != "--version\n" {
+		t.Errorf("the fake nvim was called with %q, want only --version", got)
+	}
+}
+
+// A version that cannot be read does not refuse Neovim; what happens next is
+// up to the (here fake) program, and only the code is claimed.
+func TestEdToolsNvimUnreadable(t *testing.T) {
+	e := newEd(t, func(d *editorServiceDeps) { d.Limits.NvimStartTimeout = 500 * time.Millisecond })
+	bin := t.TempDir()
+	writeScript(t, bin, "nvim", printLine("something else entirely"))
+	writeScript(t, bin, "pandoc", printLine("pandoc 3.13"))
+	t.Setenv("PATH", bin)
+
+	err := e.svc.Start(context.Background(), 80, 24, sample(t))
+	if err != nil && codeOf(err) == codeNvimTooOld {
+		t.Errorf("an unreadable version was taken for too old: %v", err)
+	}
+}

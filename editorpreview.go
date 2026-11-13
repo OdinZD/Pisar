@@ -304,7 +304,7 @@ func (l *previewLoop) build(ctx context.Context) (content PreviewContent, key st
 func (l *previewLoop) failed(c PreviewContent, err error, path, dir, digest, last string) (PreviewContent, string, bool) {
 	code := codeOf(err)
 	switch code {
-	case codePreviewTooLarge, codePandocMissing:
+	case codePreviewTooLarge, codePandocMissing, codePandocTooOld:
 		slog.Debug("editor: no preview", "code", code)
 	default:
 		// The error text of a failed pandoc quotes the document; only its kind

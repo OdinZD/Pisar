@@ -210,6 +210,7 @@ describe('openFailureText', () => {
 
   it.each([
     ['pandoc-missing', strings.errorPandocMissing],
+    ['pandoc-too-old', strings.errorPandocTooOld],
     ['convert-failed', strings.errorConvertFailed],
     ['not-word', strings.errorNotWord],
     ['document-too-large', strings.errorDocumentTooLarge],

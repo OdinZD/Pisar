@@ -487,6 +487,15 @@ func (e *EditorService) Start(ctx context.Context, cols, rows int, colorscheme s
 
 	wasRunning := e.session.Running()
 	if !wasRunning {
+		// Before anything is written or started: a Neovim that is too old is
+		// refused like a missing one. A Neovim that is not found is left to
+		// session.Start, which reports nvim-missing.
+		pctx, pcancel := e.bounded(ctx)
+		refused := e.toolState(pctx, toolNvim).refuseIfTooOld()
+		pcancel()
+		if refused != nil {
+			return failEditor("start", refused)
+		}
 		if err := e.writeConfig(colorscheme); err != nil {
 			return failEditor("start", err)
 		}

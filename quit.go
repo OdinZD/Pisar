@@ -171,6 +171,9 @@ func (g *quitGate) saveFailure(err error) string {
 		return g.text.ErrorConvertFailed
 	case codePandocMissing:
 		return g.text.ErrorPandocMissing
+	// Its own text: "not found" would send the user to install what they have.
+	case codePandocTooOld:
+		return g.text.ErrorPandocTooOld
 	case codeReadOnly:
 		return g.text.ErrorReadOnly
 	case codeDamagedWork:

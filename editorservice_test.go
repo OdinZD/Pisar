@@ -2083,6 +2083,8 @@ func TestEdCodes(t *testing.T) {
 		{"unnamed buffer", nvim.ErrUnnamedBuffer, codeUnnamedBuffer},
 		{"unsaved", errUnsaved, codeUnsavedChanges},
 		{"pandoc missing", fmt.Errorf("%w: pandoc: %w", convert.ErrToolMissing, exec.ErrNotFound), codePandocMissing},
+		{"nvim too old", &toolTooOldError{tool: toolNvim, version: "0.11.4", minimum: "0.12.0"}, codeNvimTooOld},
+		{"pandoc too old", &toolTooOldError{tool: toolPandoc, version: "3.9", minimum: "3.13"}, codePandocTooOld},
 		{"convert failed", &convert.ToolError{Tool: "pandoc", Err: errors.New("exit status 1")}, codeConvertFailed},
 		{"not a Word document", convert.ErrNotDocx, codeNotWord},
 		{"document too large", convert.ErrTooLarge, codeDocumentTooLarge},

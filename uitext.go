@@ -76,6 +76,7 @@ type uiText struct {
 	ErrorConflict         string `json:"errorConflict"`
 	ErrorConvertFailed    string `json:"errorConvertFailed"`
 	ErrorPandocMissing    string `json:"errorPandocMissing"`
+	ErrorPandocTooOld     string `json:"errorPandocTooOld"`
 	ErrorReadOnly         string `json:"errorReadOnly"`
 	ErrorDamagedWork      string `json:"errorDamagedWork"`
 	ErrorDocumentTooLarge string `json:"errorDocumentTooLarge"`

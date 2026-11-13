@@ -104,6 +104,45 @@ func (e *EditorService) toolState(ctx context.Context, name string) toolState {
 	return st
 }
 
+// toolTooOldError: an external tool is installed but older than Pisar works with.
+type toolTooOldError struct{ tool, version, minimum string }
+
+func (e *toolTooOldError) Error() string {
+	return fmt.Sprintf("%s %s is older than the minimum %s", e.tool, e.version, e.minimum)
+}
+
+// code is the stable error code of the tool; codeInternal for a tool the
+// frontend has no text for.
+func (e *toolTooOldError) code() string {
+	switch e.tool {
+	case toolNvim:
+		return codeNvimTooOld
+	case toolPandoc:
+		return codePandocTooOld
+	}
+	return codeInternal
+}
+
+// refuseIfTooOld is nil for a tool that is usable, and for one that is not
+// found or whose version cannot be read: those are not "too old", and the
+// existing path reports a missing tool in its own way.
+func (s toolState) refuseIfTooOld() error {
+	if !s.found || !s.tooOld {
+		return nil
+	}
+	minimum, _ := toolMinimum(s.name)
+	return &toolTooOldError{tool: s.name, version: s.version.String(), minimum: minimum}
+}
+
+// pandocReady is nil when pandoc may be run, and a *toolTooOldError when it is
+// installed but too old. It is the one place the pandoc minimum is enforced
+// (see pandocGuard), and it asks the version of an unchanged binary only once.
+func (e *EditorService) pandocReady(ctx context.Context) error {
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	return e.toolState(ctx, toolPandoc).refuseIfTooOld()
+}
+
 // status is the form the frontend gets.
 func (s toolState) status() ToolStatus {
 	raw, _ := toolMinimum(s.name)

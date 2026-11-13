@@ -482,6 +482,7 @@ func TestPvErrors(t *testing.T) {
 		{"html too large", nil, fmt.Errorf("%w: the page is larger", preview.ErrTooLarge), codePreviewTooLarge, true},
 		{"source too large", nil, fmt.Errorf("%w: text is 9 bytes", preview.ErrTooLarge), codePreviewTooLarge, true},
 		{"no pandoc", nil, fmt.Errorf("%w: %w", preview.ErrToolMissing, exec.ErrNotFound), codePandocMissing, false},
+		{"pandoc too old", nil, fmt.Errorf("preview: %w", &toolTooOldError{tool: toolPandoc, version: "3.9", minimum: "3.13"}), codePandocTooOld, false},
 		{"tool failed", nil, &preview.ToolError{Tool: "pandoc", Output: "secret text of the document", Err: errors.New("exit status 1")}, codeConvertFailed, false},
 		{"timeout", nil, fmt.Errorf("preview: pandoc: %w", context.DeadlineExceeded), codeCanceled, false},
 		{"unknown", nil, errors.New("boom"), codeInternal, false},

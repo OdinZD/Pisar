@@ -20,6 +20,8 @@ describe('errorCode', () => {
     ['unnamed buffer', wailsError('unnamed-buffer: x'), 'unnamed-buffer'],
     ['unsaved changes', wailsError('unsaved-changes: x', { code: 'unsaved-changes' }), 'unsaved-changes'],
     ['pandoc missing', wailsError('pandoc-missing: x', { code: 'pandoc-missing' }), 'pandoc-missing'],
+    ['editor too old', wailsError('nvim-too-old: x', { code: 'nvim-too-old' }), 'nvim-too-old'],
+    ['pandoc too old', wailsError('pandoc-too-old: x', { code: 'pandoc-too-old' }), 'pandoc-too-old'],
     ['convert failed', wailsError('convert-failed: x', { code: 'convert-failed' }), 'convert-failed'],
     ['not a Word document', wailsError('not-word: x'), 'not-word'],
     ['document too large', wailsError('document-too-large: x', { code: 'document-too-large' }), 'document-too-large'],

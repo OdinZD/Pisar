@@ -177,8 +177,13 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	// or asks before Run.
 	emit := func(name, data string) { app.Event.Emit(name, data) }
 	dlg := &wailsDialogs{text: text}
+	// What runs pandoc asks the editor service whether it is recent enough. The
+	// service is built after the things that need the answer, so it is read
+	// through the variable, like app above; nothing converts before Run.
+	var editor *EditorService
+	pandocReady := func(ctx context.Context) error { return editor.pandocReady(ctx) }
 	words, err := newWordDocs(wordDocsDeps{
-		Convert: converter,
+		Convert: pandocGuardedConverter{inner: converter, ready: pandocReady},
 		Examine: func(ctx context.Context, path string) (convert.Report, error) {
 			return convert.Examine(ctx, path, docxLimits)
 		},
@@ -206,14 +211,14 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	// The editor comes first: the project service asks it which documents are
 	// open. Cleanups run in reverse, so the project service stops before
 	// the editor does, and no rename or Trash reaches an editor that is gone.
-	editor, err := newEditorService(editorServiceDeps{
+	editor, err = newEditorService(editorServiceDeps{
 		Store:       store,
 		Emit:        func(name string, data any) { app.Event.Emit(name, data) },
 		Clipboard:   func(text string) bool { return app.Clipboard.SetText(text) },
 		Limits:      limits,
 		InitialFile: initialFile(os.Args),
 		Words:       words,
-		Preview:     renderer,
+		Preview:     pandocGuardedRenderer{inner: renderer, ready: pandocReady},
 		Text:        nvimText(text),
 
 		UserLuaTemplate: text.UserLuaTemplate,
