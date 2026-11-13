@@ -24,8 +24,8 @@
 
   // How far above the bottom the status line of Neovim starts, as the terminal last reported it. Only
   // meaningful while the terminal is in the page; without Neovim the search panel sits at the bottom.
-  // Missing tools do not block anything: the terminal replaces this notice as soon as Neovim runs.
-  const notice = $derived(toolsNotice(editor.missingTools))
+  // Missing or old tools do not block anything: the terminal replaces this notice as soon as Neovim runs.
+  const notice = $derived(toolsNotice(editor.toolProblems))
   const hasTerminal = $derived(editor.phase === 'starting' || editor.phase === 'running')
   let reportedInset = $state(0)
   const searchInset = $derived(hasTerminal ? reportedInset : 0)

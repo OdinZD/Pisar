@@ -3,14 +3,14 @@
   import { strings } from '../strings'
 
   // With `error` the same place shows why the editor is not there (a failed start); the key hints
-  // belong to the plain empty state only. With `tools` (a tool is not installed) it shows how to get
+  // belong to the plain empty state only. With `tools` (a tool is not installed or too old) it shows how to get
   // it instead of the invitation to open a document; an error comes first.
   let {
     error,
     tools,
     checking = false,
     oncheck,
-  }: { error?: string; tools?: { lines: ToolLine[] } | null; checking?: boolean; oncheck?: () => void } = $props()
+  }: { error?: string; tools?: { title: string; lines: ToolLine[] } | null; checking?: boolean; oncheck?: () => void } = $props()
 
   const notice = $derived(error === undefined ? (tools ?? undefined) : undefined)
 </script>
@@ -22,7 +22,7 @@
   role={error !== undefined || notice !== undefined ? 'alert' : undefined}
 >
   {#if notice}
-    <p class="title">{strings.toolsMissingTitle}</p>
+    <p class="title">{notice.title}</p>
     {#each notice.lines as line (line.command)}
       <p class="tool">{line.text}</p>
       <p class="command">{line.command}</p>

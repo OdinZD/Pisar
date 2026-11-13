@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 4 (`Tools()` s verzijama i obavijest)
+- Sljedeći korak: faza 9, korak 5 (odbijanje prestarog alata)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2588,7 +2588,20 @@ Nema novih.
       - `coder` je tijekom rada jednom pokušao pokrenuti `nvim --version` bez preusmjerene okoline; prema
         njegovom izvještaju naredba je odbijena. Provjereno: u `~/.local/state/nvim/` nema `nvim.log`, a
         mapa nosi datum 10. 8.
-- [ ] 4. `Tools()` s verzijama i obavijest u praznom stanju
+- [x] 4. `Tools()` s verzijama i obavijest: `ToolStatus` ima `version`, `minimum`, `tooOld`; `toolState`,
+      `toolsProbe`, `logTools` u `editortools.go`; frontend `toolProblems`, `toolsNotice` s naslovom
+      (`toolsState.ts`), `EditorController.toolProblems`, `EditorPane.svelte`, `EmptyState.svelte`; tekstovi
+      `toolsNotReadyTitle`, `tools{Nvim,Pandoc}TooOld`, `tools{Nvim,Pandoc}Upgrade`; bindings regenerirani.
+      Vitest 1423. U ovom koraku se još ništa ne odbija.
+      - Oba alata se pitaju istodobno, svaki do `CommandTimeout`, pa alat koji visi ne košta drugi
+        odgovor. Nečitljiva verzija: `found`, `version ""`, nije prestar, upozorenje u logu.
+      - U log (Info) ide stanje oba alata prvi put i pri svakoj promjeni; upozorenje o nečitljivoj
+        verziji također samo pri promjeni (frontend zove `Tools` pri pokretanju).
+      - Dva starija testa prilagođena novom ugovoru, uz pune usporedbe: `TestTools` (7 podslučajeva) sada
+        očekuje i `Minimum` iz configa (lažni alati tog testa ne ispisuju verziju, pa `Version ""`);
+        `describe('toolsNotice')` (4 testa) zove funkciju s `ToolProblem[]` i očekuje `{title, lines}`.
+        Nijedan test nije obrisan.
+      - Izgled obavijesti nije viđen (ručna provjera).
 - [ ] 5. Odbijanje prestarog alata (`nvim-too-old`, `pandoc-too-old`)
 - [ ] 6. Dimna provjera i dokumenti, zatim `plan-reviewer`
 

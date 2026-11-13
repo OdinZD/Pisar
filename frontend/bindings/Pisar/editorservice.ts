@@ -141,8 +141,11 @@ export function Start(cols: number, rows: number, colorscheme: string): $Cancell
 
 /**
  * Tools looks both tools up again on every call and always returns both, nvim
- * first. Nothing is remembered: the user may install a tool while the
- * application runs and ask again. The lookup does not start the tool.
+ * first. The lookup is repeated, so a tool the user installs or upgrades while
+ * the application runs is seen by the next call; only the answer of an
+ * unchanged binary is remembered (versionCache). Neither lookup starts the
+ * editor. The two tools are asked at once, each against the same deadline, so
+ * a hanging one does not cost the other its answer.
  */
 export function Tools(): $CancellablePromise<$models.ToolStatus[] | null> {
     return $Call.ByID(3974036707);

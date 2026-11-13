@@ -171,7 +171,7 @@ export interface ProjectInfo {
 }
 
 /**
- * ToolStatus says whether an external tool the application needs was found.
+ * ToolStatus says whether an external tool the application needs is usable.
  */
 export interface ToolStatus {
     /**
@@ -179,4 +179,19 @@ export interface ToolStatus {
      */
     "name": string;
     "found": boolean;
+
+    /**
+     * "0.12.6"; "" when not found or when it could not be read
+     */
+    "version": string;
+
+    /**
+     * the oldest version Pisar works with, always set
+     */
+    "minimum": string;
+
+    /**
+     * found, version read, and it is below Minimum
+     */
+    "tooOld": boolean;
 }

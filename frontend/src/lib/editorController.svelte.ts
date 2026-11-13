@@ -30,7 +30,7 @@ import {
 } from './editorState'
 import { describeFocus, noTerminalFocus, type TerminalFocus } from './focus'
 import { shouldFormat } from './formatAction'
-import { missingTools, type ToolName } from './toolsState'
+import { missingTools, toolProblems, type ToolName, type ToolProblem, type ToolStatus } from './toolsState'
 
 interface Waiter {
   resolve: () => void
@@ -59,9 +59,11 @@ export class EditorController {
   /** the error of the last "Spremi kao kopiju", for the toolbar */
   copyError = $derived<ErrorCode | null>(this.#state.copyError)
 
-  #tools = $state.raw<ToolName[]>([])
+  #tools = $state.raw<ToolStatus[]>([])
   /** the tools (nvim, pandoc) the last check did not find; empty when all are there or the check failed */
-  missingTools = $derived<ToolName[]>(this.#tools)
+  missingTools = $derived<ToolName[]>(missingTools(this.#tools))
+  /** what the last check found wrong: missing or too old; empty when all is well or the check failed */
+  toolProblems = $derived<ToolProblem[]>(toolProblems(this.#tools))
   /** a tool check is running right now */
   checkingTools = $state(false)
 
@@ -131,7 +133,7 @@ export class EditorController {
     this.checkingTools = true
     try {
       // The binding types the list as nullable (a Go nil slice), though Tools always returns both.
-      this.#tools = missingTools((await service.Tools()) ?? [])
+      this.#tools = (await service.Tools()) ?? []
     } catch (err) {
       console.error('Tools failed', err)
       this.#tools = []

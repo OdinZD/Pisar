@@ -141,6 +141,9 @@ type EditorService struct {
 
 	userLuaTemplate string // see editorServiceDeps.UserLuaTemplate
 
+	// tools remembers the tools' versions between Tools calls (editortools.go).
+	tools toolsProbe
+
 	// words, queue and marks are the Word documents' part (editorwords.go);
 	// queue is nil exactly when words is.
 	words *wordDocs
