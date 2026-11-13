@@ -4,8 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 8 — Prečaci i which-key (svi koraci izvedeni 2026-11-13, `plan-reviewer` PASS u krugu 1; čeka ručnu provjeru). Faza 7 — Teme: svi koraci izvedeni; vlasnik je 2026-11-13 rekao „kreni” za fazu 8 (bez prijavljenih primjedbi na fazu 7; kućica **[R]** ostaje neoznačena dok vlasnik ne potvrdi ručnu provjeru). Faza 6 — Pakiranje: svi koraci
-  izvedeni, čeka vlasnikovu ručnu provjeru. Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: nema otvorene. Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -13,10 +12,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faza 6, 7 i 8 i odluka o prihvaćanju; ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: nema; nova faza kreće novim planom i vlasnikovim odobrenjem
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-13 (faza 8: svi koraci izvedeni, `plan-reviewer` PASS; čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-13 (faze 6, 7 i 8 prihvaćene nakon vlasnikove ručne provjere)
 
 ## Priprema (2026-11-11)
 
@@ -2034,9 +2033,9 @@ nekorištenih platformi iz `build/`, teme.
 Automatski dio je dokazan (odjeljak „Dokazi po kriterijima”); kućice ostaju prazne dok vlasnik ne prođe ručnu
 provjeru (dvoklik iz Findera, izgled ikone i obavijesti, clipboard).
 
-- [ ] `.app` se gradi i pokreće izvan razvojnog okruženja — dokaz 1; dvoklik iz Findera čeka vlasnika
-- [ ] provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom — dokaz 2; izgled obavijesti čeka vlasnika
-- [ ] ikona, naziv, verzija; potpisivanje za lokalnu upotrebu — dokaz 3; izgled ikone čeka vlasnika
+- [x] `.app` se gradi i pokreće izvan razvojnog okruženja — dokaz 1; dvoklik iz Findera čeka vlasnika — vlasnik potvrdio ručnu provjeru 2026-11-13
+- [x] provjera `nvim` i `pandoc` pri pokretanju, s jasnom porukom — dokaz 2; izgled obavijesti čeka vlasnika — vlasnik potvrdio ručnu provjeru 2026-11-13
+- [x] ikona, naziv, verzija; potpisivanje za lokalnu upotrebu — dokaz 3; izgled ikone čeka vlasnika — vlasnik potvrdio ručnu provjeru 2026-11-13
 
 ## Faza 7 — Teme
 
@@ -2274,9 +2273,9 @@ Automatski dio je dokazan (odjeljak „Dokazi po kriterijima”); zadnja kućica
       `go test . -run 'TestEd(SampleAccepted|BadScheme|SetScheme)|TestMenu|TestSettings'` prolaze — dokaz 3
 - [x] `bash scripts/smoke.sh` — svijetli prolaz i prolaz s Draculom (`Normal` = tokeni, `&background` = `dark`) — dokaz 4
 - [x] `grep -rnE '#[0-9a-fA-F]{6}' frontend/src --include='*.svelte' --include='*.css'` → bez pogodaka — dokaz 5
-- [ ] **[R]** promjena teme boji traku, stablo, terminal, Neovim i pregled bez ponovnog učitavanja; pregled
+- [x] **[R]** promjena teme boji traku, stablo, terminal, Neovim i pregled bez ponovnog učitavanja; pregled
       zadržava skrol; pokretanje s tamnom temom bez bijelog bljeska; kvačica u meniju točna i nakon
-      pokretanja; promjena dok stoji hit-enter prompt primijeni se nakon Entera
+      pokretanja; promjena dok stoji hit-enter prompt primijeni se nakon Entera — vlasnik potvrdio ručnu provjeru 2026-11-13
 
 ## Faza 8 — Prečaci i which-key
 
@@ -2513,7 +2512,7 @@ pregledu; Neovim dodaci; `⌥` kao Meta.
 - [x] `go test ./internal/nvim -run 'TestWhichKey|TestUMap|TestKeymaps|TestUserLuaOpen'` i
       `go test . -run 'TestMenuShortcutsUnique|TestEdKeymaps|TestEdOpenUserLua'` prolaze — dokaz 2
 - [x] `cd frontend && npx vitest run src/lib/shortcuts` prolazi; `bash scripts/smoke.sh` s novim provjerama — dokaz 3
-- [ ] **[R]** prozor se pojavi oko pola sekunde nakon `␣`, čitljiv u sve tri teme; brzi `␣f` bez treptaja;
+- [x] **[R]** prozor se pojavi oko pola sekunde nakon `␣`, čitljiv u sve tri teme; brzi `␣f` bez treptaja;
       `⌘S` i `⌘B` rade dok je otvoren; `⌘/` otvara i zatvara pregled iz terminala, stabla i tražilice; klik
       mišem ili lijepljenje dok je prozor otvoren ne čini ništa neočekivano; „Uredi user.lua” u praznom
-      homeu pokaže predložak, a datoteka nastane tek nakon `⌘S`
+      homeu pokaže predložak, a datoteka nastane tek nakon `⌘S` — vlasnik potvrdio ručnu provjeru 2026-11-13
