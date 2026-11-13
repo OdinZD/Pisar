@@ -139,6 +139,17 @@ se pomiče. Dolje su natuknice tipki.
 **Pregled.** Podloga `bg.desk`, stranica u boji `bg.editor` (bijela u temi Pisar), najviše 420 px široka, unutarnji razmak 40 px,
 blaga sjena. Sadržaj je u sandboxed iframeu sa stilom iz tokena.
 
+**Prozor s prečacima (which-key).** Crta ga Neovim, ne Svelte: float bez fokusa dolje desno, iznad
+statusne trake. Otvara se oko pola sekunde nakon `␣` (`timeoutlen`); brža kombinacija, npr. `␣f`, odmah
+izvršava mapiranje. Boje su `NormalFloat`, `FloatBorder` i `FloatTitle`, stupac tipki je `PisarKey`
+(akcent, podebljano), a imena grupa `PisarKeyGroup`. Popis čine mapiranja s opisom. Vlastita mapiranja,
+imena grupa (`vim.g.pisar_groups`) i gašenje (`vim.g.pisar_whichkey = false`) idu u `user.lua`
+(Datoteka → „Uredi user.lua”).
+
+**Pregled prečaca.** Panel preko cijelog stupca editora, podloga `bg.app`. Odjeljci su Aplikacija,
+Stablo, Tražilica i Neovim. Redak je tipke (mono) i opis, uz oznaku moda i ime grupe prigušeno. `Esc` ili
+`⌘/` zatvara panel; zatvara ga i klik izvan panela.
+
 **Prazno stanje.** Bez otvorenog dokumenta stupac editora prikazuje „Otvori dokument” i tipke
 `␣f` / `⌘P`.
 
@@ -150,9 +161,13 @@ blaga sjena. Sadržaj je u sandboxed iframeu sa stilom iz tokena.
 | `⌘P` | tražilica | aplikacija |
 | `␣p` | pregled pali/gasi | Neovim mapiranje → Go → Svelte |
 | `␣e` | fokus na stablo | Neovim mapiranje → Go → Svelte |
+| `␣` (pa pričekaj) | prozor s prečacima iza razmaknice | Neovim |
+| `␣?` | pregled prečaca | Neovim mapiranje → Go → Svelte |
+| `⌘/` | pregled prečaca, otvara i zatvara | aplikacija |
 | `⌘S` | spremi | aplikacija → RPC |
 | `⌘N` | novi dokument | aplikacija |
 | `Esc` u tražilici ili stablu | fokus natrag u Neovim | Svelte |
+| `Esc` u pregledu prečaca | fokus natrag u Neovim | Svelte |
 | `j` / `k` / `↵` u stablu | kretanje i otvaranje | Svelte |
 
 - Terminal ima fokus po zadanome i dobiva sve tipke osim prečaca s `⌘`.

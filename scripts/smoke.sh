@@ -777,6 +777,42 @@ MD
     check "$L: <Space>f wrote nothing into the buffer" test -n "$h1" -a "$(buffer_hash || true)" = "$h1"
     check "$L: the markdown on disk is the text the buffer had when it was saved" grep -Fq -- "Drugi jedinstveni redak 4712" "$WUSER/pregled.md"
 
+    # D. Which-key and the shortcut overview. A bare <Space> is a mapping of its
+    # own, so Neovim fires it only after 'timeoutlen' (500 ms) and opens a small
+    # float without focus. That is why the keys go in separate sends and the
+    # script waits for the window between them: a send right after <Space> could
+    # arrive inside 'timeoutlen' and run the longer mapping with no window at all.
+    # The window and the mode are read from Neovim; the mappings it runs are read
+    # from the debug log. The overview panel that <Space>? opens in the webview
+    # takes focus from the terminal, but these keys never go to the window, so
+    # nothing here depends on it; it comes last, after the checks that read Neovim.
+    wins() { nv 'len(nvim_list_wins())' 2>/dev/null; }
+    wins_are() { [[ "$(wins)" == "$1" ]]; }
+    # nv_is is defined further down, with the writing section; this is its twin.
+    nv_says() { [[ "$(nv "$1" 2>/dev/null)" == "$2" ]]; }
+    wk_win=$(nv 'win_getid()' || true)
+    check "$L: which-key: before <Space> Neovim has one window (the text), in normal mode" \
+      sh -c '[ "$1" = 1 ] && [ "$2" = "n 0" ]' _ "$(wins || true)" "$(nv 'mode() . " " . (nvim_get_mode().blocking ? 1 : 0)' || true)"
+
+    remote "$WSOCK" --remote-send '<Space>' >/dev/null || true
+    check "$L: which-key: <Space> alone opens a second window (the float, within 10 s)" wait_for 10 wins_are 2
+    check "$L: which-key: the window does not block Neovim: mode n, not blocking, the same current window ($wk_win)" \
+      nv_says 'mode() . " " . (nvim_get_mode().blocking ? 1 : 0) . " " . win_getid()' "n 0 $wk_win"
+
+    n_focus=$(nth 'event=ui:focus-tree')
+    remote "$WSOCK" --remote-send 'e' >/dev/null || true
+    focus_more() { [[ "$(nth 'event=ui:focus-tree')" -ge $((n_focus + 1)) ]]; }
+    check "$L: which-key: the key after the window (e) runs <Space>e: one more ui:focus-tree (after $n_focus)" wait_for 10 focus_more
+    check "$L: which-key: the window is closed again (one window)" wait_for 10 wins_are 1
+    check "$L: which-key: exactly one ui:focus-tree was added, not two" test "$(nth 'event=ui:focus-tree')" = "$((n_focus + 1))"
+
+    n_short=$(nth 'event=ui:open-shortcuts')
+    remote "$WSOCK" --remote-send '<Space>?' >/dev/null || true
+    shortcuts_more() { [[ "$(nth 'event=ui:open-shortcuts')" -ge $((n_short + 1)) ]]; }
+    check "$L: <Space>? in Neovim gives ui:open-shortcuts (after $n_short)" wait_for 10 shortcuts_more
+    check "$L: ... and Neovim is left in normal mode with no float (one window)" \
+      wait_for 10 nv_says 'mode() . " " . len(nvim_list_wins())' "n 1"
+
     # C. Quit through the pid; nothing of the run is left.
     word_stop "$L"
     check "$L: no process of this run is left (application, Neovim, pandoc)" test -z "$(pgrep -f -- "$WHOME" || true)"
