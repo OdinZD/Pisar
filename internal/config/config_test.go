@@ -543,6 +543,16 @@ func TestNvimPathsSpellCreateNothing(t *testing.T) {
 	}
 }
 
+func TestLimitsKeymaps(t *testing.T) {
+	l := mustOpen(t, t.TempDir()).Limits()
+	if l.MaxKeymaps != DefaultMaxKeymaps || l.MaxKeymapText != DefaultMaxKeymapText {
+		t.Fatalf("unexpected keymap limits %+v", l)
+	}
+	if l.MaxKeymaps < 1 || l.MaxKeymapText < 1 {
+		t.Fatalf("keymap limits must be positive: %+v", l)
+	}
+}
+
 func TestLimitsColorscheme(t *testing.T) {
 	if l := mustOpen(t, t.TempDir()).Limits(); l.MaxColorscheme != DefaultMaxColorscheme || l.MaxColorscheme <= 0 {
 		t.Fatalf("unexpected MaxColorscheme %d", l.MaxColorscheme)

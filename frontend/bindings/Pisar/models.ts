@@ -84,6 +84,39 @@ export interface DocumentState {
 }
 
 /**
+ * Keymap is one shortcut of the list the frontend shows: a mapping of Neovim's
+ * that has a description.
+ */
+export interface Keymap {
+    /**
+     * "n", "x" or "i"
+     */
+    "mode": string;
+
+    /**
+     * as Neovim writes them: "<Space>f", "<Down>"
+     */
+    "keys": string;
+    "desc": string;
+}
+
+/**
+ * Keymaps is the list of shortcuts, and the names of the groups the user gave
+ * in user.lua. It reaches JavaScript as a type generated from this struct.
+ */
+export interface Keymaps {
+    /**
+     * never null
+     */
+    "maps": Keymap[] | null;
+
+    /**
+     * keys after the leader -> name; never null
+     */
+    "groups": { [_ in string]?: string } | null;
+}
+
+/**
  * PreviewContent is what the preview pane shows (see eventPreviewContent). It
  * reaches JavaScript as a typed event payload, like DocumentActive.
  */

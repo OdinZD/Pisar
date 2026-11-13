@@ -753,6 +753,43 @@ func (e *EditorService) Format(ctx context.Context, kind string) error {
 	return nil
 }
 
+// Keymap is one shortcut of the list the frontend shows: a mapping of Neovim's
+// that has a description.
+type Keymap struct {
+	Mode string `json:"mode"` // "n", "x" or "i"
+	Keys string `json:"keys"` // as Neovim writes them: "<Space>f", "<Down>"
+	Desc string `json:"desc"`
+}
+
+// Keymaps is the list of shortcuts, and the names of the groups the user gave
+// in user.lua. It reaches JavaScript as a type generated from this struct.
+type Keymaps struct {
+	Maps   []Keymap          `json:"maps"`   // never null
+	Groups map[string]string `json:"groups"` // keys after the leader -> name; never null
+}
+
+// Keymaps asks the running Neovim for the shortcuts to show, bounded by the
+// limits of config (how many, how long a text). Without Neovim it fails with
+// the not-running code; while Neovim waits in a prompt it refuses at once (see
+// nvim.Process.Keymaps), and the frontend shows a note instead of the list.
+func (e *EditorService) Keymaps(ctx context.Context) (Keymaps, error) {
+	slog.Debug("service call", "method", "Keymaps")
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	got, err := e.session.Keymaps(ctx, e.limits.MaxKeymaps, e.limits.MaxKeymapText)
+	if err != nil {
+		return Keymaps{}, failEditor("keymaps", err)
+	}
+	out := Keymaps{Maps: make([]Keymap, 0, len(got.Maps)), Groups: map[string]string{}}
+	for _, m := range got.Maps {
+		out.Maps = append(out.Maps, Keymap{Mode: m.Mode, Keys: m.Keys, Desc: m.Desc})
+	}
+	for key, name := range got.Groups {
+		out.Groups[key] = name
+	}
+	return out, nil
+}
+
 // CopyText puts text on the system clipboard (the terminal's own selection).
 // Empty text leaves the clipboard alone.
 func (e *EditorService) CopyText(text string) error {

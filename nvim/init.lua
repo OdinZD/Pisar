@@ -1,6 +1,23 @@
 -- Configuration shipped with Pisar: what the Go side relies on, and the
 -- defaults for writing prose. No plugins, no network.
 
+-- The mappings Neovim itself made before this file started (gc, gcc, gx, gr...,
+-- ]d, with English descriptions), by mode and raw keys. pisar_keys() below leaves
+-- out those that are still as they were: the list of shortcuts is the
+-- application's and the user's, not Neovim's. This has to come before the first
+-- mapping of this file (measured with Neovim 0.12: gcc, gx and grn are there
+-- already when init.lua starts). What a mapping does is kept with it, so one
+-- that was replaced under the same keys, by this file or by user.lua, is not
+-- taken for a default.
+local default_maps = {}
+for _, mode in ipairs({ "n", "x", "i" }) do
+  local seen = {}
+  for _, m in ipairs(vim.api.nvim_get_keymap(mode)) do
+    seen[m.lhsraw] = { desc = m.desc, callback = m.callback, rhs = m.rhs }
+  end
+  default_maps[mode] = seen
+end
+
 -- First, before anything can load a runtime plugin: Neovim's own spellfile
 -- plugin (runtime/plugin/spellfile.lua, guarded by this variable) asks the user
 -- whether to download a dictionary that is missing when 'spelllang' is set. Go
@@ -1524,6 +1541,90 @@ do
   end
 end
 
+-- The list of shortcuts that Go asks for (internal/nvim, Process.Keymaps): the
+-- global mappings of normal, visual and insert mode that have a description, and
+-- the names of the groups. Not those of a buffer: ftplugins set those per buffer,
+-- and this is the list of the application, not of the document in front of it.
+-- Returns
+--   { maps = { { mode = "n", keys = "<Space>f", desc = "..." }, ... },
+--     groups = { g = "Git" } }
+-- Go decodes it as it comes, so an empty "groups" is made with vim.empty_dict()
+-- (an empty table would reach Go as an empty list). Order: by mode (n, x, i), and
+-- in a mode by the keys without regard to case, like the which-key window; the
+-- comparison of strings is by bytes. At most max_maps mappings and max_maps
+-- groups (by their keys, so that the cut is the same every time), and every text
+-- at most max_text characters (strcharpart counts characters, so it never cuts
+-- through a multibyte one). It never raises because of what the user put in
+-- vim.g.pisar_groups or in a description.
+local function cut_text(value, max_text)
+  return vim.fn.strcharpart(value, 0, max_text)
+end
+
+local function is_default_map(mode, m)
+  local d = default_maps[mode][m.lhsraw]
+  return d ~= nil and d.desc == m.desc and d.callback == m.callback and d.rhs == m.rhs
+end
+
+local function pisar_keys(max_maps, max_text)
+  max_maps = math.floor(tonumber(max_maps) or 0)
+  max_text = math.floor(tonumber(max_text) or 0)
+  local result = { maps = {}, groups = vim.empty_dict() }
+  if max_maps < 1 or max_text < 1 then
+    return result
+  end
+
+  for _, mode in ipairs({ "n", "x", "i" }) do
+    local found = {}
+    for _, m in ipairs(vim.api.nvim_get_keymap(mode)) do
+      if
+        type(m.desc) == "string"
+        and m.desc ~= ""
+        and type(m.lhsraw) == "string"
+        and not is_default_map(mode, m)
+      then
+        found[#found + 1] = { keys = vim.fn.keytrans(m.lhsraw), desc = m.desc, order = #found }
+      end
+    end
+    table.sort(found, function(a, b)
+      local x, y = a.keys:lower(), b.keys:lower()
+      if x ~= y then
+        return x < y
+      end
+      if a.keys ~= b.keys then
+        return a.keys < b.keys
+      end
+      return a.order < b.order
+    end)
+    for _, f in ipairs(found) do
+      if #result.maps >= max_maps then
+        break
+      end
+      result.maps[#result.maps + 1] = {
+        mode = mode,
+        keys = cut_text(f.keys, max_text),
+        desc = cut_text(f.desc, max_text),
+      }
+    end
+  end
+
+  local names = vim.g.pisar_groups
+  if type(names) == "table" then
+    local keys = {}
+    for key, name in pairs(names) do
+      if type(key) == "string" and key ~= "" and type(name) == "string" and name ~= "" then
+        keys[#keys + 1] = key
+      end
+    end
+    table.sort(keys)
+    for i = 1, math.min(#keys, max_maps) do
+      result.groups[cut_text(keys[i], max_text)] = cut_text(names[keys[i]], max_text)
+    end
+  end
+  return result
+end
+-- Go calls it by this global name; it is set again after the user's file.
+_G.pisar_keys = pisar_keys
+
 -- The user's own file, user.lua, runs last. Pisar never creates, changes or
 -- deletes it: it is a file of the user's, in Pisar's home folder, and its path
 -- arrives in PISAR_USER_LUA. No variable, no file, a folder or a file that is
@@ -1553,7 +1654,7 @@ end
 --     window): "all" and the events the two groups listen to are removed, with
 --     a note. The other entries are the user's. An ignored BufWritePost would
 --     leave the saved .docx old after a :w, with no message;
---   _G.pisar_format, which Go calls;
+--   _G.pisar_format and _G.pisar_keys, which Go calls;
 --   g:pisar_reloading, g:pisar_preview and g:pisar_channel, Pisar's own
 --     variables, are unset: a true g:pisar_reloading would silence every buffer
 --     switch, a true g:pisar_preview would send a change event for every key
@@ -1768,6 +1869,7 @@ local function restore_required(late)
   install_events()
   install_format_events()
   _G.pisar_format = pisar_format
+  _G.pisar_keys = pisar_keys
   _G.pisar_msg = msg
   _G.pisar_restore = function()
     restore_again(false)

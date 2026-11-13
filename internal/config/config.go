@@ -136,6 +136,18 @@ const (
 	DefaultMaxSearchResults = 50
 )
 
+// Limits of the list of shortcuts the editor hands to the frontend.
+//   - DefaultMaxKeymaps: mappings, and group names, one call returns. A user.lua
+//     can map without end, and every one would travel to the webview; 500 is far
+//     more than anyone reads in a list of shortcuts.
+//   - DefaultMaxKeymapText: characters in one text of the list (the keys, the
+//     description, a group's key and its name). A description is a short phrase;
+//     longer ones are cut, so that one line cannot make the list unreadable.
+const (
+	DefaultMaxKeymaps    = 500
+	DefaultMaxKeymapText = 200
+)
+
 // Neovim as Pisar runs it. These are the only places the names are written down
 // (nvim/init.lua refers to the colorscheme by the same name).
 const (
@@ -262,6 +274,9 @@ type Limits struct {
 	MaxPreviewSource int           // largest Markdown text, in bytes, that is converted for the preview
 	MaxPreviewHTML   int           // largest HTML, in bytes, one conversion may produce
 	MaxSearchResults int           // hits a search by name returns
+
+	MaxKeymaps    int // mappings (and group names) the list of shortcuts holds
+	MaxKeymapText int // characters in one text of that list; longer ones are cut
 }
 
 var (
@@ -477,6 +492,9 @@ func (s *Store) Limits() Limits {
 		MaxPreviewSource: DefaultMaxPreviewSource,
 		MaxPreviewHTML:   DefaultMaxPreviewHTML,
 		MaxSearchResults: DefaultMaxSearchResults,
+
+		MaxKeymaps:    DefaultMaxKeymaps,
+		MaxKeymapText: DefaultMaxKeymapText,
 	}
 }
 

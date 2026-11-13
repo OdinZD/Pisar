@@ -2416,3 +2416,49 @@ func TestEdText(t *testing.T) {
 		}
 	}
 }
+
+// Keymaps hands the frontend Pisar's own shortcuts with their descriptions, and
+// in JSON neither part is ever null, also when there is nothing to list.
+func TestEdKeymaps(t *testing.T) {
+	e := startEd(t)
+	got, err := e.svc.Keymaps(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := uiTextFor(t)
+	var found bool
+	for _, m := range got.Maps {
+		if m.Mode == "n" && m.Keys == "<Space>f" {
+			found = true
+			if m.Desc == "" || m.Desc != texts.NvimMapSearch {
+				t.Errorf("<Space>f has the description %q, want %q", m.Desc, texts.NvimMapSearch)
+			}
+		}
+	}
+	if !found || len(got.Maps) < 10 {
+		t.Errorf("Pisar's shortcuts are missing: %+v", got.Maps)
+	}
+	if got.Groups == nil || len(got.Groups) != 0 {
+		t.Errorf("groups = %#v, want an empty map", got.Groups)
+	}
+
+	// Without descriptions (Neovim has no texts) nothing is listed: [] and {}.
+	bare := startEd(t, func(d *editorServiceDeps) { d.Text = nil })
+	none, err := bare.svc.Keymaps(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(none)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != `{"maps":[],"groups":{}}` {
+		t.Errorf("empty list as JSON = %s", data)
+	}
+}
+
+func TestEdKeymapsOff(t *testing.T) {
+	e := newEd(t)
+	_, err := e.svc.Keymaps(context.Background())
+	wantCode(t, err, codeNotRunning)
+}

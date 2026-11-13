@@ -460,6 +460,18 @@ func (s *Session) Colorscheme(ctx context.Context) error {
 	return p.Colorscheme(ctx)
 }
 
+// Keymaps lists the shortcuts the running Neovim has (the mappings with a
+// description and the names of the groups); see nvim.Process.Keymaps, in
+// particular the refusal while a prompt is open (nvim.ErrPromptOpen). Without a
+// process it fails with nvim.ErrNotRunning (wrapped).
+func (s *Session) Keymaps(ctx context.Context, maxMaps, maxText int) (nvim.Keymaps, error) {
+	p, err := s.proc()
+	if err != nil {
+		return nvim.Keymaps{}, err
+	}
+	return p.Keymaps(ctx, maxMaps, maxText)
+}
+
 // UserConfig reports what became of the user's own user.lua when the running
 // Neovim started; see nvim.Process.UserConfig. Without a process it is empty.
 func (s *Session) UserConfig() nvim.UserConfig {

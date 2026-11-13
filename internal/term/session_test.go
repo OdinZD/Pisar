@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -964,6 +965,35 @@ func TestFmt(t *testing.T) {
 	text, _, err := s.BufferText(ctx, 1<<20)
 	if err != nil || string(text) != "# jedna riječ\n" {
 		t.Errorf("text after list and heading = %q, %v; want the heading", text, err)
+	}
+}
+
+// Keymaps reaches the running Neovim and lists a mapping that has a description,
+// and without a process it fails with ErrNotRunning.
+func TestKeys(t *testing.T) {
+	idle, _ := newSession(t)
+	if _, err := idle.Keymaps(testCtx(t), 10, 10); !errors.Is(err, nvim.ErrNotRunning) {
+		t.Errorf("Keymaps before Start: %v, want ErrNotRunning", err)
+	}
+
+	s, _ := newSessionInit(t, `vim.keymap.set("n", "<leader>q", function() end, { desc = "session test" })`)
+	ctx := testCtx(t)
+	if err := s.Start(ctx, testSize, testRows); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Keymaps(ctx, 50, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := nvim.Keymap{Mode: "n", Keys: "<Space>q", Desc: "session test"}
+	if !slices.Contains(got.Maps, want) {
+		t.Errorf("Keymaps = %+v, want it to hold %+v", got.Maps, want)
+	}
+	if got.Groups == nil {
+		t.Error("Groups is nil")
+	}
+	if _, err := s.Keymaps(ctx, 0, 50); err == nil {
+		t.Error("Keymaps with maxMaps 0: no error")
 	}
 }
 

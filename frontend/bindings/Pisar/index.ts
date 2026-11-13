@@ -14,6 +14,8 @@ export type {
     DocumentActive,
     DocumentExport,
     DocumentState,
+    Keymap,
+    Keymaps,
     PreviewContent,
     ProjectInfo,
     ToolStatus

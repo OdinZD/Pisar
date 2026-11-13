@@ -53,6 +53,16 @@ export function HasInitialDocument(): $CancellablePromise<boolean> {
 }
 
 /**
+ * Keymaps asks the running Neovim for the shortcuts to show, bounded by the
+ * limits of config (how many, how long a text). Without Neovim it fails with
+ * the not-running code; while Neovim waits in a prompt it refuses at once (see
+ * nvim.Process.Keymaps), and the frontend shows a note instead of the list.
+ */
+export function Keymaps(): $CancellablePromise<$models.Keymaps> {
+    return $Call.ByID(3300115164);
+}
+
+/**
  * OpenDocument edits the document rel of a project in Neovim's current window.
  */
 export function OpenDocument(projectID: string, rel: string): $CancellablePromise<void> {

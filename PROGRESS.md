@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 3 (skupljač mapiranja prema Go-u); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 4 (`␣?`, događaji, stavka menija); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2342,8 +2342,20 @@ Nema novih.
       - `PisarKeyGroup` nije `syntax.list`: na `bg.chrome` u temi Pisar daje samo 4,32. Omjeri izabranih
         boja: `accent` 4,99 / 9,81 / 6,55, `syntax.code` 5,66 / 11,81 / 11,51 (Pisar / Mocha / Dracula).
       - Izgled u aplikaciji nije viđen (ručna provjera).
-- [ ] 3. Skupljač mapiranja prema Go-u: `_G.pisar_keys`, `Process.Keymaps`, `Session.Keymaps`,
-      `EditorService.Keymaps`, `Limits.MaxKeymaps`
+- [x] 3. Skupljač mapiranja prema Go-u: `_G.pisar_keys(max_maps, max_text)` u `init.lua` (vraća se nakon
+      `user.lua`), `internal/nvim/keymaps.go` (`Keymap`, `Keymaps`, `Process.Keymaps`), `Session.Keymaps`,
+      `EditorService.Keymaps` (JSON `maps`, `groups`, nikad `null`), `Limits.MaxKeymaps` (500) i
+      `Limits.MaxKeymapText` (200); bindings regenerirani. Testovi `TestKeymaps*` (4), `TestKeys` (term),
+      `TestEdKeymaps`, `TestEdKeymapsOff`, `TestLimitsKeymaps`.
+      - Vraćaju se GLOBALNA mapiranja modova `n`, `x`, `i` s `desc`. Zadana Neovimova (`gc`, `gx`, `gr…`,
+        `]d`, s engleskim opisima) izostavljaju se: `init.lua` ih snimi na samom vrhu, a mapiranje koje ih
+        pregazi vraća se. Buffer-lokalna (ftplugin) se ne vraćaju. Plan to nije određivao.
+      - `MaxKeymapText` je dodan uz planirani `MaxKeymaps`: bez njega bi popis bio ograničen brojem, a ne
+        veličinom. Rez je u znakovima (`strcharpart`), nikad kroz višebajtni znak.
+      - Dok Neovim čeka u promptu, `Keymaps` odmah vraća `ErrPromptOpen`; frontendu to stiže kao kod
+        `internal` (kao i kod `Save`), pa se u logu bilježi kao greška. Novi kod nije dodavan.
+      - `vim.g.pisar_groups` s miješanim ključevima (`{ g = "Git", [1] = "x" }`) Neovim odbija već pri
+        postavljanju (E5100); to je greška u `user.lua`, a ne u skupljaču.
 - [ ] 4. `␣?`, događaji `menu:shortcuts` i `ui:open-shortcuts`, stavka menija „Prečaci tipkovnice” (`⌘/`),
       `SettingsService.MenuShortcuts`
 - [ ] 5. Otvaranje `user.lua` (`EditorService.OpenUserLua`, stavka menija, rečenica u `CLAUDE.md`)
