@@ -921,6 +921,7 @@ var pisarMaps = []struct{ mode, lhs, key string }{
 	{"n", "<leader>i", "nvimMapItalic"}, {"x", "<leader>i", "nvimMapItalic"},
 	{"n", "<leader>h", "nvimMapHeading"}, {"x", "<leader>h", "nvimMapHeading"},
 	{"n", "<leader>l", "nvimMapList"}, {"x", "<leader>l", "nvimMapList"},
+	{"n", "<Space>", "nvimMapKeys"}, {"x", "<Space>", "nvimMapKeys"},
 }
 
 // TestUMap: every mapping of Pisar's has its description in Croatian, from

@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 1 (which-key i `timeoutlen`); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 2 (boje floata); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2321,7 +2321,21 @@ Nema novih.
 
 ### Koraci
 
-- [ ] 1. Which-key i `timeoutlen` (`nvim/init.lua`, tekstovi, `internal/nvim/whichkey_test.go`, `pisarMaps`)
+- [x] 1. Which-key i `timeoutlen`: blok `install_whichkey` u `nvim/init.lua` (float bez fokusa, `vim.on_key` sa
+      stanjima `open` i `drain`, autocmd grupa `PisarWhichKey`), `timeoutlen = 500`, tekstovi `nvimMapKeys` i
+      `nvimKeysTitle`, `internal/nvim/whichkey_test.go` (7 testova `TestWhichKey*`, 30-ak podtestova), dva
+      retka u `pisarMaps`.
+      - Prikazuju se samo mapiranja s `desc`; kretanje i izvršavanje vrijede za sva (dopuna plana, da
+        korisnikovo mapiranje bez opisa ne prestane raditi kad se prozor otvori).
+      - Grupa bez ičega za prikaz (ili bez mjesta): hvatač ostaje bez prozora i sljedeća tipka se obrađuje
+        isto. Prvi diff je tu vraćao prefiks u red tipki, što je Neovim ostavljalo bez odgovora (izmjereno u
+        pregledu, ispravljeno, čuvaju podtestovi `blind` i `blesc`; bez ispravka padaju).
+      - Tipka pod kojom su i točno mapiranje i dulja vodi u grupu; točno je dostupno brzim tipkanjem.
+      - Neimenovana grupa pokazuje `+N`, gdje N broji sva mapiranja ispod nje, i ona bez `desc`.
+      - Float ostavlja jedan redak razmaka iznad statusne linije (`max_h = row - 3`).
+      - `uitext_test.go`: `TestUITextNvim` sada očekuje 19 tekstova (dva nova ključa dodana u popis).
+      - `PisarKey` i `PisarKeyGroup` su dotad nedefinirane grupe; boje stižu u koraku 2.
+      - `bash scripts/smoke.sh` nakon koraka: `smoke: all checks passed` (157 `ok`).
 - [ ] 2. Boje floata: `PisarKey`, `PisarKeyGroup` u `theme/nvimColorscheme.ts`, tri snimke
 - [ ] 3. Skupljač mapiranja prema Go-u: `_G.pisar_keys`, `Process.Keymaps`, `Session.Keymaps`,
       `EditorService.Keymaps`, `Limits.MaxKeymaps`

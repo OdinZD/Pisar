@@ -23,6 +23,12 @@ package.loaded["nvim.spellfile"] = setmetatable({}, {
 
 vim.g.mapleader = " "
 
+-- How long Neovim waits for the next key of a mapping. It is also the time after
+-- which the which-key window below opens (<Space> alone is a mapping, and Neovim
+-- fires it only once the wait is over). Set here, before user.lua, and not
+-- restored after it: the user may change it.
+vim.o.timeoutlen = 500
+
 -- The texts the user may see from here (the descriptions of the mappings, the
 -- message about a failed formatting action) are Croatian and live in
 -- frontend/src/strings.json, the one place for the interface's text. Go hands
@@ -1114,6 +1120,410 @@ for key, kind in pairs({ b = "bold", i = "italic", h = "heading", l = "list" }) 
   end, { silent = true, desc = text(map_desc[kind]) })
 end
 
+-- Which-key. After <Space> (the leader) and a wait of 'timeoutlen' a small
+-- window without focus lists what can follow; the next key runs the mapping,
+-- goes into a group or closes the window. No plugin: the window is a float with
+-- a scratch buffer, and the keys are caught with vim.on_key().
+--
+-- Measured with Neovim 0.12.6, and the reason for the shape of this code:
+--   * Why not getcharstr(): it blocks Neovim, so nvim_get_mode() says
+--     "blocking" and Go's checks of the mode (Format, Save) would refuse. Why
+--     not feeding the leader again: it would open the window again, for ever.
+--   * <Space> alone is mapped, and longer mappings start with it, so Neovim
+--     fires the bare mapping only after 'timeoutlen'. A quick "<Space>f" is the
+--     mapping <leader>f, and never sees the window.
+--   * The mapped keys come as several keys: j is mapped to gj, and on_key gets
+--     key = g, typed = j, then key = j, typed = "" (not typed: the rest of the
+--     same mapping). A catcher taken off after the first would let the second
+--     run, and the cursor would move. That is the state "drain" below.
+-- It is a function body in a block so that the helpers are not locals of the
+-- whole file (Lua allows 200 of them).
+local install_whichkey
+do
+  local PREFIX = " " -- <Space>
+  local GROUP = "PisarWhichKey"
+
+  local wk = {
+    hl_ns = api.nvim_create_namespace("pisar_whichkey_hl"),
+    key_ns = api.nvim_create_namespace("pisar_whichkey_keys"),
+    state = nil, -- nil, "open" or "drain"
+    drain = nil, -- a table that identifies the drain a scheduled call belongs to
+    win = nil,
+    group = nil, -- id of the autocmd group
+    mode = "n", -- "n" or "x"
+    count = 0, -- v:count when the window was opened
+    prefix = PREFIX, -- raw keys typed so far
+    path = "", -- the same without the leader, in keytrans form
+    index = {}, -- keytrans of the next key -> its entry
+  }
+
+  -- One key per element of a raw string (lhsraw, typed): a key is not a byte.
+  -- K_SPECIAL (0x80) starts a special key of three bytes (<Down> is 80 6b 64), and
+  -- 80 fc <bits> is a modifier that belongs to the key after it (<C-g>, <M-x>).
+  -- The rest is UTF-8, so č is one key of two bytes.
+  local function split_keys(raw)
+    local keys, i, n = {}, 1, #raw
+    while i <= n do
+      local from = i
+      while raw:byte(i) == 0x80 and raw:byte(i + 1) == 0xfc and i + 3 <= n do
+        i = i + 3
+      end
+      local b = raw:byte(i)
+      local len = 1
+      if b == 0x80 then
+        len = 3
+      elseif b >= 0xf0 then
+        len = 4
+      elseif b >= 0xe0 then
+        len = 3
+      elseif b >= 0xc0 then
+        len = 2
+      end
+      i = math.min(i + len, n + 1)
+      keys[#keys + 1] = raw:sub(from, i - 1)
+    end
+    return keys
+  end
+
+  -- The mappings of a mode: those of the buffer first, and a global one with the
+  -- same keys is shadowed by them.
+  local function mode_maps(mode)
+    local seen, out = {}, {}
+    for _, list in ipairs({ api.nvim_buf_get_keymap(0, mode), api.nvim_get_keymap(mode) }) do
+      for _, m in ipairs(list) do
+        if not seen[m.lhsraw] then
+          seen[m.lhsraw] = true
+          out[#out + 1] = m
+        end
+      end
+    end
+    return out
+  end
+
+  local function has_desc(m)
+    return type(m.desc) == "string" and m.desc ~= ""
+  end
+
+  -- The name vim.g.pisar_groups gives to the group at path (the keys after the
+  -- leader, as keytrans writes them: "g", "gh"); nil when it has none.
+  local function group_name(path)
+    local names = vim.g.pisar_groups
+    local name = type(names) == "table" and names[path]
+    return type(name) == "string" and name ~= "" and name or nil
+  end
+
+  -- What can follow the keys typed so far. One entry per next key:
+  --   key      keytrans form of it ("g", "<Down>", "<lt>")
+  --   raw      the key as the mappings spell it
+  --   deeper   the mappings that go on after it
+  --   exact    the mapping that ends with it, if there is one
+  --   group    there are mappings that go on: it leads into a group. A key that
+  --            is both (<Space>g and <Space>gs) counts as a group; the short
+  --            mapping stays reachable by typing fast, without the window.
+  --   shown    it is in the window: only mappings with a description are, and a
+  --            group that has a name or a described mapping under it. Moving and
+  --            running work for every mapping, described or not.
+  local function continuations()
+    local by_key, list = {}, {}
+    for _, m in ipairs(mode_maps(wk.mode)) do
+      local raw = m.lhsraw
+      if raw and #raw > #wk.prefix and raw:sub(1, #wk.prefix) == wk.prefix then
+        local rest = split_keys(raw:sub(#wk.prefix + 1))
+        local key = vim.fn.keytrans(rest[1])
+        local e = by_key[key]
+        if not e then
+          e = { key = key, raw = rest[1], deeper = {}, order = #list + 1 }
+          by_key[key] = e
+          list[#list + 1] = e
+        end
+        if #rest == 1 then
+          e.exact = m
+        else
+          table.insert(e.deeper, m)
+        end
+      end
+    end
+    for _, e in ipairs(list) do
+      e.group = #e.deeper > 0
+      if e.group then
+        local name = group_name(wk.path .. e.key)
+        local described = false
+        for _, m in ipairs(e.deeper) do
+          described = described or has_desc(m)
+        end
+        e.label = "+" .. (name or #e.deeper)
+        e.shown = name ~= nil or described
+      else
+        e.label = e.exact.desc
+        e.shown = has_desc(e.exact)
+      end
+    end
+    -- By the written key, upper and lower case together; the rest of the order
+    -- is the one the mappings came in, so it does not change between calls.
+    table.sort(list, function(a, b)
+      local x, y = a.key:lower(), b.key:lower()
+      if x ~= y then
+        return x < y
+      end
+      if a.key ~= b.key then
+        return a.key < b.key
+      end
+      return a.order < b.order
+    end)
+    return list, by_key
+  end
+
+  local function close_window()
+    if wk.win and api.nvim_win_is_valid(wk.win) then
+      api.nvim_win_close(wk.win, true)
+    end
+    wk.win = nil
+  end
+
+  local function clear_autocmds()
+    if wk.group then
+      -- The group may be gone already: user code can delete any group.
+      pcall(api.nvim_del_augroup_by_id, wk.group)
+      wk.group = nil
+    end
+  end
+
+  local function remove_hook()
+    vim.on_key(nil, wk.key_ns)
+  end
+
+  -- Everything back to nothing: no window, no autocmds, no catcher.
+  local function teardown()
+    close_window()
+    clear_autocmds()
+    remove_hook()
+    wk.state, wk.drain = nil, nil
+  end
+
+  -- Shows the window for the keys typed so far. Returns false, with no window
+  -- left, when there is nothing to show or no room for it.
+  local function render()
+    close_window()
+    local list, by_key = continuations()
+    wk.index = by_key
+    local shown = vim.tbl_filter(function(e)
+      return e.shown
+    end, list)
+    if #shown == 0 then
+      return false
+    end
+
+    -- The window sits in the bottom right corner, above the status line. With a
+    -- border the corner keeps one row and one column of margin (measured in the
+    -- terminal with 24 rows and 80 columns: row 22 puts the bottom border on
+    -- screen row 21, with the status line on row 23, and the right border on
+    -- column 79). So the bottom border is on the row above `row`, the text has
+    -- the rows above that border minus the top border, and a border takes two
+    -- columns.
+    local row = vim.o.lines - vim.o.cmdheight - 1
+    local max_w, max_h = vim.o.columns - 2, row - 3
+    if max_h < 1 or max_w < 10 or (#shown > max_h and max_h < 3) then
+      return false
+    end
+
+    local key_w = 0
+    for _, e in ipairs(shown) do
+      key_w = math.max(key_w, vim.fn.strdisplaywidth(e.key))
+    end
+    local title
+    if wk.path == "" then
+      title = text("nvimKeysTitle")
+    else
+      title = group_name(wk.path) or wk.path
+    end
+    local rows = {}
+    local width = title and vim.fn.strdisplaywidth(title) or 0
+    for _, e in ipairs(shown) do
+      local pad = string.rep(" ", key_w - vim.fn.strdisplaywidth(e.key))
+      rows[#rows + 1] = { e = e, line = e.key .. pad .. "  " .. e.label, from = #e.key + #pad + 2 }
+      width = math.max(width, vim.fn.strdisplaywidth(rows[#rows].line))
+    end
+    width = math.min(width, max_w)
+    local more = #rows > max_h
+    if more then
+      rows = vim.list_slice(rows, 1, max_h - 1)
+    end
+
+    local lines = {}
+    for i, r in ipairs(rows) do
+      lines[i] = msg.fit(r.line, width)
+    end
+    if more then
+      lines[#lines + 1] = "…"
+    end
+
+    local buf = api.nvim_create_buf(false, true)
+    vim.bo[buf].bufhidden = "wipe"
+    api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.bo[buf].modified = false
+    vim.bo[buf].modifiable = false
+    for i, r in ipairs(rows) do
+      -- strict = false: a line that was cut can be shorter than its columns.
+      api.nvim_buf_set_extmark(buf, wk.hl_ns, i - 1, 0, {
+        end_col = #r.e.key,
+        hl_group = "PisarKey",
+        strict = false,
+      })
+      if r.e.group then
+        api.nvim_buf_set_extmark(buf, wk.hl_ns, i - 1, r.from, {
+          end_col = #lines[i],
+          hl_group = "PisarKeyGroup",
+          strict = false,
+        })
+      end
+    end
+
+    wk.win = api.nvim_open_win(buf, false, {
+      relative = "editor",
+      anchor = "SE",
+      row = row,
+      col = vim.o.columns,
+      style = "minimal",
+      border = "single",
+      focusable = false,
+      noautocmd = true,
+      width = width,
+      height = #lines,
+      title = title,
+    })
+    return true
+  end
+
+  -- A failure of ours shows as one line on the message line (a message of
+  -- several lines would open a hit-enter prompt) and leaves nothing behind.
+  local function fail(err)
+    teardown()
+    local text_of_err = tostring(err)
+    if not pcall(msg.show, text_of_err) then
+      vim.schedule(function()
+        msg.show(text_of_err)
+      end)
+    end
+  end
+
+  -- Closes the window, and what was typed is done as if it had been typed
+  -- without the window: feed is that, or nil to do nothing. The keys are put in
+  -- at once, not scheduled: the next key the user types must come after them.
+  --
+  -- The catcher stays for a moment as "drain". The key that closed the window is
+  -- swallowed (on_key returns ""), but a mapped key is several keys, and the rest
+  -- of them (typed = "") are swallowed too. Keys that are put in with feedkeys()
+  -- come with typed ~= "", and the first of them ends the drain. The scheduled
+  -- call is the safety net: it runs when what the mapping produced is used up,
+  -- and takes the catcher off if no key came, which would otherwise swallow the
+  -- next <Esc> (Go's pisar_format sends one to leave visual mode).
+  local function finish(feed)
+    close_window()
+    clear_autocmds()
+    local token = {}
+    wk.state, wk.drain = "drain", token
+    if feed then
+      api.nvim_feedkeys(feed, "mt", false)
+    end
+    vim.schedule(function()
+      if wk.drain == token then
+        remove_hook()
+        wk.state, wk.drain = nil, nil
+      end
+    end)
+  end
+
+  local function feed_with(typed)
+    return (wk.count > 0 and tostring(wk.count) or "") .. wk.prefix .. typed
+  end
+
+  -- What the catcher does with a key. Returns "" to swallow it, nil to let it by.
+  local function on_key(_, typed)
+    if wk.state == "drain" then
+      if typed == "" then
+        return ""
+      end
+      remove_hook()
+      wk.state, wk.drain = nil, nil
+      return nil
+    end
+    if wk.state ~= "open" then
+      return nil
+    end
+    if typed == "" then
+      return nil -- not typed: it is not the user's answer
+    end
+    local keys = split_keys(typed)
+    local e = #keys == 1 and wk.index[vim.fn.keytrans(typed)] or nil
+    if not e then
+      finish(nil) -- <Esc>, <Space>, an unknown key, a click, several keys
+      return ""
+    end
+    if not e.group then
+      finish(feed_with(typed))
+      return ""
+    end
+    wk.prefix, wk.path = wk.prefix .. e.raw, wk.path .. e.key
+    -- Nothing to show in this group, or no room: the catcher stays, without a
+    -- window, and the next key is handled as it would be with one. The keys are
+    -- never put back: the bare <Space> would fire again after 'timeoutlen' and
+    -- open the window again, the group key would lead here again, and so on for
+    -- ever (measured: Neovim stops answering). render() has already taken in the
+    -- continuations, so the lookup above finds them.
+    render()
+    return ""
+  end
+
+  local function open(mode)
+    teardown()
+    wk.mode, wk.count, wk.prefix, wk.path = mode, vim.v.count, PREFIX, ""
+    if not render() then
+      return
+    end
+    wk.group = api.nvim_create_augroup(GROUP, { clear = true })
+    -- Moving away from the window without a key of ours: it is closed and the
+    -- key is not swallowed.
+    api.nvim_create_autocmd(
+      { "BufLeave", "WinLeave", "ModeChanged", "CmdlineEnter", "InsertEnter", "VimResized" },
+      {
+        group = wk.group,
+        callback = function()
+          local ok, err = pcall(teardown)
+          if not ok then
+            fail(err)
+          end
+        end,
+      }
+    )
+    wk.state = "open"
+    vim.on_key(function(key, typed)
+      local ok, res = pcall(on_key, key, typed)
+      if not ok then
+        fail(res)
+        return nil
+      end
+      return res
+    end, wk.key_ns)
+  end
+
+  function install_whichkey()
+    if vim.g.pisar_whichkey == false then
+      return
+    end
+    for _, mode in ipairs({ "n", "x" }) do
+      -- A <Space> of the user's own is theirs.
+      if next(vim.fn.maparg("<Space>", mode, false, true)) == nil then
+        vim.keymap.set(mode, "<Space>", function()
+          local ok, err = pcall(open, mode)
+          if not ok then
+            fail(err)
+          end
+        end, { silent = true, desc = text("nvimMapKeys") })
+      end
+    end
+  end
+end
+
 -- The user's own file, user.lua, runs last. Pisar never creates, changes or
 -- deletes it: it is a file of the user's, in Pisar's home folder, and its path
 -- arrives in PISAR_USER_LUA. No variable, no file, a folder or a file that is
@@ -1168,6 +1578,27 @@ end
 -- colours, their own mappings and autocmds (in groups of their own). A changed
 -- mapleader applies to what the file maps afterwards; Pisar's mappings were
 -- made with the space and stay there.
+--
+-- The which-key window (above) is set up after this file, and is the user's to
+-- shape:
+--   vim.o.timeoutlen = N             how long a <Space> waits before the window
+--                                    opens (Pisar's default is 500);
+--   vim.g.pisar_whichkey = false     no window: the bare <Space> is not mapped;
+--   vim.g.pisar_groups = { g = "Git", gh = "Hunks" }
+--                                    names for groups, by the keys after the
+--                                    leader in the form keytrans() writes; a
+--                                    group without a name shows "+N";
+--   a mapping of the user's own on exactly <Space> (in normal or visual mode,
+--     each on its own): the window is not made for that mode.
+-- The window lists the mappings that have a description (desc); the others
+-- work from it, but are not shown.
+-- Known limits:
+--   * A user.lua that replaces vim.on_key breaks the window.
+--   * A key that begins a mapping of normal mode ("g", for the default gc, gx,
+--     gr...) reaches the window only after 'timeoutlen', unless the key after it
+--     is typed quickly.
+--   * Two keys that are read in the same go (typed ahead) can run in the reverse
+--     order: the mapping from the window is queued after what was already typed.
 --
 -- The messages the file prints while loading (print, vim.notify, :echo) are
 -- caught instead of shown: any of them over one line would open a hit-enter
@@ -1526,3 +1957,7 @@ keep_spell_choice()
 if note then
   vim.g.pisar_user_note = note
 end
+
+-- Last, once: after the user's file, so that it can turn the window off or map
+-- its own <Space>. Not in restore_again: nothing there can undo it.
+install_whichkey()

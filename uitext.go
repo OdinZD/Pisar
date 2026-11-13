@@ -62,6 +62,8 @@ type uiText struct {
 	NvimMapItalic         string `json:"nvimMapItalic"`
 	NvimMapHeading        string `json:"nvimMapHeading"`
 	NvimMapList           string `json:"nvimMapList"`
+	NvimMapKeys           string `json:"nvimMapKeys"`
+	NvimKeysTitle         string `json:"nvimKeysTitle"`
 	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
 	ErrorConflict         string `json:"errorConflict"`
 	ErrorConvertFailed    string `json:"errorConvertFailed"`

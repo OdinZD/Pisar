@@ -44,6 +44,8 @@
   "nvimMapItalic": "Pisar: kurziv",
   "nvimMapHeading": "Pisar: naslov",
   "nvimMapList": "Pisar: stavka liste",
+  "nvimMapKeys": "Pisar: prikaži prečace",
+  "nvimKeysTitle": "Prečaci",
   "chooseFolderTitle": "Odaberi folder projekta",
   "trashTitle": "Premjestiti u Smeće?",
   "trashMessage": "Dokument „{name}” bit će premješten u Smeće.",
