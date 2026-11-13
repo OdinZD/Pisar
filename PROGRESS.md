@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: nema otvorene. Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: 9 — Log datoteka i provjera verzija alata (u tijeku od 2026-11-13). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -12,10 +12,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: nema; nova faza kreće novim planom i vlasnikovim odobrenjem
+- Sljedeći korak: faza 9, korak 1 (log datoteka)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-13 (faze 6, 7 i 8 prihvaćene nakon vlasnikove ručne provjere)
+- Zadnja izmjena: 2026-11-13 (faza 9 započeta)
 
 ## Priprema (2026-11-11)
 
@@ -2516,3 +2516,58 @@ pregledu; Neovim dodaci; `⌥` kao Meta.
       `⌘S` i `⌘B` rade dok je otvoren; `⌘/` otvara i zatvara pregled iz terminala, stabla i tražilice; klik
       mišem ili lijepljenje dok je prozor otvoren ne čini ništa neočekivano; „Uredi user.lua” u praznom
       homeu pokaže predložak, a datoteka nastane tek nakon `⌘S` — vlasnik potvrdio ručnu provjeru 2026-11-13
+
+## Faza 9 — Log datoteka i provjera verzija alata
+
+Effort high. Plan odobren 2026-11-13 (`~/.claude/plans/sad-ajmo-napraviti-plan-prancy-plum.md`).
+
+### Odluke vlasnika (2026-11-13)
+
+- Log ide u Pisarov home: `<home>/logs/pisar.log` (uz `PISAR_HOME` u taj home).
+- Prestar alat se odbija, kao da ga nema: prestar Neovim ne pokreće editor, prestar pandoc gasi Wordove
+  dokumente i pregled; `.md` i `.txt` rade.
+- Meni dobiva Datoteka → „Prikaži log u Finderu”.
+- Odobreno planom: najmanje verzije Neovim 0.12.0 i pandoc 3.13; verzija koja se ne da pročitati ne
+  blokira (upozorenje u logu); log bilježi isto što ide na stderr (Info, uz `PISAR_LOG=debug` Debug),
+  dozvole 0600 / 0700; rotacija samo pri pokretanju iznad 1 MiB (`pisar.log.1`).
+
+### Ovisnosti
+
+Nema novih.
+
+### Izmjereno prije plana
+
+- `main.go` postavlja `slog` samo uz `PISAR_LOG=debug`, i to na stderr; bez varijable vrijedi Goov zadani
+  handler (Info, stderr). Aplikacija iz Findera nema stderr.
+- `scripts/smoke.sh` čita log iz stderr-a (`PISAR_LOG=debug … >"$LOG" 2>&1`), pa stderr mora ostati.
+- Pandocov popis izdanja: `--math-method` (koristi ga `internal/preview`) dodan je u 3.11; 3.12.0 je
+  pokvario `--embed-resources` (ispravljeno u 3.12.1). Instalirano: `pandoc 3.13`, `NVIM v0.12.6`.
+- U Go kodu nema konstante s verzijom aplikacije (verzija je samo u `build/config.yml` / `Info.plist`).
+
+### Koraci
+
+- [ ] 1. Log datoteka (`internal/config`, `logging.go`, `main.go`)
+- [ ] 2. Stavka menija „Prikaži log u Finderu”
+- [ ] 3. Čitanje verzije alata (`toolversion.go`, granice u `internal/config`)
+- [ ] 4. `Tools()` s verzijama i obavijest u praznom stanju
+- [ ] 5. Odbijanje prestarog alata (`nvim-too-old`, `pandoc-too-old`)
+- [ ] 6. Dimna provjera i dokumenti, zatim `plan-reviewer`
+
+### Izvan opsega
+
+Preglednik loga u aplikaciji, rotacija tijekom sesije, slanje loga ikamo, automatska nadogradnja alata,
+provjera `textutil`-a, izmjena dijaloga o neuspjelom pokretanju, README, DMG i notarizacija, git remote i
+sigurnosne kopije dokumenata.
+
+### Kriteriji prihvaćanja
+
+- [ ] `task test`, `task test:race`, `task lint`, `task build` prolaze
+- [ ] `go test . -run 'TestLog|TestToolVersion|TestEdTools|TestMenu'` i
+      `go test ./internal/config -run 'Log|MinVersion'` prolaze
+- [ ] `cd frontend && npx vitest run src/lib/toolsState src/lib/errorMessage` prolazi
+- [ ] `bash scripts/smoke.sh` → `smoke: all checks passed`, s novim provjerama loga i prestarog Neovima
+- [ ] `grep -rnE 'os\.(Create|WriteFile|Remove)' logging.go toolversion.go` pokazuje pisanje samo u log
+- [ ] **[R]** nakon pokretanja iz Findera `~/Library/Application Support/Pisar/logs/pisar.log` raste;
+      „Prikaži log u Finderu” ga označi u Finderu; s lažnim starim `nvim` u PATH-u prazno stanje pokaže
+      poruku o prestaroj verziji i naredbu, a „Provjeri ponovno” je makne kad se lažni alat ukloni
+
