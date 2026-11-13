@@ -25,7 +25,7 @@ const maxDim = 1<<16 - 1
 // method: Close waits for a call in progress to return.
 //
 // The order between terminal output (Data) and Neovim's notifications (Saved,
-// Active, Modified, FocusTree, Changed, TogglePreview, OpenSearch) is not defined, because they travel on two
+// Active, Modified, FocusTree, Changed, TogglePreview, OpenSearch, OpenShortcuts) is not defined, because they travel on two
 // separate channels. Exited is always the last call for a process.
 type Emitter interface {
 	Data(chunk string)                   // terminal output; always valid UTF-8 on its own
@@ -36,6 +36,7 @@ type Emitter interface {
 	Changed()                            // text of the current buffer changed or another buffer became current (only while the preview is on)
 	TogglePreview()                      // <leader>p
 	OpenSearch()                         // <leader>f
+	OpenShortcuts()                      // <leader>?
 	Exited()                             // Neovim quit on its own; all output has been delivered
 }
 
@@ -247,6 +248,8 @@ func (s *Session) forwardEvents(r *run) {
 			s.deliver(func(e Emitter) { e.TogglePreview() })
 		case nvim.EventOpenSearch:
 			s.deliver(func(e Emitter) { e.OpenSearch() })
+		case nvim.EventOpenShortcuts:
+			s.deliver(func(e Emitter) { e.OpenShortcuts() })
 		}
 	}
 	close(r.evDone)

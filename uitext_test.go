@@ -164,13 +164,13 @@ func TestUITextNvim(t *testing.T) {
 		"nvimSpellMissing": "{languages}", "nvimEventsRestored": "{events}", "nvimRestoreFailed": "{reason}",
 		"nvimMapRows": "Pisar: ", "nvimMapSpell": "Pisar: ", "nvimMapNumbers": "Pisar: ", "nvimMapTree": "Pisar: ",
 		"nvimMapPreview": "Pisar: ", "nvimMapSearch": "Pisar: ", "nvimMapBold": "Pisar: ", "nvimMapItalic": "Pisar: ",
-		"nvimMapHeading": "Pisar: ", "nvimMapList": "Pisar: ", "nvimMapKeys": "Pisar: ", "nvimKeysTitle": "",
+		"nvimMapHeading": "Pisar: ", "nvimMapList": "Pisar: ", "nvimMapKeys": "Pisar: ", "nvimMapShortcuts": "Pisar: ", "nvimKeysTitle": "",
 	} {
 		if !strings.Contains(got[key], placeholder) || strings.TrimSpace(got[key]) == "" {
 			t.Errorf("%s = %q, want a text with %q", key, got[key], placeholder)
 		}
 	}
-	if len(got) != 19 {
-		t.Errorf("nvimText has %d texts, want 19: %v", len(got), got)
+	if len(got) != 20 {
+		t.Errorf("nvimText has %d texts, want 20: %v", len(got), got)
 	}
 }

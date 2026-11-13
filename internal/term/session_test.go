@@ -38,6 +38,7 @@ const (
 	evChanged       = "changed"
 	evTogglePreview = "toggle-preview"
 	evOpenSearch    = "open-search"
+	evOpenShortcuts = "open-shortcuts"
 	evExited        = "exited"
 )
 
@@ -82,6 +83,7 @@ func (r *recorder) FocusTree()                    { r.record(call{name: evFocus}
 func (r *recorder) Changed()                      { r.record(call{name: evChanged}) }
 func (r *recorder) TogglePreview()                { r.record(call{name: evTogglePreview}) }
 func (r *recorder) OpenSearch()                   { r.record(call{name: evOpenSearch}) }
+func (r *recorder) OpenShortcuts()                { r.record(call{name: evOpenShortcuts}) }
 func (r *recorder) Exited()                       { r.record(call{name: evExited}) }
 
 func (r *recorder) snapshot() []call {
@@ -497,6 +499,10 @@ func TestPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, "OpenSearch", func() bool { return rec.count(evOpenSearch) > 0 })
+	if err := s.Write(" ?"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "OpenShortcuts", func() bool { return rec.count(evOpenShortcuts) > 0 })
 
 	// Off: an edit gives no Changed.
 	if err := s.Write("x"); err != nil {

@@ -16,6 +16,7 @@ export type {
     DocumentState,
     Keymap,
     Keymaps,
+    MenuShortcut,
     PreviewContent,
     ProjectInfo,
     ToolStatus

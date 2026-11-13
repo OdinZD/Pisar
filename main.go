@@ -50,6 +50,8 @@ func init() {
 	application.RegisterEvent[string](eventTogglePreview)
 	application.RegisterEvent[string](eventOpenSearch)
 	application.RegisterEvent[string](eventMenuSearch)
+	application.RegisterEvent[string](eventOpenShortcuts)
+	application.RegisterEvent[string](eventMenuShortcuts)
 }
 
 // initialFile is the document named on the command line, "" if none. An
@@ -185,6 +187,7 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 	settings := newSettingsService(settingsServiceDeps{
 		Store: store,
 		Emit:  emit,
+		Text:  text,
 		SetBackground: func(r, g, b uint8) {
 			if window != nil {
 				window.SetBackgroundColour(application.NewRGB(r, g, b))

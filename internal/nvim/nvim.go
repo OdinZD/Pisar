@@ -60,7 +60,10 @@ const (
 	changedMethod  = "pisar_changed"
 	previewMethod  = "pisar_preview"
 	searchMethod   = "pisar_search"
-	previewVar     = "pisar_preview"
+	// keysMethod is the notification of <leader>?. It is not the global Lua
+	// function _G.pisar_keys: that one is called by Go, this one is sent to it.
+	keysMethod = "pisar_keys"
+	previewVar = "pisar_preview"
 	// textEnv carries the interface texts to init.lua as JSON (Options.Text). The
 	// name is shared with nvim/init.lua.
 	textEnv = "PISAR_TEXT"
@@ -83,6 +86,7 @@ const (
 	EventChanged                              // the text of the current buffer changed, or another buffer became current; only while SetPreview(true)
 	EventTogglePreview                        // the user asked to switch the preview (<leader>p)
 	EventOpenSearch                           // the user asked for the document search (<leader>f)
+	EventOpenShortcuts                        // the user asked for the overview of shortcuts (<leader>?)
 )
 
 // Event is a notification from Neovim.
@@ -391,6 +395,7 @@ func (p *Process) connect(ctx context.Context, timeout time.Duration) error {
 		changedMethod: func() { p.emit(Event{Kind: EventChanged}) },
 		previewMethod: func() { p.emit(Event{Kind: EventTogglePreview}) },
 		searchMethod:  func() { p.emit(Event{Kind: EventOpenSearch}) },
+		keysMethod:    func() { p.emit(Event{Kind: EventOpenShortcuts}) },
 		byeMethod:     p.closeEvents,
 	}
 	for method, h := range handlers {

@@ -27,11 +27,12 @@ import (
 // structure (DocumentActive, DocumentState, and DocumentExport in editorwords.go);
 // the others are strings.
 const (
-	eventPtyData        = "pty:data"        // payload: a piece of terminal output
-	eventNvimExit       = "nvim:exit"       // Neovim ended on its own; payload ""
-	eventDocumentActive = "document:active" // payload: DocumentActive
-	eventDocumentState  = "document:state"  // payload: DocumentState
-	eventFocusTree      = "ui:focus-tree"   // the user pressed <leader>e in Neovim; payload ""
+	eventPtyData        = "pty:data"          // payload: a piece of terminal output
+	eventNvimExit       = "nvim:exit"         // Neovim ended on its own; payload ""
+	eventDocumentActive = "document:active"   // payload: DocumentActive
+	eventDocumentState  = "document:state"    // payload: DocumentState
+	eventFocusTree      = "ui:focus-tree"     // the user pressed <leader>e in Neovim; payload ""
+	eventOpenShortcuts  = "ui:open-shortcuts" // the user pressed <leader>? in Neovim; payload ""
 )
 
 // DocumentActive describes the buffer Neovim has in front of it. ProjectID and
@@ -1049,6 +1050,11 @@ func (v editorEvents) TogglePreview() {
 func (v editorEvents) OpenSearch() {
 	slog.Debug("editor event", "event", eventOpenSearch)
 	v.e.notify(eventOpenSearch, "")
+}
+
+func (v editorEvents) OpenShortcuts() {
+	slog.Debug("editor event", "event", eventOpenShortcuts)
+	v.e.notify(eventOpenShortcuts, "")
 }
 
 func (v editorEvents) Exited() {

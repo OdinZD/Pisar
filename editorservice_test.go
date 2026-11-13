@@ -1324,6 +1324,24 @@ func TestEdFocusTree(t *testing.T) {
 	}
 }
 
+func TestEdOpenShortcuts(t *testing.T) {
+	e := startEd(t)
+	from := e.rec.mark()
+	if err := e.svc.Write(" ?"); err != nil {
+		t.Fatal(err)
+	}
+	ev := e.rec.waitName(t, from, eventOpenShortcuts)
+	if s, ok := ev.data.(string); !ok || s != "" {
+		t.Errorf("payload %#v", ev.data)
+	}
+	// Neovim has answered a request after the key was handled; a second event
+	// for one key would be here by now.
+	e.eval(`['ok']`)
+	if n := e.rec.count(eventOpenShortcuts); n != 1 {
+		t.Errorf("%d %s events for one key, want 1", n, eventOpenShortcuts)
+	}
+}
+
 // Switching to a buffer that already has unsaved changes must report that
 // state, or the toolbar would show the state of the buffer that was left.
 func TestEdActiveState(t *testing.T) {

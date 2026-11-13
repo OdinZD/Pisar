@@ -44,6 +44,11 @@ export const MenuNewDocument = "menu:new-document";
 export const MenuSearch = "menu:search";
 
 /**
+ * Name of the custom event "menu:shortcuts".
+ */
+export const MenuShortcuts = "menu:shortcuts";
+
+/**
  * Name of the custom event "nvim:exit".
  */
 export const NvimExit = "nvim:exit";
@@ -82,6 +87,11 @@ export const UiFocusTree = "ui:focus-tree";
  * Name of the custom event "ui:open-search".
  */
 export const UiOpenSearch = "ui:open-search";
+
+/**
+ * Name of the custom event "ui:open-shortcuts".
+ */
+export const UiOpenShortcuts = "ui:open-shortcuts";
 
 /**
  * Name of the custom event "ui:toggle-preview".

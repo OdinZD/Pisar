@@ -409,6 +409,13 @@ vim.keymap.set("n", "<leader>f", function()
   notify("pisar_search")
 end, { silent = true, desc = text("nvimMapSearch") })
 
+-- The method name "pisar_keys" is the one Go registers a handler for; it has
+-- nothing to do with _G.pisar_keys (the function Go calls to read the mappings).
+-- The two are different namespaces: an RPC notification and a Lua global.
+vim.keymap.set("n", "<leader>?", function()
+  notify("pisar_keys")
+end, { silent = true, desc = text("nvimMapShortcuts") })
+
 -- What Pisar puts on the message line, from here and from Go (internal/nvim
 -- takes these functions as they are: messageLua, _G.pisar_msg). One copy, because
 -- a message that is not cut to the line opens a hit-enter prompt (:help

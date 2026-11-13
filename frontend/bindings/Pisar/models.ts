@@ -117,6 +117,18 @@ export interface Keymaps {
 }
 
 /**
+ * MenuShortcut is one menu item that has a keyboard shortcut.
+ */
+export interface MenuShortcut {
+    "label": string;
+
+    /**
+     * as Wails writes it: "CmdOrCtrl+s"
+     */
+    "accel": string;
+}
+
+/**
  * PreviewContent is what the preview pane shows (see eventPreviewContent). It
  * reaches JavaScript as a typed event payload, like DocumentActive.
  */

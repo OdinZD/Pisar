@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,35 @@ func TestMenuSearch(t *testing.T) {
 	}
 }
 
+func TestMenuShortcuts(t *testing.T) {
+	var out []menuEmit
+	ed := &fakeMenuEditor{}
+	a := newActions(ed, &out)
+	a.shortcuts()
+	if len(out) != 1 || out[0] != (menuEmit{"menu:shortcuts", ""}) {
+		t.Errorf("menuEmit %v", out)
+	}
+	if ed.saves != 0 {
+		t.Errorf("Save called %d times", ed.saves)
+	}
+}
+
+// The item of the overview of shortcuts has a shortcut and is in the list with
+// the text of strings.json.
+func TestMenuShortcutsItem(t *testing.T) {
+	if accelShortcuts == "" {
+		t.Fatal("accelShortcuts is empty")
+	}
+	text := uiTextFor(t)
+	if text.MenuShortcuts != "Prečaci tipkovnice" {
+		t.Errorf("menuShortcuts = %q", text.MenuShortcuts)
+	}
+	want := menuShortcut{text.MenuShortcuts, accelShortcuts}
+	if !slices.Contains(menuShortcuts(text), want) {
+		t.Errorf("menuShortcuts has no %+v", want)
+	}
+}
+
 // The Formatting menu is built from formatItems: two items, Bold and Italic, in
 // that order, with the shortcuts the plan names and the texts of uiText.
 func TestMenuFormatItems(t *testing.T) {
@@ -141,9 +171,10 @@ func TestMenuFormatItems(t *testing.T) {
 func TestMenuShortcutsUnique(t *testing.T) {
 	text := uiTextFor(t)
 	all := menuShortcuts(text)
-	// The four that were there before the Formatting menu, and its two.
-	if len(all) != 6 {
-		t.Fatalf("menuShortcuts = %+v, want 6 items", all)
+	// The four that were there before the Formatting menu, its two, and the
+	// overview of shortcuts.
+	if len(all) != 7 {
+		t.Fatalf("menuShortcuts = %+v, want 7 items", all)
 	}
 	seen := map[string]string{}
 	for _, sc := range all {
@@ -157,7 +188,7 @@ func TestMenuShortcutsUnique(t *testing.T) {
 		seen[key] = sc.label
 	}
 	for _, accel := range []string{
-		"CmdOrCtrl+n", "CmdOrCtrl+s", "CmdOrCtrl+p", "CmdOrCtrl+c", "CmdOrCtrl+b", "CmdOrCtrl+i",
+		"CmdOrCtrl+n", "CmdOrCtrl+s", "CmdOrCtrl+p", "CmdOrCtrl+c", "CmdOrCtrl+b", "CmdOrCtrl+i", "CmdOrCtrl+/",
 	} {
 		if _, ok := seen[strings.ToLower(accel)]; !ok {
 			t.Errorf("no item has the shortcut %s", accel)

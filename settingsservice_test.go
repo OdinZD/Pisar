@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -44,6 +45,62 @@ func newSettings(store themeStore, log *[]string) *SettingsService {
 			*log = append(*log, fmt.Sprintf("background:%d,%d,%d", r, g, b))
 		},
 	})
+}
+
+// The overview of shortcuts reads the very list the menu is built from: same
+// labels, same shortcuts, same order, and a JSON array with the keys label and
+// accel.
+func TestSettingsMenuShortcuts(t *testing.T) {
+	text := uiTextFor(t)
+	var log []string
+	s := newSettingsService(settingsServiceDeps{
+		Store: &fakeThemeStore{theme: config.DefaultTheme, log: &log},
+		Emit:  func(string, string) {},
+		Text:  text,
+	})
+	got := s.MenuShortcuts(context.Background())
+	want := menuShortcuts(text)
+	if len(got) != len(want) {
+		t.Fatalf("MenuShortcuts = %+v, want %d items", got, len(want))
+	}
+	for i, w := range want {
+		if got[i].Label != w.label || got[i].Accel != w.accel {
+			t.Errorf("item %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+	data, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back []map[string]string
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("%s is not an array of objects: %v", data, err)
+	}
+	if len(back) != len(want) {
+		t.Fatalf("%s has %d items, want %d", data, len(back), len(want))
+	}
+	for i, m := range back {
+		if len(m) != 2 || m["label"] != want[i].label || m["accel"] != want[i].accel {
+			t.Errorf("item %d = %v", i, m)
+		}
+	}
+}
+
+// Without texts the list is still an array, never null.
+func TestSettingsMenuShortcutsNotNil(t *testing.T) {
+	var log []string
+	s := newSettings(&fakeThemeStore{theme: config.DefaultTheme, log: &log}, &log)
+	got := s.MenuShortcuts(context.Background())
+	if got == nil {
+		t.Fatal("MenuShortcuts returned nil")
+	}
+	data, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) == "null" {
+		t.Errorf("JSON is %s", data)
+	}
 }
 
 func background(id string) string {

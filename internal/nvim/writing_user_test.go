@@ -916,6 +916,7 @@ var pisarMaps = []struct{ mode, lhs, key string }{
 	{"n", "<Down>", "nvimMapRows"}, {"x", "<Down>", "nvimMapRows"}, {"i", "<Down>", "nvimMapRows"},
 	{"n", "<Up>", "nvimMapRows"}, {"x", "<Up>", "nvimMapRows"}, {"i", "<Up>", "nvimMapRows"},
 	{"n", "<leader>e", "nvimMapTree"}, {"n", "<leader>p", "nvimMapPreview"}, {"n", "<leader>f", "nvimMapSearch"},
+	{"n", "<leader>?", "nvimMapShortcuts"},
 	{"n", "<leader>s", "nvimMapSpell"}, {"n", "<leader>n", "nvimMapNumbers"},
 	{"n", "<leader>b", "nvimMapBold"}, {"x", "<leader>b", "nvimMapBold"},
 	{"n", "<leader>i", "nvimMapItalic"}, {"x", "<leader>i", "nvimMapItalic"},

@@ -19,6 +19,7 @@ declare module "@wailsio/runtime" {
             "menu:format": string;
             "menu:new-document": string;
             "menu:search": string;
+            "menu:shortcuts": string;
             "nvim:exit": string;
             "preview:content": main$0.PreviewContent;
             "project:changed": string;
@@ -27,6 +28,7 @@ declare module "@wailsio/runtime" {
             "theme:changed": string;
             "ui:focus-tree": string;
             "ui:open-search": string;
+            "ui:open-shortcuts": string;
             "ui:toggle-preview": string;
         }
     }

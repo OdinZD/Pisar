@@ -26,6 +26,7 @@ type uiText struct {
 	MenuCopy              string `json:"menuCopy"`
 	MenuPaste             string `json:"menuPaste"`
 	MenuSearch            string `json:"menuSearch"`
+	MenuShortcuts         string `json:"menuShortcuts"`
 	MenuFormat            string `json:"menuFormat"`
 	MenuBold              string `json:"menuBold"`
 	MenuItalic            string `json:"menuItalic"`
@@ -63,6 +64,7 @@ type uiText struct {
 	NvimMapHeading        string `json:"nvimMapHeading"`
 	NvimMapList           string `json:"nvimMapList"`
 	NvimMapKeys           string `json:"nvimMapKeys"`
+	NvimMapShortcuts      string `json:"nvimMapShortcuts"`
 	NvimKeysTitle         string `json:"nvimKeysTitle"`
 	ErrorUnnamedBuffer    string `json:"errorUnnamedBuffer"`
 	ErrorConflict         string `json:"errorConflict"`

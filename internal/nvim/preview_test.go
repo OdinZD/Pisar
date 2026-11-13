@@ -94,6 +94,38 @@ func TestPrevKeys(t *testing.T) {
 	}
 }
 
+// <leader>? in normal mode notifies once and does nothing else; in insert mode
+// the space and the "?" are text.
+func TestPrevShortcuts(t *testing.T) {
+	p, _ := newProc(t, nil)
+	ctx := testCtx(t)
+	a := mkFile(t, tempDir(t), "a.md", "one\n")
+	if err := p.OpenFile(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	wantEvents(t, p, Event{Kind: EventBufferEntered, Path: a})
+
+	if _, err := p.Write([]byte(" ?")); err != nil {
+		t.Fatal(err)
+	}
+	wantEvents(t, p, Event{Kind: EventOpenShortcuts})
+	if evs := settled(t, p); len(evs) != 0 {
+		t.Errorf("extra events after the mapping: %+v", evs)
+	}
+	p.typeKeys(t, "", "n", [2]int{1, 0})
+
+	if _, err := p.Write([]byte("i ?\x1b")); err != nil {
+		t.Fatal(err)
+	}
+	evs := settled(t, p)
+	if got := only(evs, EventOpenShortcuts); len(got) != 0 {
+		t.Errorf("events in insert mode: %+v", got)
+	}
+	if got := p.lines(t); got[0] != " ?one" {
+		t.Errorf("first line = %q, want %q", got[0], " ?one")
+	}
+}
+
 func TestChanged(t *testing.T) {
 	p, _ := newProc(t, nil)
 	ctx := testCtx(t)

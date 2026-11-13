@@ -12,6 +12,20 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+/**
+ * MenuShortcuts lists the shortcuts of the menu items for the overview of
+ * shortcuts. It is menuShortcuts, the one list the menu and its tests share, so
+ * the overview can never disagree with the menu. The result is never nil, so it
+ * reaches the frontend as an array.
+ */
+export function MenuShortcuts(): $CancellablePromise<$models.MenuShortcut[] | null> {
+    return $Call.ByID(168715062);
+}
+
 /**
  * Theme returns the ID of the theme that is in force.
  */

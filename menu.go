@@ -19,6 +19,10 @@ const eventMenuCopy = "menu:copy"
 // eventMenuSearch asks the frontend to open the document search (⌘P). Payload "".
 const eventMenuSearch = "menu:search"
 
+// eventMenuShortcuts asks the frontend to open the overview of shortcuts (⌘/).
+// Payload "".
+const eventMenuShortcuts = "menu:shortcuts"
+
 // eventMenuFormat asks the frontend to format the text (⌘B, ⌘I). Payload: one
 // of the format kinds below. Like Copy it is the frontend that decides: the
 // shortcut must do nothing while the focus is in an input field.
@@ -39,6 +43,7 @@ const (
 	accelSave        = "CmdOrCtrl+s"
 	accelSearch      = "CmdOrCtrl+p"
 	accelCopy        = "CmdOrCtrl+c"
+	accelShortcuts   = "CmdOrCtrl+/"
 )
 
 // formatItem is one item of the Formatting menu: its label, its shortcut and
@@ -109,6 +114,7 @@ func menuShortcuts(text uiText) []menuShortcut {
 	for _, it := range formatItems(text) {
 		out = append(out, menuShortcut{it.label, it.accel})
 	}
+	out = append(out, menuShortcut{text.MenuShortcuts, accelShortcuts})
 	return out
 }
 
@@ -158,6 +164,12 @@ func (a *menuActions) search() {
 	a.emit(eventMenuSearch, "")
 }
 
+// shortcuts hands the decision to the frontend (see eventMenuShortcuts): the
+// panel is its business, as with search.
+func (a *menuActions) shortcuts() {
+	a.emit(eventMenuShortcuts, "")
+}
+
 // newMenu builds the application menu. Own items only start something and run
 // in their own goroutine, so that a blocked Neovim call (up to CommandTimeout)
 // never holds up the UI. Wails v3.1.0 already calls a click handler from a
@@ -165,7 +177,8 @@ func (a *menuActions) search() {
 //
 // The Formatting menu sits between Edit and View; its items only emit
 // eventMenuFormat. The View menu sits between Formatting and Window and holds
-// the Theme submenu: three radio items without shortcuts. theme is the one
+// the Theme submenu (three radio items without shortcuts) and, after a separator,
+// the item that opens the overview of shortcuts. theme is the one
 // checked at the start; chooseTheme applies a choice (SettingsService.setTheme).
 //
 // The Edit menu is our own and has only Copy and Paste: Cmd+Z, Cmd+X and
@@ -213,6 +226,11 @@ func newMenu(app *application.App, text uiText, a *menuActions, theme string, ch
 
 	view := menu.AddSubmenu(text.MenuView)
 	addThemeMenu(view.AddSubmenu(text.MenuTheme), themeItems(text, theme), chooseTheme)
+	view.AddSeparator()
+	// Not started with "go", like the Formatting items: emitting never blocks.
+	view.Add(text.MenuShortcuts).SetAccelerator(accelShortcuts).OnClick(func(*application.Context) {
+		a.shortcuts()
+	})
 
 	menu.AddRole(application.WindowMenu)
 	return menu

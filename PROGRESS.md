@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 4 (`␣?`, događaji, stavka menija); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 5 (otvaranje `user.lua`); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2356,8 +2356,15 @@ Nema novih.
         `internal` (kao i kod `Save`), pa se u logu bilježi kao greška. Novi kod nije dodavan.
       - `vim.g.pisar_groups` s miješanim ključevima (`{ g = "Git", [1] = "x" }`) Neovim odbija već pri
         postavljanju (E5100); to je greška u `user.lua`, a ne u skupljaču.
-- [ ] 4. `␣?`, događaji `menu:shortcuts` i `ui:open-shortcuts`, stavka menija „Prečaci tipkovnice” (`⌘/`),
-      `SettingsService.MenuShortcuts`
+- [x] 4. `␣?`, događaji i stavka menija: `<leader>?` u `init.lua` šalje `pisar_keys` → `EventOpenShortcuts` →
+      `Emitter.OpenShortcuts()` → `ui:open-shortcuts`; meni Prikaz → „Prečaci tipkovnice” (`CmdOrCtrl+/`, ispod
+      Teme, iza razdjelnika) šalje `menu:shortcuts`; `SettingsService.MenuShortcuts(ctx)` vraća isti popis kao
+      `menuShortcuts()` (`{label, accel}`, nikad nil); oba događaja registrirana u `main.go`; bindings
+      regenerirani. `TestMenuShortcutsUnique` očekuje 7; `TestUITextNvim` 20 tekstova.
+      - Wails v3.1.0 `pkg/application/keys.go` (`parseKey`) prima bilo koji jedan ispisiv znak, pa je `/`
+        valjan akcelerator. Okida li `⌘/` stavku u pokrenutoj aplikaciji nije viđeno (ručna provjera).
+      - Generirani tip povrata je `MenuShortcut[] | null`, iako Go nikad ne vraća nil; frontend s tim računa.
+      - Frontend događaje sluša tek od koraka 6.
 - [ ] 5. Otvaranje `user.lua` (`EditorService.OpenUserLua`, stavka menija, rečenica u `CLAUDE.md`)
 - [ ] 6. Pregled prečaca u frontendu (`ShortcutsPanel.svelte`, `lib/shortcuts*.ts`)
 - [ ] 7. Dimna provjera i dokumenti (`scripts/smoke.sh`, `DESIGN.md`), zatim `plan-reviewer`
