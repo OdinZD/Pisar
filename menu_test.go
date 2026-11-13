@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -272,5 +274,143 @@ func TestMenuThemeItemsUnknown(t *testing.T) {
 		if len(checked) != 1 || checked[0] != config.DefaultTheme {
 			t.Errorf("current %q: checked %v, want only %q", current, checked, config.DefaultTheme)
 		}
+	}
+}
+
+// revealFake records what the menu asked Finder to show.
+type revealFake struct {
+	paths []string
+	err   error
+	gotDL bool
+}
+
+func (f *revealFake) reveal(ctx context.Context, path string) error {
+	f.paths = append(f.paths, path)
+	_, f.gotDL = ctx.Deadline()
+	return f.err
+}
+
+func newRevealActions(f *revealFake, logFile func() (string, error), out *[]menuEmit) *menuActions {
+	a := newActions(&fakeMenuEditor{}, out)
+	a.reveal = f.reveal
+	a.logFile = logFile
+	return a
+}
+
+func TestMenuRevealLog(t *testing.T) {
+	// entries lists what the home folder holds, to see that nothing was created.
+	entries := func(t *testing.T, dir string) []string {
+		t.Helper()
+		var names []string
+		err := filepath.WalkDir(dir, func(p string, _ os.DirEntry, err error) error {
+			names = append(names, p)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return names
+	}
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, root string) // builds what exists under root
+		// want is the revealed path relative to root; "" means no call.
+		want string
+	}{
+		{"file exists", func(t *testing.T, root string) {
+			if err := os.MkdirAll(filepath.Join(root, "logs"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "logs", "pisar.log"), []byte("x\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, filepath.Join("logs", "pisar.log")},
+		{"file missing, folder exists", func(t *testing.T, root string) {
+			if err := os.MkdirAll(filepath.Join(root, "logs"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, "logs"},
+		{"no file and no folder", func(*testing.T, string) {}, ""},
+		{"folder is a plain file", func(t *testing.T, root string) {
+			if err := os.WriteFile(filepath.Join(root, "logs"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			tt.setup(t, root)
+			before := entries(t, root)
+			f := &revealFake{}
+			var out []menuEmit
+			a := newRevealActions(f, func() (string, error) { return filepath.Join(root, "logs", "pisar.log"), nil }, &out)
+			a.revealLog()
+			switch {
+			case tt.want == "" && len(f.paths) != 0:
+				t.Errorf("reveal called with %v, want no call", f.paths)
+			case tt.want != "" && (len(f.paths) != 1 || f.paths[0] != filepath.Join(root, tt.want)):
+				t.Errorf("reveal called with %v, want [%s]", f.paths, filepath.Join(root, tt.want))
+			}
+			if tt.want != "" && !f.gotDL {
+				t.Error("reveal got a context without a deadline")
+			}
+			if after := entries(t, root); !slices.Equal(before, after) {
+				t.Errorf("disk changed: before %v, after %v", before, after)
+			}
+			if len(out) != 0 {
+				t.Errorf("menuEmit %v, want nothing", out)
+			}
+		})
+	}
+}
+
+func TestMenuRevealLogLocateError(t *testing.T) {
+	f := &revealFake{}
+	a := newRevealActions(f, func() (string, error) { return "", errors.New("no home") }, new([]menuEmit))
+	a.revealLog()
+	if len(f.paths) != 0 {
+		t.Errorf("reveal called with %v after logFile failed", f.paths)
+	}
+}
+
+func TestMenuRevealLogRevealError(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "pisar.log")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := &revealFake{err: errors.New("open: exit status 1")}
+	var out []menuEmit
+	a := newRevealActions(f, func() (string, error) { return path, nil }, &out)
+	a.revealLog() // must neither panic nor retry
+	if len(f.paths) != 1 {
+		t.Errorf("reveal called %d times, want 1", len(f.paths))
+	}
+	if len(out) != 0 {
+		t.Errorf("menuEmit %v, want nothing", out)
+	}
+}
+
+// Only the arguments are checked: running "open -R" would open a Finder window.
+func TestRevealCmd(t *testing.T) {
+	// A path with spaces and a leading dash stays one argument and is no option.
+	for _, path := range []string{"/tmp/Application Support/Pisar/logs/pisar.log", "/tmp/-x; rm -rf ~"} {
+		cmd := revealCmd(context.Background(), path)
+		if cmd.Path != "/usr/bin/open" {
+			t.Errorf("Path = %q", cmd.Path)
+		}
+		if want := []string{"/usr/bin/open", "-R", path}; !slices.Equal(cmd.Args, want) {
+			t.Errorf("Args = %q, want %q", cmd.Args, want)
+		}
+	}
+}
+
+func TestMenuRevealLogText(t *testing.T) {
+	if got := uiTextFor(t).MenuRevealLog; got != "Prikaži log u Finderu" {
+		t.Errorf("menuRevealLog = %q", got)
+	}
+	if got := len(menuShortcuts(uiTextFor(t))); got != 7 {
+		t.Errorf("menuShortcuts has %d items, want 7: the log item has no shortcut", got)
 	}
 }

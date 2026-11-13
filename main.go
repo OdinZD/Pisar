@@ -276,7 +276,10 @@ func build(text uiText) (app *application.App, stop func(), err error) {
 
 	svc.syncWatchers() // watch every project whose folder exists
 
-	actions := &menuActions{editor: editor, emit: emit, timeout: limits.CommandTimeout}
+	actions := &menuActions{
+		editor: editor, emit: emit, timeout: limits.CommandTimeout,
+		reveal: revealInFinder, logFile: config.LogFile,
+	}
 	theme := store.Theme()
 	app.Menu.Set(newMenu(app, text, actions, theme, settings.setTheme,
 		func() { app.Event.Emit(eventMenuNewDocument, "") },

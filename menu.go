@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -135,6 +140,60 @@ type menuActions struct {
 	editor  menuEditor
 	emit    func(name, data string) // to the frontend
 	timeout time.Duration           // Limits.CommandTimeout
+
+	// reveal shows a path in Finder (revealInFinder in production); logFile is
+	// config.LogFile. Both are injected so that tests start no Finder and touch
+	// no real home.
+	reveal  func(ctx context.Context, path string) error
+	logFile func() (string, error)
+}
+
+// revealCmd builds the command that selects path in Finder: "open -R <path>".
+// Every argument is a separate element, so no path is ever read as a shell
+// string, and the absolute path cannot be read as an option.
+func revealCmd(ctx context.Context, path string) *exec.Cmd {
+	return exec.CommandContext(ctx, config.DefaultOpenBin, "-R", path)
+}
+
+// revealInFinder runs revealCmd. "open" returns as soon as Finder has the
+// request, so waiting for it is quick; ctx bounds it all the same.
+func revealInFinder(ctx context.Context, path string) error {
+	out, err := revealCmd(ctx, path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("reveal %s: %w: %s", path, err, out)
+	}
+	return nil
+}
+
+// revealLog shows the log file in Finder. A log that does not exist yet (nothing
+// has been logged, or it was deleted) falls back to its folder; without that
+// too there is nothing to show. It creates nothing and reports nothing to the
+// frontend: a failure is only logged.
+func (a *menuActions) revealLog() {
+	path, err := a.logFile()
+	if err != nil {
+		slog.Error("menu: locate log file", "err", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
+	defer cancel()
+	target := path
+	if _, err := os.Stat(path); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Error("menu: stat log file", "path", path, "err", err)
+			return
+		}
+		dir := filepath.Dir(path)
+		info, derr := os.Stat(dir)
+		if derr != nil || !info.IsDir() {
+			slog.Warn("menu: no log file and no log folder to show", "path", path)
+			return
+		}
+		target = dir
+	}
+	if err := a.reveal(ctx, target); err != nil {
+		slog.Error("menu: reveal log", "path", target, "err", err)
+	}
 }
 
 // save writes the current buffer. Without a running Neovim there is nothing to
@@ -221,6 +280,10 @@ func newMenu(app *application.App, text uiText, a *menuActions, theme string, ch
 	file.AddSeparator()
 	file.Add(text.MenuEditUserLua).OnClick(func(*application.Context) {
 		a.editUserLua()
+	})
+	// No shortcut, and started with "go": it runs an external process.
+	file.Add(text.MenuRevealLog).OnClick(func(*application.Context) {
+		go a.revealLog()
 	})
 
 	edit := menu.AddSubmenu(text.MenuEdit)

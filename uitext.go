@@ -27,6 +27,7 @@ type uiText struct {
 	MenuPaste             string `json:"menuPaste"`
 	MenuSearch            string `json:"menuSearch"`
 	MenuEditUserLua       string `json:"menuEditUserLua"`
+	MenuRevealLog         string `json:"menuRevealLog"`
 	MenuShortcuts         string `json:"menuShortcuts"`
 	MenuFormat            string `json:"menuFormat"`
 	MenuBold              string `json:"menuBold"`

@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 2 (stavka menija „Prikaži log u Finderu”)
+- Sljedeći korak: faza 9, korak 3 (čitanje verzije alata)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2562,7 +2562,16 @@ Nema novih.
       - `scripts/smoke.sh`: provjera sadržaja privremenog homea sada očekuje i mapu `logs`
         (`config.json logs nvim spell`). Nakon izmjene `smoke: all checks passed` (165 `ok`); prava
         `~/Library/Application Support/Pisar` nema mapu `logs`.
-- [ ] 2. Stavka menija „Prikaži log u Finderu”
+- [x] 2. Stavka menija Datoteka → „Prikaži log u Finderu” (ispod „Uredi user.lua”, bez prečaca):
+      `menuActions.revealLog` (ubrizgani `reveal` i `logFile`), `revealCmd` (`/usr/bin/open -R <putanja>`,
+      argumenti zasebno, rok `CommandTimeout`), `config.DefaultOpenBin`, tekst `menuRevealLog`.
+      - Ako datoteke još nema, pokaže se mapa `logs`; ako nema ni nje, samo upozorenje u logu. Ništa se ne
+        stvara i ništa se ne šalje frontendu.
+      - Testovi ne pokreću `open`: provjeravaju argumente naredbe i pozive lažnog `reveal`.
+        `TestMenuShortcutsUnique` ostaje 7.
+      - `man open`: „-R Reveals the file(s) in the Finder instead of opening them.” Stvarno otvaranje
+        Findera nije viđeno (ručna provjera).
+      - Putanju naredbe je `coder` ostavio u `menu.go`; glavna sesija ju je premjestila u `internal/config`.
 - [ ] 3. Čitanje verzije alata (`toolversion.go`, granice u `internal/config`)
 - [ ] 4. `Tools()` s verzijama i obavijest u praznom stanju
 - [ ] 5. Odbijanje prestarog alata (`nvim-too-old`, `pandoc-too-old`)

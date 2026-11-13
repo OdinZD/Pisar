@@ -185,6 +185,11 @@ const (
 // the only place its path is written down.
 const DefaultTrashBin = "/usr/bin/trash"
 
+// DefaultOpenBin is the macOS tool that reveals a file in Finder ("open -R").
+// Like DefaultTrashBin it is part of macOS, so its absolute path is fixed, and
+// this is the only place it is written down.
+const DefaultOpenBin = "/usr/bin/open"
+
 // External converters. As with NvimBin and DefaultTrashBin, these are the only
 // places the names are written down.
 const (
