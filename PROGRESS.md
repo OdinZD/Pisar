@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 3 (čitanje verzije alata)
+- Sljedeći korak: faza 9, korak 4 (`Tools()` s verzijama i obavijest)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2572,7 +2572,22 @@ Nema novih.
       - `man open`: „-R Reveals the file(s) in the Finder instead of opening them.” Stvarno otvaranje
         Findera nije viđeno (ručna provjera).
       - Putanju naredbe je `coder` ostavio u `menu.go`; glavna sesija ju je premjestila u `internal/config`.
-- [ ] 3. Čitanje verzije alata (`toolversion.go`, granice u `internal/config`)
+- [x] 3. Čitanje verzije alata: `config.MinNvimVersion` (0.12.0), `config.MinPandocVersion` (3.13),
+      `config.MaxVersionOutput` (16 KiB); novi `toolversion.go` (`toolVersion`, `less`, `parseToolVersion`,
+      `parseVersionNumber`, `probeVersion`, `versionCache`, `nvimXDGEnv`, `nvimProbeEnv`). Još ih ništa ne
+      koristi za odluke. Testovi `TestToolVersion*` i `TestToolMinimumVersionsShape`.
+      - Izmjereno: `nvim --version` traje oko 10 ms i stvori `<XDG_STATE_HOME>/<NVIM_APPNAME>/nvim.log`;
+        `pandoc --version` oko 30 ms. Neovim se zato pita samo s Pisarovom preusmjerenom okolinom; test s
+        pravim `nvim` potvrđuje da izvan privremenog homea ne nastaje ništa.
+      - Proba ima vlastitu procesnu grupu i ubija je po isteku roka (dijete `sleep` ne ostaje); izlaz veći
+        od 16 KiB je greška. Predmemorija ključa po razriješenoj putanji, veličini i vremenu izmjene;
+        greške se ne pamte.
+      - `v0.12.0-rc1` i `v0.13.0-dev-…` čitaju se kao 0.12.0 odnosno 0.13.0. Usporedba je brojčana
+        (3.9 < 3.13).
+      - Iz `editorservice.go` su četiri retka `XDG_*` izdvojena u `nvimXDGEnv` (isti sadržaj i redoslijed).
+      - `coder` je tijekom rada jednom pokušao pokrenuti `nvim --version` bez preusmjerene okoline; prema
+        njegovom izvještaju naredba je odbijena. Provjereno: u `~/.local/state/nvim/` nema `nvim.log`, a
+        mapa nosi datum 10. 8.
 - [ ] 4. `Tools()` s verzijama i obavijest u praznom stanju
 - [ ] 5. Odbijanje prestarog alata (`nvim-too-old`, `pandoc-too-old`)
 - [ ] 6. Dimna provjera i dokumenti, zatim `plan-reviewer`

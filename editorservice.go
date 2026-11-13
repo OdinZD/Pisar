@@ -225,17 +225,13 @@ func newEditorService(d editorServiceDeps) (*EditorService, error) {
 			SocketDir: runDir,
 			// Neovim's own state goes under the home, not into the user's
 			// ~/.config, ~/.local and ~/.cache.
-			Env: []string{
-				"XDG_CONFIG_HOME=" + paths.ConfigHome,
-				"XDG_DATA_HOME=" + paths.DataHome,
-				"XDG_STATE_HOME=" + paths.StateHome,
-				"XDG_CACHE_HOME=" + paths.CacheHome,
+			Env: append(nvimXDGEnv(paths),
 				// Where zg stores the user's own words; init.lua must not guess
 				// a path outside its own folder.
-				config.EnvNvimSpellFile + "=" + paths.UserWords,
+				config.EnvNvimSpellFile+"="+paths.UserWords,
 				// The user's own Neovim file; init.lua loads it when it exists.
-				config.EnvNvimUserLua + "=" + paths.UserLua,
-			},
+				config.EnvNvimUserLua+"="+paths.UserLua,
+			),
 			StartTimeout: d.Limits.NvimStartTimeout,
 			StopTimeout:  d.Limits.NvimStopTimeout,
 			Text:         d.Text,

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -1069,4 +1070,14 @@ func TestLogFile(t *testing.T) {
 			t.Error("LogFile accepted a relative PISAR_HOME")
 		}
 	})
+}
+
+// The toolversion parser in the root package reads these two; here only the
+// shape is checked, the parsing is tested next to the parser.
+func TestToolMinimumVersionsShape(t *testing.T) {
+	for name, v := range map[string]string{"MinNvimVersion": MinNvimVersion, "MinPandocVersion": MinPandocVersion} {
+		if !regexp.MustCompile(`^\d+(\.\d+)+$`).MatchString(v) {
+			t.Errorf("%s = %q, want dotted numbers such as 0.12.0", name, v)
+		}
+	}
 }

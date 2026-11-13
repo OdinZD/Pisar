@@ -199,6 +199,22 @@ const (
 	DefaultTextutilBin = "/usr/bin/textutil"
 )
 
+// The oldest versions of the external tools Pisar works with. They are written
+// as dotted numbers without a "v" prefix or a suffix; a missing part counts as 0.
+const (
+	// MinNvimVersion: nvim/init.lua relies on Neovim 0.12 behaviour.
+	MinNvimVersion = "0.12.0"
+	// MinPandocVersion is the version the tests and the smoke run passed with.
+	// The oldest the preview could work with is 3.11, where --math-method
+	// appeared; nothing older was tried, so nothing older is promised.
+	MinPandocVersion = "3.13"
+)
+
+// MaxVersionOutput bounds what "<tool> --version" is read for. A real
+// "nvim --version" is about 2 KiB (the compiler flags are in it); 16 KiB leaves
+// room for that and stops a tool that prints without end from filling memory.
+const MaxVersionOutput = 16 << 10
+
 // Folders under the home. Both hold data Pisar owns, never the user's documents.
 const (
 	// workDirName holds one working copy per open Word document.
