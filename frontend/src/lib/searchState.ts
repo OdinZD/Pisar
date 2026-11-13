@@ -43,6 +43,10 @@ export interface SearchState {
   pending: PendingSearch | null
   /** the error to show; never `canceled` */
   error: ErrorCode | null
+  /** the last answer to a non-empty query had no hits. Kept only so that "no documents" stays on screen
+   *  while the next answer is awaited; without it the line vanishes on every typed character and the
+   *  panel jumps up and down. Cleared by hits, an error, an emptied query and closing. */
+  emptyAnswer: boolean
   /** token of the open that is in flight */
   opening: number | null
   /** the last token handed out, for searches and opens alike; survives closing, so an answer that
@@ -58,6 +62,7 @@ export const initialSearchState: SearchState = {
   selected: -1,
   pending: null,
   error: null,
+  emptyAnswer: false,
   opening: null,
   lastToken: 0,
 }
@@ -92,7 +97,7 @@ export function opened(state: SearchState): Transition {
 // The query or the scope changed: ask again, or drop everything when there is nothing to ask.
 function retarget(state: SearchState): Transition {
   const query = state.query.trim()
-  if (query === '') return { state: { ...state, hits: [], selected: -1, pending: null, error: null }, effects: [] }
+  if (query === '') return { state: { ...state, hits: [], selected: -1, pending: null, error: null, emptyAnswer: false }, effects: [] }
   const token = state.lastToken + 1
   const pending: PendingSearch = { token, query, projectId: state.scope?.projectId ?? '' }
   // The old hits stay on screen until the answer comes, but opening is refused meanwhile (see activateSelected).
@@ -127,14 +132,17 @@ export function searchArrived(state: SearchState, token: number, hits: readonly 
   if (!state.open || state.pending?.token !== token) return unchanged(state)
   // The generated type allows null for an empty list.
   const list = hits ?? []
-  return { state: { ...state, pending: null, error: null, hits: list, selected: list.length > 0 ? 0 : -1 }, effects: [] }
+  return {
+    state: { ...state, pending: null, error: null, emptyAnswer: list.length === 0, hits: list, selected: list.length > 0 ? 0 : -1 },
+    effects: [],
+  }
 }
 
 /** A failed search. `canceled` means the call was dropped on the way; whatever is shown stays. */
 export function searchFailed(state: SearchState, token: number, code: ErrorCode): Transition {
   if (!state.open || state.pending?.token !== token) return unchanged(state)
   if (code === 'canceled') return { state: { ...state, pending: null }, effects: [] }
-  return { state: { ...state, pending: null, hits: [], selected: -1, error: code }, effects: [] }
+  return { state: { ...state, pending: null, hits: [], selected: -1, error: code, emptyAnswer: false }, effects: [] }
 }
 
 /** ↓ / ↑. The selection stops at the ends. */
@@ -221,7 +229,9 @@ export function searchView(state: SearchState): SearchView {
     projectName: hit.projectName,
   }))
   const asked = state.query.trim() !== ''
-  const noResults = asked && state.pending === null && state.error === null && state.hits.length === 0
+  // While an answer is awaited the line stays only if the answer before it was empty too; the first
+  // query after opening has nothing to stay, so it shows nothing until it is answered.
+  const noResults = asked && state.error === null && state.hits.length === 0 && (state.pending === null || state.emptyAnswer)
   let message: SearchView['message'] = null
   if (state.error !== null) message = { text: errorMessage(state.error), danger: true }
   else if (noResults) message = { text: strings.searchNoResults, danger: false }

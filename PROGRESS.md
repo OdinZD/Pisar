@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faza 6, 7 i 8 i odluka o prihvaćanju; ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: vlasnikova odluka o popravku „Uredi user.lua” bez Neovima; ručna provjera faza 6, 7 i 8; ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8: svi koraci izvedeni, `plan-reviewer` PASS; čeka ručnu provjeru)
@@ -2441,6 +2441,8 @@ exit 0 (`internal/nvim` 97 s), `task lint` `0 issues.` i svelte-check 0 grešaka
 ### Ručna provjera — za vlasnika (agent ovo ne može provjeriti)
 
 Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-precaci bin/pisar`.
+**Prije svega dodaj projekt i otvori dokument:** Neovim se pokreće tek s prvim otvorenim dokumentom, a prazan
+privremeni home nema projekata, pa bez toga `␣` nema kome stići (vlasnik je na to naišao 2026-11-13).
 
 1. `␣` pa pričekaj: prozor s prečacima se pojavi nakon otprilike pola sekunde, dolje desno iznad statusne
    trake; čitljiv u sve tri teme (tipke u boji akcenta, imena grupa zeleno).
@@ -2455,6 +2457,20 @@ Pokretanje bez diranja prave konfiguracije: `PISAR_HOME=/tmp/pisar-precaci bin/p
    traka pokazuje `user.lua`.
 8. Vlastiti prečac i grupa iz `user.lua` (odkomentiraj primjere iz predloška, ponovno pokreni): vide se u
    prozoru iza `␣` i u pregledu prečaca.
+
+### Nalazi vlasnikove ručne provjere (2026-11-13)
+
+- **Otvoreno, čeka odluku vlasnika:** „Uredi user.lua” bez pokrenutog Neovima ne radi ništa, a u praznom
+  homeu Neovim nikad ne radi, pa kriterij „u praznom homeu pokaže predložak” nije ispunjen. Prijedlog:
+  stavka menija šalje događaj frontendu, koji po potrebi pokrene Neovim i zatim pozove `OpenUserLua` (kao kod
+  otvaranja dokumenta). To mijenja ugovor iz plana (meni više ne zove Go izravno).
+- **Ispravljeno:** u tražilici je poruka „Nema dokumenata za taj upit.” nestajala pri svakom utipkanom znaku
+  i vraćala se s odgovorom, pa je panel skakao (greška iz faze 4). `searchState.ts` sada pamti da je zadnji
+  odgovor bio prazan (`emptyAnswer`) i poruka ostaje dok se čeka sljedeći; briše je odgovor s pogocima,
+  greška, ispražnjen upit i zatvaranje. Prvi upit nakon otvaranja i dalje ne pokazuje poruku dok se čeka.
+  Devet novih testova; bez ispravka dva padaju. `task test` (vitest 1403), `task lint`, `task build`: exit 0.
+  Izgled u aplikaciji nije viđen.
+- Prazno stanje editora i dalje nudi `␣f`, iako bez Neovima radi samo `⌘P` (starije od faze 8, nije dirano).
 
 ### Nije provjereno / poznata ograničenja
 

@@ -415,6 +415,74 @@ describe('searchView', () => {
     expect(v.announce).toBe('')
   })
 
+  describe('"no documents" while the next answer is awaited', () => {
+    const noDocs = { text: strings.searchNoResults, danger: false }
+    // an open panel whose last answer to "zzz" was empty
+    const emptied = () => {
+      const asked = queryChanged(state(), 'zzz').state
+      return searchArrived(asked, asked.pending!.token, []).state
+    }
+
+    it('keeps the line on screen after another character and after the second empty answer', () => {
+      const next = queryChanged(emptied(), 'zzzz').state
+      expect(next.pending).not.toBeNull()
+      expect(searchView(next).message).toEqual(noDocs)
+      const again = searchArrived(next, next.pending!.token, []).state
+      expect(searchView(again).message).toEqual(noDocs)
+    })
+
+    it('drops the line when hits arrive, and the next character no longer brings it back', () => {
+      const next = queryChanged(emptied(), 'zz').state
+      const found = searchArrived(next, next.pending!.token, hits).state
+      expect(searchView(found).message).toBeNull()
+      expect(searchView(queryChanged(found, 'zzz').state).message).toBeNull()
+    })
+
+    it('keeps the line when the scope changes while waiting', () => {
+      const t = scopeToggled(emptied(), scope)
+      expect(t.state.pending).not.toBeNull()
+      expect(searchView(t.state).message).toEqual(noDocs)
+    })
+
+    it('drops the line when the query is emptied, and a new query waits without it', () => {
+      const cleared = queryChanged(emptied(), '').state
+      expect(searchView(cleared).message).toBeNull()
+      expect(searchView(queryChanged(cleared, 'a').state).message).toBeNull()
+    })
+
+    it('shows the error instead, and the next character shows neither', () => {
+      const next = queryChanged(emptied(), 'zzzz').state
+      const failed = searchFailed(next, next.pending!.token, 'internal').state
+      expect(searchView(failed).message).toEqual({ text: strings.errorGeneric, danger: true })
+      expect(searchView(queryChanged(failed, 'zzzzz').state).message).toBeNull()
+    })
+
+    it('does not carry over a close and reopen: the first query waits without the line', () => {
+      const reopened = opened(dismissed(emptied(), true).state).state
+      expect(searchView(queryChanged(reopened, 'a').state).message).toBeNull()
+    })
+
+    it('keeps the line after a canceled answer', () => {
+      const next = queryChanged(emptied(), 'zzzz').state
+      const canceled = searchFailed(next, next.pending!.token, 'canceled').state
+      expect(canceled.pending).toBeNull()
+      expect(searchView(canceled).message).toEqual(noDocs)
+    })
+
+    it('a late empty answer with an old token does not set the flag', () => {
+      const first = queryChanged(state(), 'a').state
+      const second = queryChanged(first, 'ab').state
+      const late = searchArrived(second, first.pending!.token, [])
+      expect(late.state).toBe(second)
+      expect(late.state.emptyAnswer).toBe(false)
+      expect(searchView(late.state).message).toBeNull()
+    })
+
+    it('still says nothing to screen readers while the answer is awaited', () => {
+      expect(searchView(queryChanged(emptied(), 'zzzz').state).announce).toBe('')
+    })
+  })
+
   it('builds rows without extension, highlighted, with the project and the selection', () => {
     const v = searchView(answered({ selected: 1 }))
     // each hit file is one letter long, matched whole
