@@ -107,6 +107,14 @@ describe('required groups', () => {
     expect(highlights.MatchParen.bold).toBe(true)
   })
 
+  it('paints the which-key groups on the float background, the key column bold', () => {
+    for (const name of ['PisarKey', 'PisarKeyGroup']) {
+      expect(highlights[name], name).toBeDefined()
+      expect(highlights[name].bg, name).toBe(highlights.NormalFloat.bg)
+    }
+    expect(highlights.PisarKey.bold).toBe(true)
+  })
+
   it('draws a wavy red line for SpellBad without touching the text colour', () => {
     expect(highlights.SpellBad).toEqual({ sp: 'danger', undercurl: true })
   })

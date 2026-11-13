@@ -13,7 +13,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 8, korak 2 (boje floata); ručna provjera faza 6 i 7 i dalje je na vlasniku
+- Sljedeći korak: faza 8, korak 3 (skupljač mapiranja prema Go-u); ručna provjera faza 6 i 7 i dalje je na vlasniku
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 8 započeta: koraci i mjerenja upisani)
@@ -2336,7 +2336,12 @@ Nema novih.
       - `uitext_test.go`: `TestUITextNvim` sada očekuje 19 tekstova (dva nova ključa dodana u popis).
       - `PisarKey` i `PisarKeyGroup` su dotad nedefinirane grupe; boje stižu u koraku 2.
       - `bash scripts/smoke.sh` nakon koraka: `smoke: all checks passed` (157 `ok`).
-- [ ] 2. Boje floata: `PisarKey`, `PisarKeyGroup` u `theme/nvimColorscheme.ts`, tri snimke
+- [x] 2. Boje floata: `PisarKey` (`accent` na `bg.chrome`, podebljano) i `PisarKeyGroup` (`syntax.code` na
+      `bg.chrome`) u `theme/nvimColorscheme.ts`; tri snimke u `testdata/colorscheme/` dobile su po dva retka;
+      nova tvrdnja u „required groups”; izračunati test kontrasta mjeri obje grupe u tri teme (vitest 1283).
+      - `PisarKeyGroup` nije `syntax.list`: na `bg.chrome` u temi Pisar daje samo 4,32. Omjeri izabranih
+        boja: `accent` 4,99 / 9,81 / 6,55, `syntax.code` 5,66 / 11,81 / 11,51 (Pisar / Mocha / Dracula).
+      - Izgled u aplikaciji nije viđen (ručna provjera).
 - [ ] 3. Skupljač mapiranja prema Go-u: `_G.pisar_keys`, `Process.Keymaps`, `Session.Keymaps`,
       `EditorService.Keymaps`, `Limits.MaxKeymaps`
 - [ ] 4. `␣?`, događaji `menu:shortcuts` i `ui:open-shortcuts`, stavka menija „Prečaci tipkovnice” (`⌘/`),

@@ -83,6 +83,11 @@ export const highlights: Record<string, Highlight> = {
   NormalFloat: { fg: 'text', bg: 'bg.chrome' },
   FloatBorder: { fg: 'text.muted', bg: 'bg.chrome' },
   FloatTitle: { fg: 'accent', bg: 'bg.chrome', bold: true },
+  // The which-key window in nvim/init.lua: key column and group names. Both set bg themselves so the
+  // contrast test measures them on the float's real background, not on Normal. syntax.list would be
+  // the natural pick for group names, but it is only 4.32 on bg.chrome in the pisar theme.
+  PisarKey: { fg: 'accent', bg: 'bg.chrome', bold: true },
+  PisarKeyGroup: { fg: 'syntax.code', bg: 'bg.chrome' },
 
   // Quiet text.
   Comment: { fg: 'text.muted' },
