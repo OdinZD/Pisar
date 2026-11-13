@@ -1043,3 +1043,30 @@ func TestThemeConcurrent(t *testing.T) {
 		t.Fatalf("disk %q, memory %q", got, s.Theme())
 	}
 }
+
+func TestLogFile(t *testing.T) {
+	t.Run("under the home, creates nothing", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv(EnvHome, home)
+		got, err := LogFile()
+		if err != nil {
+			t.Fatalf("LogFile: %v", err)
+		}
+		if want := filepath.Join(home, "logs", "pisar.log"); got != want {
+			t.Errorf("LogFile = %q, want %q", got, want)
+		}
+		entries, err := os.ReadDir(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 0 {
+			t.Errorf("LogFile created %d entries in the home", len(entries))
+		}
+	})
+	t.Run("relative home is refused", func(t *testing.T) {
+		t.Setenv(EnvHome, "relative/home")
+		if _, err := LogFile(); err == nil {
+			t.Error("LogFile accepted a relative PISAR_HOME")
+		}
+	})
+}

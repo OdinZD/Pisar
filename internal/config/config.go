@@ -40,8 +40,9 @@ const EnvNvimSpellFile = "PISAR_SPELLFILE"
 // must match.
 const EnvNvimUserLua = "PISAR_USER_LUA"
 
-// EnvLog set to "debug" makes the application log every service call to
-// stderr. It is a diagnostic for development and for scripts/smoke.sh.
+// EnvLog set to "debug" makes the application log every service call (to
+// stderr and to the log file, see LogFile). It is a diagnostic for development
+// and for scripts/smoke.sh.
 const EnvLog = "PISAR_LOG"
 
 const (
@@ -201,10 +202,20 @@ const (
 	backupsDirName = "backups"
 	// previewDirName holds the files the preview needs next to pandoc (its filter).
 	previewDirName = "preview"
+	// logsDirName holds the log file.
+	logsDirName = "logs"
 	// spellDirName holds the user's own spelling words. Pisar never rewrites it,
 	// unlike the Neovim configuration folder, which is replaced at every start.
 	spellDirName = "spell"
 )
+
+// logFileName is the log file inside logsDirName.
+const logFileName = "pisar.log"
+
+// DefaultMaxLogBytes: a log file larger than this is moved aside when the application starts.
+// 1 MiB holds many thousands of lines at the Info level, and with the one older
+// copy kept the log never takes more than about twice that.
+const DefaultMaxLogBytes = 1 << 20
 
 // Theme IDs. The order of Themes is the order in the menu.
 const (
@@ -333,6 +344,15 @@ func DefaultHome() (string, error) {
 		return "", fmt.Errorf("config: locate user config dir: %w", err)
 	}
 	return filepath.Join(base, appDirName), nil
+}
+
+// LogFile returns <home>/logs/pisar.log. It uses DefaultHome, so it works before Open, and creates nothing.
+func LogFile() (string, error) {
+	home, err := DefaultHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, logsDirName, logFileName), nil
 }
 
 // Open loads the configuration from home, creating the directory (0700) if needed.

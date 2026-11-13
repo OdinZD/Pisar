@@ -12,7 +12,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: faza 9, korak 1 (log datoteka)
+- Sljedeći korak: faza 9, korak 2 (stavka menija „Prikaži log u Finderu”)
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
 - Zadnja izmjena: 2026-11-13 (faza 9 započeta)
@@ -2546,7 +2546,22 @@ Nema novih.
 
 ### Koraci
 
-- [ ] 1. Log datoteka (`internal/config`, `logging.go`, `main.go`)
+- [x] 1. Log datoteka: `config.LogFile()` (`<home>/logs/pisar.log`, preko `DefaultHome`), `DefaultMaxLogBytes`
+      (1 MiB); novi `logging.go` (`openLog`, `setupLogging`, `fileWriter`, `logStart`); `main.go` zove
+      `setupLogging` odmah nakon `PrepareEnvironment`. Testovi `TestLogFile` i `logging_test.go`.
+      - Log ide u datoteku I na stderr (Info; uz `PISAR_LOG=debug` Debug). Mapa 0700, datoteka 0600,
+        dopisivanje; iznad 1 MiB pri pokretanju postaje `pisar.log.1`.
+      - `io.MultiWriter` staje na prvoj grešci, pa je datoteka umotana u `fileWriter`: prvu grešku pisanja
+        prijavi na stderr i dalje datoteku preskače. Aplikacija se zbog loga nikad ne zaustavlja.
+      - Odstupanje od plana: prvi zapis nema verziju aplikacije (u Go kodu je nema); nosi home, putanju
+        loga, izvršnu datoteku i PID. Dodan je i zapis `pisar: stopped with an error` kad `run()` vrati
+        grešku, da se neuspjelo pokretanje iz Findera vidi u logu.
+      - Pregled svih `slog` poziva: nijedan ne bilježi tekst dokumenta, izlaz terminala ni clipboard.
+        Bilježe se putanje, duljine, kodovi i greške; `editorservice.go` bilježi i prvi redak greške iz
+        `user.lua`.
+      - `scripts/smoke.sh`: provjera sadržaja privremenog homea sada očekuje i mapu `logs`
+        (`config.json logs nvim spell`). Nakon izmjene `smoke: all checks passed` (165 `ok`); prava
+        `~/Library/Application Support/Pisar` nema mapu `logs`.
 - [ ] 2. Stavka menija „Prikaži log u Finderu”
 - [ ] 3. Čitanje verzije alata (`toolversion.go`, granice u `internal/config`)
 - [ ] 4. `Tools()` s verzijama i obavijest u praznom stanju

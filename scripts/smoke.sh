@@ -1045,8 +1045,8 @@ fi
 WANT_BUF=""
 
 check "config.json is unchanged" cmp -s "$CONFIG" "$TMP/config.before"
-check "the temporary home holds only config.json and Neovim's own folder" \
-  test "$(ls -A "$TMP/home" | sort | tr '\n' ' ')" = "config.json nvim spell "
+check "the temporary home holds only config.json, the log folder and Neovim's own folders" \
+  test "$(ls -A "$TMP/home" | sort | tr '\n' ' ')" = "config.json logs nvim spell "
 check "init.lua and the colorscheme were written under the home" \
   test -s "$TMP/home/nvim/config/pisar/init.lua" -a -s "$TMP/home/nvim/config/pisar/colors/pisar.lua"
 REAL_HOME_AFTER=absent

@@ -70,14 +70,21 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	// First of all: a Finder launch has a minimal PATH and no locale, and every
 	// later LookPath and child process (Neovim, pbcopy) inherits what is set here.
 	// Its failure is reported below, once the texts for the dialog are loaded.
 	envErr := config.PrepareEnvironment()
-	if os.Getenv(config.EnvLog) == "debug" {
-		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	}
+	closeLog := setupLogging(os.Getenv(config.EnvLog) == "debug")
+	defer closeLog()
+	// Registered after closeLog, so it runs before the file is closed: an app
+	// launched from Finder has no stderr, and this line is then the only trace.
+	defer func() {
+		if err != nil {
+			slog.Error("pisar: stopped with an error", "err", err)
+		}
+	}()
+	logStart()
 	text, err := loadUIText()
 	if err != nil {
 		// No texts, so no dialog.
