@@ -4,7 +4,7 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
 
 ## Stanje
 
-- Trenutna faza: 9 — Log datoteka i provjera verzija alata (svi koraci izvedeni 2026-11-13, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru). Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
+- Trenutna faza: nema otvorene. Faza 9 (Log datoteka i provjera verzija alata) prihvaćena je 2026-11-13: vlasnik je javio da je ručna provjera provjerena. Faze 6 (Pakiranje), 7 (Teme) i 8 (Prečaci i which-key) prihvaćene su 2026-11-13: vlasnik je javio da je ručna provjera svih triju provjerena. Nakon vlasnikove provjere faze 8 ispravljeni su: „Uredi user.lua” bez pokrenutog Neovima, treperenje poruke u tražilici i prazno stanje koje je nudilo `␣f` (vidi „Nalazi vlasnikove ručne provjere” u fazi 8). Faza 5 je prihvaćena 2026-11-12: vlasnik je prošao ručnu
   provjeru i potvrdio da sve radi (predložena granica oko `user.lua` postavljena je uz plan faze 6 i
   prihvaćena odobrenjem tog plana; vidi „Odluke vlasnika” u fazi 6). Nakon faze 6 planiraju se teme (npr. Dracula, Catppuccin) kao nova faza. Faza 4 je prihvaćena 2026-11-12: vlasnik je
   prošao ručnu provjeru i potvrdio da sve radi. Faza 3 je prihvaćena 2026-11-12: vlasnik je
@@ -12,10 +12,10 @@ Plan: `docs/plans/2026-11-11-pisar-design.md` · Protokol: `PROMPT.md` · Izgled
   vlasnik je prošao ručnu provjeru i potvrdio da sve radi. Faza 1 je prihvaćena 2026-11-11: vlasnik je prošao
   ručni pogled i potvrdio da sve radi. Faza 0 je prihvaćena 2026-11-11:
   vlasnik je potvrdio svih sedam kriterija **[R]** i odlučio **idemo** (pravi Neovim u PTY-ju)
-- Sljedeći korak: vlasnikova ručna provjera faze 9 i odluka o prihvaćanju
+- Sljedeći korak: nema; nova faza kreće novim planom i vlasnikovim odobrenjem
 - Effort: vlasnik je 2026-11-11 odlučio da glavna sesija i `coder` rade na `high` u svim fazama; `PROMPT.md`,
   `.claude/agents/coder.md` i plan su usklađeni. (Faza 1 i korak 1 faze 2 još su išli s `coder`-om na `medium`.)
-- Zadnja izmjena: 2026-11-13 (faza 9: svi koraci izvedeni, `plan-reviewer` PASS u krugu 2; čeka ručnu provjeru)
+- Zadnja izmjena: 2026-11-13 (faza 9 prihvaćena nakon vlasnikove ručne provjere; `task test:race` ponovljen na zadnjem commitu)
 
 ## Priprema (2026-11-11)
 
@@ -2743,7 +2743,7 @@ sigurnosne kopije dokumenata.
 - [x] `cd frontend && npx vitest run src/lib/toolsState src/lib/errorMessage` prolazi — dokaz 3
 - [x] `bash scripts/smoke.sh` → `smoke: all checks passed`, s novim provjerama loga i prestarog Neovima — dokaz 4
 - [x] `grep -rnE 'os\.(Create|WriteFile|Remove)' logging.go toolversion.go` pokazuje pisanje samo u log — dokaz 5
-- [ ] **[R]** nakon pokretanja iz Findera `~/Library/Application Support/Pisar/logs/pisar.log` raste;
+- [x] **[R]** nakon pokretanja iz Findera `~/Library/Application Support/Pisar/logs/pisar.log` raste;
       „Prikaži log u Finderu” ga označi u Finderu; s lažnim starim `nvim` u PATH-u prazno stanje pokaže
-      poruku o prestaroj verziji i naredbu, a „Provjeri ponovno” je makne kad se lažni alat ukloni
+      poruku o prestaroj verziji i naredbu, a „Provjeri ponovno” je makne kad se lažni alat ukloni — vlasnik potvrdio ručnu provjeru 2026-11-13
 
